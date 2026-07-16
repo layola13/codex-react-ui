@@ -1,0 +1,18 @@
+{
+  "name": "codex-react-ui",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "predev": "pnpm --filter @codex-ui/shared build",
+    "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @codex-ui/server dev\" \"pnpm --filter @codex-ui/web dev\"",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "start": "pnpm --filter @codex-ui/server start",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
+  }
+}
