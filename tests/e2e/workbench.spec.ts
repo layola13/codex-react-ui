@@ -1,7 +1,27 @@
 import { expect, test } from "@playwright/test";
 
+const mockProvider = {
+  id: "hubproxy-grok",
+  kind: "responsesRelay",
+  name: "HubProxy Grok",
+  baseUrl: "https://api.astrdark.cyou/v1",
+  apiKeyRef: "env:CODEX_UI_PROVIDER_HUBPROXY_GROK_API_KEY",
+  apiKeyPreview: "key...ring",
+  apiKeyStorage: "keyring",
+  defaultModel: "codex",
+  nativeModels: ["grok-4.5"],
+  modelAliases: [
+    { alias: "gpt-5.5", model: "grok-4.5" },
+    { alias: "codex", model: "gpt-5.5" }
+  ],
+  createdAt: 1,
+  updatedAt: 2
+};
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
+    const outbound = ((window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound = []);
+
     class MockWebSocket extends EventTarget {
       public static readonly CONNECTING = 0;
       public static readonly OPEN = 1;
@@ -29,7 +49,25 @@ test.beforeEach(async ({ page }) => {
       }
 
       public send(raw: string): void {
-        const message = JSON.parse(raw) as { id?: string; method?: string; type?: string };
+        const message = JSON.parse(raw) as { id?: string; method?: string; type?: string; model?: string };
+        outbound.push(message);
+        if (message.type === "provider.activate" && message.id) {
+          setTimeout(
+            () =>
+              this.emit({
+                type: "provider.activated",
+                id: message.id,
+                activation: {
+                  providerId: "hubproxy-grok",
+                  modelProvider: "hubproxy-grok",
+                  model: message.model ?? "codex",
+                  restartedAt: Date.now()
+                }
+              }),
+            0
+          );
+          return;
+        }
         if (message.type !== "rpc" || !message.id) {
           return;
         }
@@ -59,6 +97,10 @@ test.beforeEach(async ({ page }) => {
           return { data: [{ model: "gpt-5.6-sol", displayName: "GPT 5.6 Sol" }] };
         case "thread/list":
           return { data: [{ id: "thread-1", preview: "Mock thread", status: "idle" }] };
+        case "thread/start":
+          return { thread: { id: "thread-new", preview: "New mock thread", status: "idle" } };
+        case "turn/start":
+          return {};
         case "mcpServerStatus/list":
           return {
             data: [
@@ -92,7 +134,7 @@ test.beforeEach(async ({ page }) => {
   });
 
   await page.route("/api/session", (route) => route.fulfill({ json: { token: "test-token" } }));
-  await page.route("/api/providers", (route) => route.fulfill({ json: { data: [] } }));
+  await page.route("/api/providers", (route) => route.fulfill({ json: { data: [mockProvider] } }));
 });
 
 test("renders the workbench and tooling panels", async ({ page }) => {
@@ -111,4 +153,22 @@ test("renders the workbench and tooling panels", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Plugins 1" }).click();
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
+});
+
+test("resolves chained provider aliases before starting a turn", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByText("HubProxy Grok")).toBeVisible();
+  await expect(page.getByText("keyring")).toBeVisible();
+  await expect(page.getByText("codex -> gpt-5.5")).toBeVisible();
+
+  await page.getByRole("button", { name: "Activate" }).click();
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use the relay alias");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { model?: string } }> })
+      .__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "turn/start" && message.params?.model === "grok-4.5");
+  });
 });

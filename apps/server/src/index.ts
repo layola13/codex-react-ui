@@ -212,7 +212,20 @@ function resolveProviderModel(provider: ProviderConfig, selectedModel?: string):
   if (!selectedModel) {
     return undefined;
   }
-  return provider.modelAliases.find((entry) => entry.alias === selectedModel)?.model ?? selectedModel;
+  let model = selectedModel;
+  const seen = new Set<string>();
+  for (let index = 0; index < 8; index += 1) {
+    if (seen.has(model)) {
+      return model;
+    }
+    seen.add(model);
+    const next = provider.modelAliases.find((entry) => entry.alias === model)?.model;
+    if (!next || next === model) {
+      return model;
+    }
+    model = next;
+  }
+  return model;
 }
 
 function providerToCodexConfig(provider: ProviderConfig): JsonValue {

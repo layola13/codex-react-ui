@@ -17,11 +17,12 @@
 - [x] Add plugin detail, remote skill preview, and composer mention insertion UI.
 - [x] Add MCP OAuth login and resource read UI.
 - [x] Add Playwright E2E harness for workbench/tooling smoke checks.
+- [x] Persist provider API keys through a system keyring with memory fallback.
+- [x] Apply chained model aliases in provider activation and turn-start paths.
+- [x] Validate configured hubproxy relay envs without exposing API keys.
 
 ## Next
 
-- [ ] Persist provider API keys through a system keyring instead of process memory.
-- [ ] Apply model aliases in the model picker and turn-start path.
 - [ ] Add MCP direct tool-call forms with argument JSON editing.
 - [ ] Add Skills extra roots and local skill markdown preview.
 - [ ] Add plugin installed-only mention picker and richer plugin app/auth handling.

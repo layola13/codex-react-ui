@@ -25,10 +25,17 @@
 - Added MCP OAuth launch through `mcpServer/oauth/login` and MCP resource preview through `mcpServer/resource/read`.
 - Installed `@playwright/test` and added a mocked WebSocket workbench/tooling smoke test that does not require a live Codex engine.
 - Installed the Playwright Chromium runtime and system dependencies; the workbench/tooling E2E smoke test passes in Chromium.
+- Added system keyring persistence for provider API keys with process-memory fallback when the native keyring is unavailable.
+- Kept provider metadata secret-free by storing only env-key refs, key previews, and storage status in `~/.codex-react-ui/providers.json`.
+- Added provider model aliases to the active model picker and resolve chained aliases before `provider.activate`, `thread/start`, and `turn/start`.
+- Added Playwright coverage for a chained `codex -> gpt-5.5 -> grok-4.5` relay alias before starting a turn.
+- Tested the three requested hubproxy env files without printing secrets:
+  - `/root/projects/hubproxy/.env_jz`: `/models`, `/responses`, and `/chat/completions` all returned HTTP 200 using `gpt-5.5`.
+  - `/root/projects/hubproxy/.env_grok`: alias resolution maps `codex` through `gpt-5.5` to `grok-4.5`; `/models`, `/responses`, and `/chat/completions` all returned HTTP 200.
+  - `/root/projects/hubproxy/.env_nvidia`: `/models` returned HTTP 200 for `z-ai/glm-5.2`, but `/responses` returned HTTP 404 and `/chat/completions` returned HTTP 401, so this relay is saved/configurable but not currently usable through Codex's Responses wire path.
 
 ## Known Gaps
 
-- API keys are process-memory only and must be re-entered after restarting the UI service.
 - MCP direct tool-call forms, local skill markdown preview/extra roots, richer plugin auth/app handling, Monaco editor, and terminal surfaces still need full implementation.
-- Provider alias metadata is stored but not yet used to rewrite selected models.
 - Playwright smoke coverage exists, but browser screenshot regression is not yet added.
+- Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
