@@ -56,6 +56,7 @@ export type SkillGroup = {
 
 export type PluginEntry = {
   id: string;
+  remotePluginId?: string;
   name: string;
   displayName: string;
   description?: string;
@@ -67,6 +68,32 @@ export type PluginEntry = {
   availability: string;
   capabilities: string[];
   keywords: string[];
+};
+
+export type PluginDetailEntry = {
+  marketplaceName: string;
+  marketplacePath?: string;
+  plugin: PluginEntry;
+  description?: string;
+  shareUrl?: string;
+  skills: Array<{ name: string; description?: string; enabled: boolean; path?: string; remoteReadable: boolean }>;
+  hooks: Array<{ key: string; eventName: string }>;
+  apps: Array<{ id: string; name: string; description?: string }>;
+  mcpServers: string[];
+  scheduledTaskCount?: number;
+};
+
+export type McpResourceContentEntry = {
+  uri: string;
+  mimeType?: string;
+  text?: string;
+  blob?: string;
+};
+
+export type ComposerMention = {
+  name: string;
+  path: string;
+  token: string;
 };
 
 export type PluginMarketplace = {
@@ -431,11 +458,16 @@ export function threadReadToTurns(value: JsonValue): { thread: ThreadEntry | nul
   };
 }
 
-export function composerInputToUserInput(text: string, images: ComposerImageAttachment[]): JsonValue[] {
+export function composerInputToUserInput(text: string, images: ComposerImageAttachment[], mentions: ComposerMention[] = []): JsonValue[] {
   const input: JsonValue[] = [];
   const trimmed = text.trim();
   if (trimmed) {
     input.push({ type: "text", text: trimmed, text_elements: [] });
+  }
+  for (const mention of mentions) {
+    if (trimmed.includes(mention.token)) {
+      input.push({ type: "mention", name: mention.name, path: mention.path });
+    }
   }
   for (const image of images) {
     input.push({
@@ -490,6 +522,61 @@ export function parsePluginMarketplaces(value: JsonValue): Pick<ToolingState, "p
       return [stringValue(raw.marketplacePath), stringValue(raw.message)].filter(Boolean).join(": ") || "Marketplace load failed";
     })
   };
+}
+
+export function parsePluginDetail(value: JsonValue): PluginDetailEntry | null {
+  const detail = asRecord(asRecord(value).plugin);
+  const summary = asRecord(detail.summary);
+  const marketplaceName = stringValue(detail.marketplaceName);
+  if (!marketplaceName) {
+    return null;
+  }
+  return {
+    marketplaceName,
+    marketplacePath: stringValue(detail.marketplacePath),
+    plugin: pluginToEntry(summary),
+    description: stringValue(detail.description),
+    shareUrl: stringValue(detail.shareUrl),
+    skills: asArray(detail.skills).map((skill) => {
+      const raw = asRecord(skill);
+      return {
+        name: stringValue(raw.name) ?? "skill",
+        description: stringValue(raw.description) ?? stringValue(raw.shortDescription),
+        enabled: boolValue(raw.enabled) ?? false,
+        path: stringValue(raw.path),
+        remoteReadable: stringValue(summary.remotePluginId) != null
+      };
+    }),
+    hooks: asArray(detail.hooks).map((hook) => {
+      const raw = asRecord(hook);
+      return {
+        key: stringValue(raw.key) ?? "hook",
+        eventName: stringValue(raw.eventName) ?? "hook"
+      };
+    }),
+    apps: asArray(detail.apps).map((app) => {
+      const raw = asRecord(app);
+      return {
+        id: stringValue(raw.id) ?? "app",
+        name: stringValue(raw.name) ?? "App",
+        description: stringValue(raw.description)
+      };
+    }),
+    mcpServers: asArray(detail.mcpServers).map(String),
+    scheduledTaskCount: Array.isArray(detail.scheduledTasks) ? detail.scheduledTasks.length : undefined
+  };
+}
+
+export function parseMcpResourceContents(value: JsonValue): McpResourceContentEntry[] {
+  return asArray(asRecord(value).contents).map((entry) => {
+    const raw = asRecord(entry);
+    return {
+      uri: stringValue(raw.uri) ?? "resource",
+      mimeType: stringValue(raw.mimeType),
+      text: stringValue(raw.text),
+      blob: stringValue(raw.blob)
+    };
+  });
 }
 
 function upsertById<T extends { id: string }>(items: T[], next: T): T[] {
@@ -575,6 +662,7 @@ function pluginToEntry(plugin: Record<string, unknown>): PluginEntry {
   const pluginInterface = asRecord(plugin.interface);
   return {
     id: stringValue(plugin.id) ?? stringValue(plugin.name) ?? "plugin",
+    remotePluginId: stringValue(plugin.remotePluginId),
     name: stringValue(plugin.name) ?? stringValue(plugin.id) ?? "plugin",
     displayName: stringValue(pluginInterface.displayName) ?? stringValue(plugin.name) ?? "Plugin",
     description: stringValue(pluginInterface.shortDescription) ?? stringValue(pluginInterface.longDescription),

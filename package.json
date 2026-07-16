@@ -8,10 +8,12 @@
     "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @codex-ui/server dev\" \"pnpm --filter @codex-ui/web dev\"",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "test:e2e": "playwright test",
     "start": "pnpm --filter @codex-ui/server start",
     "lint": "pnpm -r lint"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "concurrently": "^9.2.1",
     "typescript": "^5.9.3"
   }

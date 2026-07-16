@@ -21,10 +21,14 @@
 - Added right-side Skills tooling backed by `skills/list`, `skills/config/write`, and `skills/changed` refresh handling.
 - Added right-side Plugins tooling backed by `plugin/list`, `plugin/install`, and `plugin/uninstall` across local, workspace, and remote marketplace kinds.
 - Preserved pending approval handling at the top of the Tools panel while adding MCP, Skills, and Plugins sub-tabs.
+- Added plugin detail loading through `plugin/read`, remote plugin skill preview through `plugin/skill/read`, and composer mention insertion using `mention` input blocks.
+- Added MCP OAuth launch through `mcpServer/oauth/login` and MCP resource preview through `mcpServer/resource/read`.
+- Installed `@playwright/test` and added a mocked WebSocket workbench/tooling smoke test that does not require a live Codex engine.
+- Installed the Playwright Chromium runtime and system dependencies; the workbench/tooling E2E smoke test passes in Chromium.
 
 ## Known Gaps
 
 - API keys are process-memory only and must be re-entered after restarting the UI service.
-- MCP OAuth login/resource calls, skill previews/extra roots, plugin detail views/mentions, Monaco editor, and terminal surfaces still need full implementation.
+- MCP direct tool-call forms, local skill markdown preview/extra roots, richer plugin auth/app handling, Monaco editor, and terminal surfaces still need full implementation.
 - Provider alias metadata is stored but not yet used to rewrite selected models.
-- No automated browser screenshot regression has been added yet.
+- Playwright smoke coverage exists, but browser screenshot regression is not yet added.

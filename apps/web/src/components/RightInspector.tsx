@@ -20,6 +20,7 @@ import {
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SaveIcon from "@mui/icons-material/Save";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -28,7 +29,9 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { JsonValue, ProviderConfig } from "@codex-ui/shared";
 import type {
   ModelEntry,
+  McpResourceContentEntry,
   PendingServerRequest,
+  PluginDetailEntry,
   PluginEntry,
   PluginMarketplace,
   SkillEntry,
@@ -42,12 +45,21 @@ type Props = {
   pendingRequests: PendingServerRequest[];
   tooling: ToolingState;
   toolingLoading: boolean;
+  pluginDetails: Record<string, PluginDetailEntry>;
+  pluginSkillPreviews: Record<string, string>;
+  mcpResourceContents: Record<string, McpResourceContentEntry[]>;
+  mcpOauthUrls: Record<string, string>;
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
   onReloadTooling: () => void;
   onReloadMcp: () => void;
+  onStartMcpOauth: (serverName: string) => void;
+  onReadMcpResource: (serverName: string, uri: string) => void;
   onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
+  onReadPluginDetail: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
+  onReadPluginSkill: (marketplace: PluginMarketplace, plugin: PluginEntry, skillName: string) => void;
+  onInsertPluginMention: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onInstallPlugin: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onUninstallPlugin: (plugin: PluginEntry) => void;
 };
@@ -59,12 +71,21 @@ export function RightInspector({
   pendingRequests,
   tooling,
   toolingLoading,
+  pluginDetails,
+  pluginSkillPreviews,
+  mcpResourceContents,
+  mcpOauthUrls,
   onAnswerRequest,
   onSaveProvider,
   onActivateProvider,
   onReloadTooling,
   onReloadMcp,
+  onStartMcpOauth,
+  onReadMcpResource,
   onToggleSkill,
+  onReadPluginDetail,
+  onReadPluginSkill,
+  onInsertPluginMention,
   onInstallPlugin,
   onUninstallPlugin
 }: Props) {
@@ -91,10 +112,19 @@ export function RightInspector({
             pendingRequests={pendingRequests}
             tooling={tooling}
             toolingLoading={toolingLoading}
+            pluginDetails={pluginDetails}
+            pluginSkillPreviews={pluginSkillPreviews}
+            mcpResourceContents={mcpResourceContents}
+            mcpOauthUrls={mcpOauthUrls}
             onAnswerRequest={onAnswerRequest}
             onReloadTooling={onReloadTooling}
             onReloadMcp={onReloadMcp}
+            onStartMcpOauth={onStartMcpOauth}
+            onReadMcpResource={onReadMcpResource}
             onToggleSkill={onToggleSkill}
+            onReadPluginDetail={onReadPluginDetail}
+            onReadPluginSkill={onReadPluginSkill}
+            onInsertPluginMention={onInsertPluginMention}
             onInstallPlugin={onInstallPlugin}
             onUninstallPlugin={onUninstallPlugin}
           />
@@ -317,20 +347,38 @@ function ToolsTab({
   pendingRequests,
   tooling,
   toolingLoading,
+  pluginDetails,
+  pluginSkillPreviews,
+  mcpResourceContents,
+  mcpOauthUrls,
   onAnswerRequest,
   onReloadTooling,
   onReloadMcp,
+  onStartMcpOauth,
+  onReadMcpResource,
   onToggleSkill,
+  onReadPluginDetail,
+  onReadPluginSkill,
+  onInsertPluginMention,
   onInstallPlugin,
   onUninstallPlugin
 }: {
   pendingRequests: PendingServerRequest[];
   tooling: ToolingState;
   toolingLoading: boolean;
+  pluginDetails: Record<string, PluginDetailEntry>;
+  pluginSkillPreviews: Record<string, string>;
+  mcpResourceContents: Record<string, McpResourceContentEntry[]>;
+  mcpOauthUrls: Record<string, string>;
   onAnswerRequest: Props["onAnswerRequest"];
   onReloadTooling: Props["onReloadTooling"];
   onReloadMcp: Props["onReloadMcp"];
+  onStartMcpOauth: Props["onStartMcpOauth"];
+  onReadMcpResource: Props["onReadMcpResource"];
   onToggleSkill: Props["onToggleSkill"];
+  onReadPluginDetail: Props["onReadPluginDetail"];
+  onReadPluginSkill: Props["onReadPluginSkill"];
+  onInsertPluginMention: Props["onInsertPluginMention"];
   onInstallPlugin: Props["onInstallPlugin"];
   onUninstallPlugin: Props["onUninstallPlugin"];
 }) {
@@ -364,11 +412,25 @@ function ToolsTab({
         <Tab label={`Plugins ${pluginCount}`} />
       </Tabs>
 
-      {toolTab === 0 && <McpPanel tooling={tooling} onReloadMcp={onReloadMcp} />}
+      {toolTab === 0 && (
+        <McpPanel
+          tooling={tooling}
+          mcpResourceContents={mcpResourceContents}
+          mcpOauthUrls={mcpOauthUrls}
+          onReloadMcp={onReloadMcp}
+          onStartMcpOauth={onStartMcpOauth}
+          onReadMcpResource={onReadMcpResource}
+        />
+      )}
       {toolTab === 1 && <SkillsPanel tooling={tooling} onToggleSkill={onToggleSkill} />}
       {toolTab === 2 && (
         <PluginsPanel
           tooling={tooling}
+          pluginDetails={pluginDetails}
+          pluginSkillPreviews={pluginSkillPreviews}
+          onReadPluginDetail={onReadPluginDetail}
+          onReadPluginSkill={onReadPluginSkill}
+          onInsertPluginMention={onInsertPluginMention}
           onInstallPlugin={onInstallPlugin}
           onUninstallPlugin={onUninstallPlugin}
         />
@@ -423,7 +485,21 @@ function ApprovalsPanel({
   );
 }
 
-function McpPanel({ tooling, onReloadMcp }: { tooling: ToolingState; onReloadMcp: Props["onReloadMcp"] }) {
+function McpPanel({
+  tooling,
+  mcpResourceContents,
+  mcpOauthUrls,
+  onReloadMcp,
+  onStartMcpOauth,
+  onReadMcpResource
+}: {
+  tooling: ToolingState;
+  mcpResourceContents: Record<string, McpResourceContentEntry[]>;
+  mcpOauthUrls: Record<string, string>;
+  onReloadMcp: Props["onReloadMcp"];
+  onStartMcpOauth: Props["onStartMcpOauth"];
+  onReadMcpResource: Props["onReadMcpResource"];
+}) {
   return (
     <Stack spacing={1}>
       <Stack direction="row" alignItems="center" spacing={1}>
@@ -435,7 +511,9 @@ function McpPanel({ tooling, onReloadMcp }: { tooling: ToolingState; onReloadMcp
         </Button>
       </Stack>
       {tooling.mcpServers.length === 0 && <Typography color="text.secondary">No MCP servers discovered.</Typography>}
-      {tooling.mcpServers.map((server) => (
+      {tooling.mcpServers.map((server) => {
+        const authUrl = mcpOauthUrls[server.name];
+        return (
         <Paper key={server.name} variant="outlined" sx={{ p: 1.25 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
@@ -461,8 +539,44 @@ function McpPanel({ tooling, onReloadMcp }: { tooling: ToolingState; onReloadMcp
               {server.tools.length > 8 && <Chip size="small" variant="outlined" label={`+${server.tools.length - 8}`} />}
             </Stack>
           )}
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+            <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => onStartMcpOauth(server.name)}>
+              OAuth
+            </Button>
+            {authUrl && (
+              <Button size="small" href={authUrl} target="_blank" rel="noreferrer">
+                Auth URL
+              </Button>
+            )}
+          </Stack>
+          {server.resources.length > 0 && (
+            <Stack spacing={0.75} sx={{ mt: 1 }}>
+              {server.resources.slice(0, 4).map((resource) => {
+                const uri = resource.uri;
+                const contents = uri ? mcpResourceContents[`${server.name}:${uri}`] : undefined;
+                return (
+                  <Box key={resource.uri ?? resource.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                        {resource.title ?? resource.name}
+                      </Typography>
+                      <Button size="small" disabled={!uri} onClick={() => uri && onReadMcpResource(server.name, uri)}>
+                        Read
+                      </Button>
+                    </Stack>
+                    {contents && (
+                      <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", mt: 0.75, maxHeight: 180, overflow: "auto" }}>
+                        {contents.map((content) => content.text ?? `[blob ${content.mimeType ?? "application/octet-stream"}]`).join("\n\n")}
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })}
+            </Stack>
+          )}
         </Paper>
-      ))}
+        );
+      })}
     </Stack>
   );
 }
@@ -516,10 +630,20 @@ function SkillsPanel({ tooling, onToggleSkill }: { tooling: ToolingState; onTogg
 
 function PluginsPanel({
   tooling,
+  pluginDetails,
+  pluginSkillPreviews,
+  onReadPluginDetail,
+  onReadPluginSkill,
+  onInsertPluginMention,
   onInstallPlugin,
   onUninstallPlugin
 }: {
   tooling: ToolingState;
+  pluginDetails: Record<string, PluginDetailEntry>;
+  pluginSkillPreviews: Record<string, string>;
+  onReadPluginDetail: Props["onReadPluginDetail"];
+  onReadPluginSkill: Props["onReadPluginSkill"];
+  onInsertPluginMention: Props["onInsertPluginMention"];
   onInstallPlugin: Props["onInstallPlugin"];
   onUninstallPlugin: Props["onUninstallPlugin"];
 }) {
@@ -541,6 +665,7 @@ function PluginsPanel({
             {marketplace.plugins.map((plugin) => {
               const unavailable = plugin.availability !== "AVAILABLE";
               const featured = tooling.featuredPluginIds.includes(plugin.id);
+              const detail = pluginDetails[plugin.id];
               return (
                 <Box key={plugin.id} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
                   <Stack direction="row" spacing={1} alignItems="center">
@@ -568,6 +693,19 @@ function PluginsPanel({
                       </Button>
                     )}
                   </Stack>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                    <Button size="small" onClick={() => onReadPluginDetail(marketplace, plugin)}>
+                      Details
+                    </Button>
+                    <Button size="small" onClick={() => onInsertPluginMention(marketplace, plugin)}>
+                      Mention
+                    </Button>
+                    {detail?.shareUrl && (
+                      <Button size="small" href={detail.shareUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
+                        Share
+                      </Button>
+                    )}
+                  </Stack>
                   <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                     <Chip size="small" label={plugin.installed ? "installed" : "available"} color={plugin.installed ? "success" : "default"} />
                     {plugin.installed && <Chip size="small" label={plugin.enabled ? "enabled" : "disabled"} />}
@@ -581,6 +719,46 @@ function PluginsPanel({
                         <Chip key={capability} size="small" variant="outlined" label={capability} />
                       ))}
                     </Stack>
+                  )}
+                  {detail && (
+                    <Box sx={{ mt: 1, borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                      {detail.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                          {detail.description}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                        <Chip size="small" label={`skills ${detail.skills.length}`} />
+                        <Chip size="small" label={`hooks ${detail.hooks.length}`} />
+                        <Chip size="small" label={`apps ${detail.apps.length}`} />
+                        <Chip size="small" label={`mcp ${detail.mcpServers.length}`} />
+                        {detail.scheduledTaskCount != null && <Chip size="small" label={`tasks ${detail.scheduledTaskCount}`} />}
+                      </Stack>
+                      {detail.skills.length > 0 && (
+                        <Stack spacing={0.75} sx={{ mt: 1 }}>
+                          {detail.skills.map((skill) => {
+                            const previewKey = `${plugin.id}:${skill.name}`;
+                            return (
+                              <Box key={skill.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                  <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                                    {skill.name} {skill.enabled ? "" : "(disabled)"}
+                                  </Typography>
+                                  <Button size="small" disabled={!skill.remoteReadable} onClick={() => onReadPluginSkill(marketplace, plugin, skill.name)}>
+                                    Preview
+                                  </Button>
+                                </Stack>
+                                {pluginSkillPreviews[previewKey] && (
+                                  <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", mt: 0.75, maxHeight: 180, overflow: "auto" }}>
+                                    {pluginSkillPreviews[previewKey]}
+                                  </Typography>
+                                )}
+                              </Box>
+                            );
+                          })}
+                        </Stack>
+                      )}
+                    </Box>
                   )}
                 </Box>
               );

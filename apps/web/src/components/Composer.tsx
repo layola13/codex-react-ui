@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -17,7 +17,7 @@ import SendIcon from "@mui/icons-material/Send";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
 import { DANGER_CONFIRMATION, permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
-import { dangerousConfirmationMatches, type ComposerImageAttachment, type ModelEntry } from "../state/codexClient";
+import { dangerousConfirmationMatches, type ComposerImageAttachment, type ComposerMention, type ModelEntry } from "../state/codexClient";
 
 type Props = {
   cwd: string;
@@ -25,10 +25,12 @@ type Props = {
   models: ModelEntry[];
   permission: PermissionPresetId;
   disabled: boolean;
+  pendingMention: ComposerMention | null;
   onCwdChange: (cwd: string) => void;
   onModelChange: (model: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
-  onSend: (text: string, images: ComposerImageAttachment[]) => void;
+  onMentionConsumed: () => void;
+  onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
 };
 
 export function Composer({
@@ -37,18 +39,33 @@ export function Composer({
   models,
   permission,
   disabled,
+  pendingMention,
   onCwdChange,
   onModelChange,
   onPermissionChange,
+  onMentionConsumed,
   onSend
 }: Props) {
   const [text, setText] = useState("");
   const [images, setImages] = useState<ComposerImageAttachment[]>([]);
+  const [mentions, setMentions] = useState<ComposerMention[]>([]);
   const [dangerConfirm, setDangerConfirm] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const selectedPreset = useMemo(() => permissionPresets.find((preset) => preset.id === permission), [permission]);
   const dangerBlocked = permission === "dangerBypass" && !dangerousConfirmationMatches(dangerConfirm);
   const hasContent = text.trim().length > 0 || images.length > 0;
+
+  useEffect(() => {
+    if (!pendingMention) {
+      return;
+    }
+    setText((current) => (current.trim().length === 0 ? `${pendingMention.token} ` : `${current.trimEnd()} ${pendingMention.token} `));
+    setMentions((current) => {
+      const existing = current.some((entry) => entry.path === pendingMention.path);
+      return existing ? current : [...current, pendingMention];
+    });
+    onMentionConsumed();
+  }, [onMentionConsumed, pendingMention]);
 
   return (
     <Box sx={{ p: 1.5, bgcolor: "background.paper" }}>
@@ -177,9 +194,10 @@ export function Composer({
             endIcon={<SendIcon />}
             disabled={disabled || !hasContent || dangerBlocked}
             onClick={() => {
-              onSend(text, images);
+              onSend(text, images, mentions);
               setText("");
               setImages([]);
+              setMentions([]);
             }}
           >
             Send

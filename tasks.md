@@ -14,17 +14,20 @@
 - [x] Add MCP server inventory and reload UI.
 - [x] Add Skills inventory and enable/disable UI.
 - [x] Add plugin marketplace inventory with install/uninstall UI.
+- [x] Add plugin detail, remote skill preview, and composer mention insertion UI.
+- [x] Add MCP OAuth login and resource read UI.
+- [x] Add Playwright E2E harness for workbench/tooling smoke checks.
 
 ## Next
 
 - [ ] Persist provider API keys through a system keyring instead of process memory.
 - [ ] Apply model aliases in the model picker and turn-start path.
-- [ ] Add MCP OAuth login and resource/tool detail actions.
-- [ ] Add Skills extra roots and skill markdown preview.
-- [ ] Add plugin detail/read, skill preview, and mention insertion.
+- [ ] Add MCP direct tool-call forms with argument JSON editing.
+- [ ] Add Skills extra roots and local skill markdown preview.
+- [ ] Add plugin installed-only mention picker and richer plugin app/auth handling.
 - [ ] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
 - [ ] Add terminal/process controls for command execution and PTY interaction.
-- [ ] Add visual regression checks for desktop and mobile workbench layouts.
+- [ ] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
 
 ## Later
 

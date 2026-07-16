@@ -28,12 +28,17 @@ import {
   fetchSessionToken,
   initialClientState,
   parseMcpServers,
+  parseMcpResourceContents,
+  parsePluginDetail,
   parsePluginMarketplaces,
   parseSkillGroups,
   threadReadToTurns,
   type ClientState,
   type ComposerImageAttachment,
+  type ComposerMention,
+  type McpResourceContentEntry,
   type PluginEntry,
+  type PluginDetailEntry,
   type PluginMarketplace,
   type SkillEntry
 } from "./state/codexClient";
@@ -120,6 +125,11 @@ export function App() {
   const [permission, setPermission] = useState<PermissionPresetId>("workspaceAsk");
   const [selectedModel, setSelectedModel] = useState("");
   const [cwd, setCwd] = useState("/root/projects");
+  const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
+  const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
+  const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
+  const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
+  const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
 
   const client = useMemo(() => {
@@ -275,8 +285,8 @@ export function App() {
   );
 
   const sendPrompt = useCallback(
-    async (text: string, images: ComposerImageAttachment[]) => {
-      const input = composerInputToUserInput(text, images);
+    async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
+      const input = composerInputToUserInput(text, images, mentions);
       if (input.length === 0) {
         return;
       }
@@ -406,6 +416,88 @@ export function App() {
     [client, loadTooling]
   );
 
+  const readPluginDetail = useCallback(
+    async (marketplace: PluginMarketplace, plugin: PluginEntry) => {
+      try {
+        const result = await client.rpc("plugin/read", {
+          marketplacePath: marketplace.path ?? null,
+          remoteMarketplaceName: marketplace.path ? null : marketplace.name,
+          pluginName: plugin.name
+        });
+        const detail = parsePluginDetail(result);
+        if (detail) {
+          setPluginDetails((current) => ({ ...current, [plugin.id]: detail }));
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const readPluginSkill = useCallback(
+    async (marketplace: PluginMarketplace, plugin: PluginEntry, skillName: string) => {
+      if (!plugin.remotePluginId) {
+        dispatch({ type: "error", message: "Skill preview is available for remote plugin skills only" });
+        return;
+      }
+      try {
+        const result = await client.rpc("plugin/skill/read", {
+          remoteMarketplaceName: marketplace.name,
+          remotePluginId: plugin.remotePluginId,
+          skillName
+        });
+        const contents = asRecord(result).contents;
+        setPluginSkillPreviews((current) => ({
+          ...current,
+          [`${plugin.id}:${skillName}`]: typeof contents === "string" ? contents : "No preview available"
+        }));
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const insertPluginMention = useCallback((marketplace: PluginMarketplace, plugin: PluginEntry) => {
+    setPendingMention({
+      name: plugin.displayName,
+      path: `plugin://${plugin.name}@${marketplace.name}`,
+      token: `@${plugin.name}`
+    });
+  }, []);
+
+  const startMcpOauth = useCallback(
+    async (serverName: string) => {
+      try {
+        const result = await client.rpc("mcpServer/oauth/login", { name: serverName, threadId: state.activeThreadId, timeoutSecs: 120 });
+        const authorizationUrl = asRecord(result).authorizationUrl;
+        if (typeof authorizationUrl === "string") {
+          setMcpOauthUrls((current) => ({ ...current, [serverName]: authorizationUrl }));
+          window.open(authorizationUrl, "_blank", "noopener,noreferrer");
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client, state.activeThreadId]
+  );
+
+  const readMcpResource = useCallback(
+    async (serverName: string, uri: string) => {
+      try {
+        const result = await client.rpc("mcpServer/resource/read", { server: serverName, uri, threadId: state.activeThreadId });
+        setMcpResourceContents((current) => ({
+          ...current,
+          [`${serverName}:${uri}`]: parseMcpResourceContents(result)
+        }));
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client, state.activeThreadId]
+  );
+
   const statusColor =
     state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
 
@@ -461,10 +553,12 @@ export function App() {
             models={state.models}
             permission={permission}
             disabled={!state.connected || state.engine.phase !== "ready"}
+            pendingMention={pendingMention}
             onCwdChange={setCwd}
             onModelChange={setSelectedModel}
             onPermissionChange={setPermission}
-            onSend={(text, images) => void sendPrompt(text, images)}
+            onMentionConsumed={() => setPendingMention(null)}
+            onSend={(text, images, mentions) => void sendPrompt(text, images, mentions)}
           />
         </Box>
         <RightInspector
@@ -474,12 +568,21 @@ export function App() {
           pendingRequests={state.pendingRequests}
           tooling={state.tooling}
           toolingLoading={state.toolingLoading}
+          pluginDetails={pluginDetails}
+          pluginSkillPreviews={pluginSkillPreviews}
+          mcpResourceContents={mcpResourceContents}
+          mcpOauthUrls={mcpOauthUrls}
           onAnswerRequest={answerRequest}
           onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
           onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
           onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
           onReloadMcp={() => void reloadMcp()}
+          onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
+          onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
           onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
+          onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
+          onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
+          onInsertPluginMention={insertPluginMention}
           onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
           onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
         />
