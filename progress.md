@@ -17,10 +17,14 @@
 - Added composer image attachment support using Codex `UserInput` image blocks.
 - Verified `pnpm typecheck` after the history/image implementation.
 - Initialized Git repository on branch `main`.
+- Added right-side MCP tooling backed by `mcpServerStatus/list` and `config/mcpServer/reload`.
+- Added right-side Skills tooling backed by `skills/list`, `skills/config/write`, and `skills/changed` refresh handling.
+- Added right-side Plugins tooling backed by `plugin/list`, `plugin/install`, and `plugin/uninstall` across local, workspace, and remote marketplace kinds.
+- Preserved pending approval handling at the top of the Tools panel while adding MCP, Skills, and Plugins sub-tabs.
 
 ## Known Gaps
 
 - API keys are process-memory only and must be re-entered after restarting the UI service.
-- MCP, Skills, Plugins, Monaco editor, and terminal surfaces still need full implementation.
+- MCP OAuth login/resource calls, skill previews/extra roots, plugin detail views/mentions, Monaco editor, and terminal surfaces still need full implementation.
 - Provider alias metadata is stored but not yet used to rewrite selected models.
 - No automated browser screenshot regression has been added yet.

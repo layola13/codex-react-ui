@@ -16,6 +16,75 @@ export type PendingServerRequest = {
   params?: JsonValue;
 };
 
+export type McpToolEntry = {
+  name: string;
+  title?: string;
+  description?: string;
+};
+
+export type McpResourceEntry = {
+  name: string;
+  title?: string;
+  uri?: string;
+  description?: string;
+};
+
+export type McpServerEntry = {
+  name: string;
+  authStatus: string;
+  serverInfo?: string;
+  tools: McpToolEntry[];
+  resources: McpResourceEntry[];
+  resourceTemplates: McpResourceEntry[];
+};
+
+export type SkillEntry = {
+  name: string;
+  displayName: string;
+  description: string;
+  shortDescription?: string;
+  path: string;
+  scope: string;
+  enabled: boolean;
+};
+
+export type SkillGroup = {
+  cwd: string;
+  skills: SkillEntry[];
+  errors: Array<{ path: string; message: string }>;
+};
+
+export type PluginEntry = {
+  id: string;
+  name: string;
+  displayName: string;
+  description?: string;
+  version?: string;
+  localVersion?: string;
+  installed: boolean;
+  enabled: boolean;
+  source: string;
+  availability: string;
+  capabilities: string[];
+  keywords: string[];
+};
+
+export type PluginMarketplace = {
+  name: string;
+  path?: string;
+  displayName?: string;
+  description?: string;
+  plugins: PluginEntry[];
+};
+
+export type ToolingState = {
+  mcpServers: McpServerEntry[];
+  skillGroups: SkillGroup[];
+  pluginMarketplaces: PluginMarketplace[];
+  featuredPluginIds: string[];
+  marketplaceErrors: string[];
+};
+
 export type ModelEntry = {
   id?: string;
   model?: string;
@@ -69,6 +138,8 @@ export type ClientState = {
   activeThreadId: string | null;
   turns: WorkbenchTurn[];
   pendingRequests: PendingServerRequest[];
+  tooling: ToolingState;
+  toolingLoading: boolean;
   errors: string[];
 };
 
@@ -91,6 +162,14 @@ export const initialClientState: ClientState = {
   activeThreadId: null,
   turns: [],
   pendingRequests: [],
+  tooling: {
+    mcpServers: [],
+    skillGroups: [],
+    pluginMarketplaces: [],
+    featuredPluginIds: [],
+    marketplaceErrors: []
+  },
+  toolingLoading: false,
   errors: []
 };
 
@@ -368,6 +447,51 @@ export function composerInputToUserInput(text: string, images: ComposerImageAtta
   return input;
 }
 
+export function parseMcpServers(value: JsonValue): McpServerEntry[] {
+  const data = asArray(asRecord(value).data);
+  return data.map((entry) => {
+    const server = asRecord(entry);
+    const toolsRecord = asRecord(server.tools);
+    return {
+      name: stringValue(server.name) ?? "Unnamed MCP server",
+      authStatus: stringValue(server.authStatus) ?? "unknown",
+      serverInfo: serverInfoLabel(server.serverInfo),
+      tools: Object.values(toolsRecord).map((tool) => mcpToolToEntry(asRecord(tool))),
+      resources: asArray(server.resources).map((resource) => mcpResourceToEntry(asRecord(resource))),
+      resourceTemplates: asArray(server.resourceTemplates).map((resource) => mcpResourceToEntry(asRecord(resource)))
+    };
+  });
+}
+
+export function parseSkillGroups(value: JsonValue): SkillGroup[] {
+  return asArray(asRecord(value).data).map((entry) => {
+    const group = asRecord(entry);
+    return {
+      cwd: stringValue(group.cwd) ?? "global",
+      skills: asArray(group.skills).map((skill) => skillToEntry(asRecord(skill))),
+      errors: asArray(group.errors).map((error) => {
+        const raw = asRecord(error);
+        return {
+          path: stringValue(raw.path) ?? "unknown",
+          message: stringValue(raw.message) ?? "Unable to load skill"
+        };
+      })
+    };
+  });
+}
+
+export function parsePluginMarketplaces(value: JsonValue): Pick<ToolingState, "pluginMarketplaces" | "featuredPluginIds" | "marketplaceErrors"> {
+  const record = asRecord(value);
+  return {
+    pluginMarketplaces: asArray(record.marketplaces).map((marketplace) => marketplaceToEntry(asRecord(marketplace))),
+    featuredPluginIds: asArray(record.featuredPluginIds).map(String),
+    marketplaceErrors: asArray(record.marketplaceLoadErrors).map((error) => {
+      const raw = asRecord(error);
+      return [stringValue(raw.marketplacePath), stringValue(raw.message)].filter(Boolean).join(": ") || "Marketplace load failed";
+    })
+  };
+}
+
 function upsertById<T extends { id: string }>(items: T[], next: T): T[] {
   const found = items.some((item) => item.id === next.id);
   return found ? items.map((item) => (item.id === next.id ? next : item)) : [next, ...items];
@@ -388,6 +512,98 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
+}
+
+function boolValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function serverInfoLabel(value: unknown): string | undefined {
+  const info = asRecord(value);
+  const name = stringValue(info.name);
+  const title = stringValue(info.title);
+  const version = stringValue(info.version);
+  return [title ?? name, version].filter(Boolean).join(" ") || undefined;
+}
+
+function mcpToolToEntry(tool: Record<string, unknown>): McpToolEntry {
+  return {
+    name: stringValue(tool.name) ?? "unnamed-tool",
+    title: stringValue(tool.title),
+    description: stringValue(tool.description)
+  };
+}
+
+function mcpResourceToEntry(resource: Record<string, unknown>): McpResourceEntry {
+  return {
+    name: stringValue(resource.name) ?? stringValue(resource.uri) ?? stringValue(resource.uriTemplate) ?? "resource",
+    title: stringValue(resource.title),
+    uri: stringValue(resource.uri) ?? stringValue(resource.uriTemplate),
+    description: stringValue(resource.description)
+  };
+}
+
+function skillToEntry(skill: Record<string, unknown>): SkillEntry {
+  const skillInterface = asRecord(skill.interface);
+  const displayName = stringValue(skillInterface.displayName) ?? stringValue(skill.name) ?? "Unnamed skill";
+  return {
+    name: stringValue(skill.name) ?? displayName,
+    displayName,
+    description: stringValue(skill.description) ?? stringValue(skillInterface.shortDescription) ?? "",
+    shortDescription: stringValue(skill.shortDescription) ?? stringValue(skillInterface.shortDescription),
+    path: stringValue(skill.path) ?? "",
+    scope: stringValue(skill.scope) ?? "unknown",
+    enabled: boolValue(skill.enabled) ?? false
+  };
+}
+
+function marketplaceToEntry(marketplace: Record<string, unknown>): PluginMarketplace {
+  const marketplaceInterface = asRecord(marketplace.interface);
+  return {
+    name: stringValue(marketplace.name) ?? "marketplace",
+    path: stringValue(marketplace.path),
+    displayName: stringValue(marketplaceInterface.displayName),
+    plugins: asArray(marketplace.plugins).map((plugin) => pluginToEntry(asRecord(plugin)))
+  };
+}
+
+function pluginToEntry(plugin: Record<string, unknown>): PluginEntry {
+  const pluginInterface = asRecord(plugin.interface);
+  return {
+    id: stringValue(plugin.id) ?? stringValue(plugin.name) ?? "plugin",
+    name: stringValue(plugin.name) ?? stringValue(plugin.id) ?? "plugin",
+    displayName: stringValue(pluginInterface.displayName) ?? stringValue(plugin.name) ?? "Plugin",
+    description: stringValue(pluginInterface.shortDescription) ?? stringValue(pluginInterface.longDescription),
+    version: stringValue(plugin.version),
+    localVersion: stringValue(plugin.localVersion),
+    installed: boolValue(plugin.installed) ?? false,
+    enabled: boolValue(plugin.enabled) ?? false,
+    source: sourceLabel(plugin.source),
+    availability: stringValue(plugin.availability) ?? "unknown",
+    capabilities: asArray(pluginInterface.capabilities).map(String),
+    keywords: asArray(plugin.keywords).map(String)
+  };
+}
+
+function sourceLabel(value: unknown): string {
+  const source = asRecord(value);
+  const type = stringValue(source.type);
+  switch (type) {
+    case "local":
+      return stringValue(source.path) ?? "local";
+    case "git":
+      return stringValue(source.url) ?? "git";
+    case "npm":
+      return stringValue(source.package) ?? "npm";
+    case "remote":
+      return "remote";
+    default:
+      return "unknown";
+  }
 }
 
 function threadToEntry(thread: Record<string, unknown>): ThreadEntry {

@@ -11,14 +11,17 @@
 - [x] Add third-party relay/provider metadata save and provider activation.
 - [x] Add history thread loading with `thread/read(includeTurns=true)`.
 - [x] Add text + image mixed input in the composer.
+- [x] Add MCP server inventory and reload UI.
+- [x] Add Skills inventory and enable/disable UI.
+- [x] Add plugin marketplace inventory with install/uninstall UI.
 
 ## Next
 
 - [ ] Persist provider API keys through a system keyring instead of process memory.
 - [ ] Apply model aliases in the model picker and turn-start path.
-- [ ] Add MCP server list/config/reload UI.
-- [ ] Add Skills list/config/read UI.
-- [ ] Add plugin marketplace/install/uninstall UI.
+- [ ] Add MCP OAuth login and resource/tool detail actions.
+- [ ] Add Skills extra roots and skill markdown preview.
+- [ ] Add plugin detail/read, skill preview, and mention insertion.
 - [ ] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
 - [ ] Add terminal/process controls for command execution and PTY interaction.
 - [ ] Add visual regression checks for desktop and mobile workbench layouts.

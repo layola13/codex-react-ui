@@ -4,36 +4,70 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
+  CircularProgress,
   FormControl,
+  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
   Select,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
   Typography
 } from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import DownloadIcon from "@mui/icons-material/Download";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import SaveIcon from "@mui/icons-material/Save";
 import SecurityIcon from "@mui/icons-material/Security";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import type { JsonValue, ProviderConfig } from "@codex-ui/shared";
-import type { ModelEntry, PendingServerRequest } from "../state/codexClient";
+import type {
+  ModelEntry,
+  PendingServerRequest,
+  PluginEntry,
+  PluginMarketplace,
+  SkillEntry,
+  ToolingState
+} from "../state/codexClient";
 
 type Props = {
   account: JsonValue | null;
   models: ModelEntry[];
   providers: ProviderConfig[];
   pendingRequests: PendingServerRequest[];
+  tooling: ToolingState;
+  toolingLoading: boolean;
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
+  onReloadTooling: () => void;
+  onReloadMcp: () => void;
+  onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
+  onInstallPlugin: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
+  onUninstallPlugin: (plugin: PluginEntry) => void;
 };
 
-export function RightInspector({ account, models, providers, pendingRequests, onAnswerRequest, onSaveProvider, onActivateProvider }: Props) {
+export function RightInspector({
+  account,
+  models,
+  providers,
+  pendingRequests,
+  tooling,
+  toolingLoading,
+  onAnswerRequest,
+  onSaveProvider,
+  onActivateProvider,
+  onReloadTooling,
+  onReloadMcp,
+  onToggleSkill,
+  onInstallPlugin,
+  onUninstallPlugin
+}: Props) {
   const [tab, setTab] = useState(0);
   return (
     <Box sx={{ borderLeft: "1px solid", borderColor: "divider", minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
@@ -52,7 +86,19 @@ export function RightInspector({ account, models, providers, pendingRequests, on
             onActivateProvider={onActivateProvider}
           />
         )}
-        {tab === 1 && <ToolsTab pendingRequests={pendingRequests} onAnswerRequest={onAnswerRequest} />}
+        {tab === 1 && (
+          <ToolsTab
+            pendingRequests={pendingRequests}
+            tooling={tooling}
+            toolingLoading={toolingLoading}
+            onAnswerRequest={onAnswerRequest}
+            onReloadTooling={onReloadTooling}
+            onReloadMcp={onReloadMcp}
+            onToggleSkill={onToggleSkill}
+            onInstallPlugin={onInstallPlugin}
+            onUninstallPlugin={onUninstallPlugin}
+          />
+        )}
         {tab === 2 && <FilesTab />}
       </Box>
     </Box>
@@ -269,41 +315,276 @@ function parseAliases(value: string): ProviderConfig["modelAliases"] {
 
 function ToolsTab({
   pendingRequests,
+  tooling,
+  toolingLoading,
+  onAnswerRequest,
+  onReloadTooling,
+  onReloadMcp,
+  onToggleSkill,
+  onInstallPlugin,
+  onUninstallPlugin
+}: {
+  pendingRequests: PendingServerRequest[];
+  tooling: ToolingState;
+  toolingLoading: boolean;
+  onAnswerRequest: Props["onAnswerRequest"];
+  onReloadTooling: Props["onReloadTooling"];
+  onReloadMcp: Props["onReloadMcp"];
+  onToggleSkill: Props["onToggleSkill"];
+  onInstallPlugin: Props["onInstallPlugin"];
+  onUninstallPlugin: Props["onUninstallPlugin"];
+}) {
+  const [toolTab, setToolTab] = useState(0);
+  const skillCount = tooling.skillGroups.reduce((count, group) => count + group.skills.length, 0);
+  const pluginCount = tooling.pluginMarketplaces.reduce((count, marketplace) => count + marketplace.plugins.length, 0);
+
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
+          Tooling
+        </Typography>
+        {toolingLoading && <CircularProgress size={16} />}
+        <Button size="small" startIcon={<RefreshIcon />} onClick={onReloadTooling}>
+          Refresh
+        </Button>
+      </Stack>
+
+      <ApprovalsPanel pendingRequests={pendingRequests} onAnswerRequest={onAnswerRequest} />
+
+      {tooling.marketplaceErrors.map((message) => (
+        <Alert key={message} severity="warning">
+          {message}
+        </Alert>
+      ))}
+
+      <Tabs value={toolTab} onChange={(_, value) => setToolTab(value)} variant="scrollable" scrollButtons="auto">
+        <Tab label={`MCP ${tooling.mcpServers.length}`} />
+        <Tab label={`Skills ${skillCount}`} />
+        <Tab label={`Plugins ${pluginCount}`} />
+      </Tabs>
+
+      {toolTab === 0 && <McpPanel tooling={tooling} onReloadMcp={onReloadMcp} />}
+      {toolTab === 1 && <SkillsPanel tooling={tooling} onToggleSkill={onToggleSkill} />}
+      {toolTab === 2 && (
+        <PluginsPanel
+          tooling={tooling}
+          onInstallPlugin={onInstallPlugin}
+          onUninstallPlugin={onUninstallPlugin}
+        />
+      )}
+    </Stack>
+  );
+}
+
+function ApprovalsPanel({
+  pendingRequests,
   onAnswerRequest
 }: {
   pendingRequests: PendingServerRequest[];
   onAnswerRequest: Props["onAnswerRequest"];
 }) {
   return (
-    <Stack spacing={1.5}>
-      <Alert severity="info">
-        MCP, Skills, Plugins and command/file approvals are surfaced here. Plugin and skill management calls are wired through app-server in the next pass.
-      </Alert>
-      {pendingRequests.length === 0 && (
-        <Typography color="text.secondary">No pending approval or elicitation requests.</Typography>
-      )}
-      {pendingRequests.map((request) => (
-        <Paper key={String(request.id)} variant="outlined" sx={{ p: 1.5 }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-            {request.method}
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: pendingRequests.length ? 1 : 0 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
+          Approvals
+        </Typography>
+        <Chip size="small" label={pendingRequests.length} color={pendingRequests.length ? "warning" : "default"} />
+      </Stack>
+      {pendingRequests.length === 0 && <Typography color="text.secondary">No pending requests.</Typography>}
+      <Stack spacing={1}>
+        {pendingRequests.map((request) => (
+          <Box key={String(request.id)} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1, mt: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+              {request.method}
+            </Typography>
+            <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", my: 1 }}>
+              {JSON.stringify(request.params, null, 2)}
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button size="small" variant="contained" onClick={() => onAnswerRequest(request.id, "accept")}>
+                Accept
+              </Button>
+              <Button size="small" onClick={() => onAnswerRequest(request.id, "acceptForSession")}>
+                Session
+              </Button>
+              <Button size="small" color="warning" onClick={() => onAnswerRequest(request.id, "decline")}>
+                Decline
+              </Button>
+              <Button size="small" color="error" onClick={() => onAnswerRequest(request.id, "cancel")}>
+                Cancel
+              </Button>
+            </Stack>
+          </Box>
+        ))}
+      </Stack>
+    </Paper>
+  );
+}
+
+function McpPanel({ tooling, onReloadMcp }: { tooling: ToolingState; onReloadMcp: Props["onReloadMcp"] }) {
+  return (
+    <Stack spacing={1}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
+          MCP servers
+        </Typography>
+        <Button size="small" startIcon={<RefreshIcon />} onClick={onReloadMcp}>
+          Reload
+        </Button>
+      </Stack>
+      {tooling.mcpServers.length === 0 && <Typography color="text.secondary">No MCP servers discovered.</Typography>}
+      {tooling.mcpServers.map((server) => (
+        <Paper key={server.name} variant="outlined" sx={{ p: 1.25 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+              {server.name}
+            </Typography>
+            <Chip size="small" label={server.authStatus} color={server.authStatus === "notLoggedIn" ? "warning" : "default"} />
+          </Stack>
+          {server.serverInfo && (
+            <Typography variant="caption" color="text.secondary">
+              {server.serverInfo}
+            </Typography>
+          )}
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+            <Chip size="small" label={`tools ${server.tools.length}`} />
+            <Chip size="small" label={`resources ${server.resources.length}`} />
+            <Chip size="small" label={`templates ${server.resourceTemplates.length}`} />
+          </Stack>
+          {server.tools.length > 0 && (
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+              {server.tools.slice(0, 8).map((tool) => (
+                <Chip key={tool.name} size="small" variant="outlined" label={tool.title ?? tool.name} />
+              ))}
+              {server.tools.length > 8 && <Chip size="small" variant="outlined" label={`+${server.tools.length - 8}`} />}
+            </Stack>
+          )}
+        </Paper>
+      ))}
+    </Stack>
+  );
+}
+
+function SkillsPanel({ tooling, onToggleSkill }: { tooling: ToolingState; onToggleSkill: Props["onToggleSkill"] }) {
+  return (
+    <Stack spacing={1}>
+      {tooling.skillGroups.length === 0 && <Typography color="text.secondary">No skills discovered.</Typography>}
+      {tooling.skillGroups.map((group) => (
+        <Paper key={group.cwd} variant="outlined" sx={{ p: 1.25 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+            {group.cwd}
           </Typography>
-          <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere" }}>
-            {JSON.stringify(request.params, null, 2)}
+          {group.errors.map((error) => (
+            <Alert key={`${error.path}:${error.message}`} severity="warning" sx={{ mt: 1 }}>
+              {error.path}: {error.message}
+            </Alert>
+          ))}
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {group.skills.map((skill) => (
+              <Box key={skill.path || skill.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                      {skill.displayName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                      {skill.shortDescription || skill.description || skill.path}
+                    </Typography>
+                  </Box>
+                  <Chip size="small" label={skill.scope} />
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                    {skill.path}
+                  </Typography>
+                  <FormControlLabel
+                    sx={{ mr: 0 }}
+                    control={<Switch size="small" checked={skill.enabled} onChange={(event) => onToggleSkill(skill, event.target.checked)} />}
+                    label={skill.enabled ? "Enabled" : "Disabled"}
+                  />
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        </Paper>
+      ))}
+    </Stack>
+  );
+}
+
+function PluginsPanel({
+  tooling,
+  onInstallPlugin,
+  onUninstallPlugin
+}: {
+  tooling: ToolingState;
+  onInstallPlugin: Props["onInstallPlugin"];
+  onUninstallPlugin: Props["onUninstallPlugin"];
+}) {
+  return (
+    <Stack spacing={1}>
+      {tooling.pluginMarketplaces.length === 0 && <Typography color="text.secondary">No plugin marketplaces discovered.</Typography>}
+      {tooling.pluginMarketplaces.map((marketplace) => (
+        <Paper key={`${marketplace.name}:${marketplace.path ?? "remote"}`} variant="outlined" sx={{ p: 1.25 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+            {marketplace.displayName ?? marketplace.name}
           </Typography>
-          <Divider sx={{ my: 1 }} />
-          <Stack direction="row" spacing={1} flexWrap="wrap">
-            <Button size="small" variant="contained" onClick={() => onAnswerRequest(request.id, "accept")}>
-              Accept
-            </Button>
-            <Button size="small" onClick={() => onAnswerRequest(request.id, "acceptForSession")}>
-              For session
-            </Button>
-            <Button size="small" color="warning" onClick={() => onAnswerRequest(request.id, "decline")}>
-              Decline
-            </Button>
-            <Button size="small" color="error" onClick={() => onAnswerRequest(request.id, "cancel")}>
-              Cancel
-            </Button>
+          {marketplace.path && (
+            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+              {marketplace.path}
+            </Typography>
+          )}
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {marketplace.plugins.length === 0 && <Typography color="text.secondary">No plugins in this marketplace.</Typography>}
+            {marketplace.plugins.map((plugin) => {
+              const unavailable = plugin.availability !== "AVAILABLE";
+              const featured = tooling.featuredPluginIds.includes(plugin.id);
+              return (
+                <Box key={plugin.id} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                        {plugin.displayName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                        {plugin.description || plugin.source}
+                      </Typography>
+                    </Box>
+                    {plugin.installed ? (
+                      <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => onUninstallPlugin(plugin)}>
+                        Uninstall
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<DownloadIcon />}
+                        disabled={unavailable}
+                        onClick={() => onInstallPlugin(marketplace, plugin)}
+                      >
+                        Install
+                      </Button>
+                    )}
+                  </Stack>
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                    <Chip size="small" label={plugin.installed ? "installed" : "available"} color={plugin.installed ? "success" : "default"} />
+                    {plugin.installed && <Chip size="small" label={plugin.enabled ? "enabled" : "disabled"} />}
+                    {featured && <Chip size="small" label="featured" color="primary" />}
+                    {unavailable && <Chip size="small" label={plugin.availability} color="warning" />}
+                    {(plugin.localVersion || plugin.version) && <Chip size="small" label={plugin.localVersion ?? plugin.version} />}
+                  </Stack>
+                  {plugin.capabilities.length > 0 && (
+                    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                      {plugin.capabilities.slice(0, 5).map((capability) => (
+                        <Chip key={capability} size="small" variant="outlined" label={capability} />
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
+              );
+            })}
           </Stack>
         </Paper>
       ))}
