@@ -124,6 +124,7 @@ export function App() {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const [permission, setPermission] = useState<PermissionPresetId>("workspaceAsk");
   const [selectedModel, setSelectedModel] = useState("");
+  const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("/root/projects");
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
@@ -137,6 +138,28 @@ export function App() {
     clientRef.current = socketClient;
     return socketClient;
   }, []);
+
+  const composerModels = useMemo(() => {
+    const entries = [...state.models];
+    const activeProvider = state.providers.find((provider) => provider.id === activeProviderId);
+    if (!activeProvider) {
+      return entries;
+    }
+    const known = new Set(entries.map((entry) => entry.model ?? entry.id).filter(Boolean));
+    for (const model of activeProvider.nativeModels) {
+      if (!known.has(model)) {
+        entries.push({ model, displayName: model });
+        known.add(model);
+      }
+    }
+    for (const alias of activeProvider.modelAliases) {
+      if (!known.has(alias.alias)) {
+        entries.push({ model: alias.alias, displayName: `${alias.alias} -> ${alias.model}` });
+        known.add(alias.alias);
+      }
+    }
+    return entries;
+  }, [activeProviderId, state.models, state.providers]);
 
   const loadBasics = useCallback(async () => {
     const [account, modelResult, threadResult] = await Promise.all([
@@ -292,6 +315,7 @@ export function App() {
       }
       try {
         let threadId = state.activeThreadId;
+        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
         const permissionOverrides = permissionToTurnOverrides(permission, cwd);
         if (!threadId) {
           const startParams: Record<string, JsonValue> = {
@@ -300,8 +324,8 @@ export function App() {
             approvalPolicy: permissionOverrides.approvalPolicy,
             sessionStartSource: "startup"
           };
-          if (selectedModel) {
-            startParams.model = selectedModel;
+          if (effectiveModel) {
+            startParams.model = effectiveModel;
           }
           const threadResult = await client.rpc("thread/start", startParams);
           const thread = asRecord(asRecord(threadResult).thread);
@@ -318,15 +342,15 @@ export function App() {
           sandboxPolicy: permissionOverrides.sandboxPolicy,
           approvalPolicy: permissionOverrides.approvalPolicy
         };
-        if (selectedModel) {
-          turnParams.model = selectedModel;
+        if (effectiveModel) {
+          turnParams.model = effectiveModel;
         }
         await client.rpc("turn/start", turnParams);
       } catch (error) {
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [client, cwd, permission, selectedModel, state.activeThreadId]
+    [activeProviderId, client, cwd, permission, selectedModel, state.activeThreadId, state.providers]
   );
 
   const answerRequest = useCallback(
@@ -356,6 +380,7 @@ export function App() {
     async (providerId: string, model?: string) => {
       try {
         const activation = await client.activateProvider(providerId, model);
+        setActiveProviderId(providerId);
         if (activation.model) {
           setSelectedModel(activation.model);
         }
@@ -550,7 +575,7 @@ export function App() {
           <Composer
             cwd={cwd}
             model={selectedModel}
-            models={state.models}
+            models={composerModels}
             permission={permission}
             disabled={!state.connected || state.engine.phase !== "ready"}
             pendingMention={pendingMention}
@@ -637,4 +662,9 @@ function errorMessage(scope: string, error: unknown): string {
     return `${scope}: ${(error as { message: string }).message}`;
   }
   return `${scope}: ${String(error)}`;
+}
+
+function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: string | null, selectedModel: string): string {
+  const provider = providers.find((entry) => entry.id === activeProviderId);
+  return provider?.modelAliases.find((entry) => entry.alias === selectedModel)?.model ?? selectedModel;
 }

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { AsyncEntry } from "@napi-rs/keyring";
 import type { ProviderConfig } from "@codex-ui/shared";
 
 type StoreShape = {
@@ -12,6 +13,41 @@ export class ProviderStore {
   private readonly dir = join(homedir(), ".codex-react-ui");
   private readonly file = join(this.dir, "providers.json");
   private memorySecrets = new Map<string, string>();
+
+  public async initialize(): Promise<void> {
+    const store = await this.read();
+    let changed = false;
+    for (const provider of store.providers) {
+      if (!provider.apiKeyRef) {
+        if (provider.apiKeyStorage !== "none") {
+          provider.apiKeyStorage = "none";
+          changed = true;
+        }
+        continue;
+      }
+      try {
+        const secret = await keyringEntry(provider.id).getPassword();
+        if (secret) {
+          this.memorySecrets.set(provider.id, secret);
+          if (provider.apiKeyStorage !== "keyring") {
+            provider.apiKeyStorage = "keyring";
+            changed = true;
+          }
+        } else if (provider.apiKeyStorage !== "memory") {
+          provider.apiKeyStorage = "memory";
+          changed = true;
+        }
+      } catch {
+        if (provider.apiKeyStorage !== "memory") {
+          provider.apiKeyStorage = "memory";
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      await this.write(store);
+    }
+  }
 
   public async list(): Promise<ProviderConfig[]> {
     return (await this.read()).providers;
@@ -25,14 +61,22 @@ export class ProviderStore {
     const now = Date.now();
     const id = provider.id || providerIdFromName(provider.name);
     const apiKeyRef = apiKey ? `env:${envKeyForProvider(id)}` : provider.apiKeyRef;
+    let apiKeyStorage = provider.apiKeyStorage ?? (provider.apiKeyRef ? "memory" : "none");
     if (apiKey) {
       this.memorySecrets.set(id, apiKey);
+      try {
+        await keyringEntry(id).setPassword(apiKey);
+        apiKeyStorage = "keyring";
+      } catch {
+        apiKeyStorage = "memory";
+      }
     }
     const clean: ProviderConfig = {
       ...provider,
       id,
       apiKeyRef,
       apiKeyPreview: apiKey ? previewSecret(apiKey) : provider.apiKeyPreview,
+      apiKeyStorage,
       createdAt: provider.createdAt || now,
       updatedAt: now
     };
@@ -53,6 +97,11 @@ export class ProviderStore {
 
   public async delete(id: string): Promise<void> {
     this.memorySecrets.delete(id);
+    try {
+      await keyringEntry(id).deleteCredential();
+    } catch {
+      // Missing or unavailable keyrings do not block provider deletion.
+    }
     const store = await this.read();
     await this.write({ providers: store.providers.filter((entry) => entry.id !== id) });
   }
@@ -71,6 +120,12 @@ export class ProviderStore {
     await mkdir(this.dir, { recursive: true });
     await writeFile(this.file, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
   }
+}
+
+const KEYRING_SERVICE = "codex-react-ui";
+
+function keyringEntry(id: string): AsyncEntry {
+  return new AsyncEntry(KEYRING_SERVICE, `provider:${id}`);
 }
 
 function providerIdFromName(name: string): string {

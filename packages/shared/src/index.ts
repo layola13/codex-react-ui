@@ -162,6 +162,7 @@ export interface ProviderConfig {
   baseUrl?: string;
   apiKeyRef?: string;
   apiKeyPreview?: string;
+  apiKeyStorage?: "keyring" | "memory" | "none";
   defaultModel?: string;
   nativeModels: string[];
   modelAliases: Array<{

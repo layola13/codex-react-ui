@@ -172,12 +172,17 @@ function ConfigTab({
           {providers.length === 0 && <Typography color="text.secondary">No third-party relay configured yet.</Typography>}
           {providers.map((provider) => {
             const fallbackModels = provider.defaultModel ? [provider.defaultModel] : [];
-            const modelOptions = provider.nativeModels.length > 0 ? provider.nativeModels : fallbackModels;
-            const selectedModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0] ?? "";
+            const nativeModelOptions = provider.nativeModels.length > 0 ? provider.nativeModels : fallbackModels;
+            const modelOptions = [
+              ...provider.modelAliases.map((entry) => ({ value: entry.alias, label: `${entry.alias} -> ${entry.model}` })),
+              ...nativeModelOptions.map((model) => ({ value: model, label: model }))
+            ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.value === entry.value) === index);
+            const selectedModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
             return (
               <Paper key={provider.id} variant="outlined" sx={{ p: 1 }}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography sx={{ fontWeight: 700, flex: 1 }}>{provider.name}</Typography>
+                  <Chip size="small" label={provider.apiKeyStorage ?? (provider.apiKeyRef ? "memory" : "no key")} color={provider.apiKeyStorage === "keyring" ? "success" : "default"} />
                   <Chip size="small" label={provider.kind} />
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
@@ -193,9 +198,9 @@ function ConfigTab({
                         setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))
                       }
                     >
-                      {modelOptions.map((model) => (
-                        <MenuItem key={model} value={model}>
-                          {model}
+                      {modelOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
                         </MenuItem>
                       ))}
                     </Select>

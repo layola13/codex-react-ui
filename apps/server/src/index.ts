@@ -24,6 +24,8 @@ const providerStore = new ProviderStore();
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
 const clients = new Set<WebSocket>();
 
+await providerStore.initialize();
+
 const app = Fastify({
   logger: {
     level: process.env.LOG_LEVEL ?? "info",
@@ -176,7 +178,7 @@ async function activateProvider(providerId: string, model?: string): Promise<Pro
   await bridge.start();
 
   const modelProvider = provider.kind === "chatgpt" ? "openai" : provider.id;
-  const selectedModel = model || provider.defaultModel || provider.nativeModels[0];
+  const selectedModel = resolveProviderModel(provider, model || provider.defaultModel || provider.nativeModels[0]);
   const edits: Array<{ keyPath: string; value: JsonValue; mergeStrategy: "replace" }> = [];
 
   if (provider.kind !== "chatgpt") {
@@ -204,6 +206,13 @@ async function activateProvider(providerId: string, model?: string): Promise<Pro
     model: selectedModel,
     restartedAt: Date.now()
   };
+}
+
+function resolveProviderModel(provider: ProviderConfig, selectedModel?: string): string | undefined {
+  if (!selectedModel) {
+    return undefined;
+  }
+  return provider.modelAliases.find((entry) => entry.alias === selectedModel)?.model ?? selectedModel;
 }
 
 function providerToCodexConfig(provider: ProviderConfig): JsonValue {
