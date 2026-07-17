@@ -135,6 +135,13 @@ export type McpResourceContentEntry = {
   blob?: string;
 };
 
+export type FsDirectoryEntry = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isFile: boolean;
+};
+
 export type ComposerMention = {
   name: string;
   path: string;
@@ -664,6 +671,30 @@ export function parseMcpResourceContents(value: JsonValue): McpResourceContentEn
   });
 }
 
+export function parseFsDirectory(value: JsonValue, parentPath: string): FsDirectoryEntry[] {
+  return asArray(asRecord(value).entries)
+    .map((entry) => {
+      const raw = asRecord(entry);
+      const name = stringValue(raw.fileName) ?? "";
+      if (!name) {
+        return null;
+      }
+      return {
+        name,
+        path: joinPath(parentPath, name),
+        isDirectory: boolValue(raw.isDirectory) ?? false,
+        isFile: boolValue(raw.isFile) ?? false
+      };
+    })
+    .filter(isPresent)
+    .sort((left, right) => {
+      if (left.isDirectory !== right.isDirectory) {
+        return left.isDirectory ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+}
+
 function upsertById<T extends { id: string }>(items: T[], next: T): T[] {
   const found = items.some((item) => item.id === next.id);
   return found ? items.map((item) => (item.id === next.id ? next : item)) : [next, ...items];
@@ -815,6 +846,10 @@ function sourceLabel(value: unknown): string {
     default:
       return "unknown";
   }
+}
+
+function joinPath(parentPath: string, name: string): string {
+  return `${parentPath.replace(/\/+$/, "")}/${name}`;
 }
 
 function threadToEntry(thread: Record<string, unknown>): ThreadEntry {

@@ -51,9 +51,11 @@
 - Added installed-only plugin mention insertion backed by `plugin/installed`, while preserving full marketplace browsing through `plugin/list`.
 - Added richer plugin auth/app handling, including auth policy/install policy metadata, `plugin/install` app-auth notices, plugin app/template summaries, and `app/list` connector state.
 - Added focused Playwright coverage for installed-only plugin mentions, mention payloads, plugin app/template rendering, and install-time app authentication prompts.
+- Added a Monaco-backed file explorer/editor in the Files tab using `fs/readDirectory`, `fs/readFile`, and `fs/writeFile`.
+- Added focused Playwright coverage for browsing a mocked filesystem, opening a file in Monaco, editing it, and saving through `fs/writeFile`.
 
 ## Known Gaps
 
-- Monaco editor and terminal surfaces still need full implementation.
+- Terminal surfaces still need full implementation.
 - Playwright smoke coverage exists, but browser screenshot regression is not yet added.
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.

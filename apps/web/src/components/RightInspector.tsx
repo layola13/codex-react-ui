@@ -1,4 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import Editor, { loader } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
 import {
   Alert,
   Box,
@@ -19,7 +22,9 @@ import {
   Typography
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DescriptionIcon from "@mui/icons-material/Description";
 import DownloadIcon from "@mui/icons-material/Download";
+import FolderIcon from "@mui/icons-material/Folder";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SaveIcon from "@mui/icons-material/Save";
@@ -31,6 +36,7 @@ import type {
   ModelEntry,
   McpResourceContentEntry,
   PluginAppEntry,
+  FsDirectoryEntry,
   PendingServerRequest,
   PluginDetailEntry,
   PluginEntry,
@@ -39,6 +45,8 @@ import type {
   SkillEntry,
   ToolingState
 } from "../state/codexClient";
+
+loader.config({ monaco });
 
 type Props = {
   account: JsonValue | null;
@@ -55,6 +63,9 @@ type Props = {
   skillPreviews: Record<string, string>;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
+  cwd: string;
+  fileDirectories: Record<string, FsDirectoryEntry[]>;
+  openFile: { path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null;
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
@@ -71,6 +82,10 @@ type Props = {
   onInsertPluginMention: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onInstallPlugin: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onUninstallPlugin: (plugin: PluginEntry) => void;
+  onReadDirectory: (path: string) => void;
+  onReadFile: (path: string) => void;
+  onChangeOpenFileContent: (content: string) => void;
+  onSaveOpenFile: () => void;
 };
 
 export function RightInspector({
@@ -88,6 +103,9 @@ export function RightInspector({
   skillPreviews,
   mcpResourceContents,
   mcpOauthUrls,
+  cwd,
+  fileDirectories,
+  openFile,
   onAnswerRequest,
   onSaveProvider,
   onActivateProvider,
@@ -103,7 +121,11 @@ export function RightInspector({
   onReadPluginSkill,
   onInsertPluginMention,
   onInstallPlugin,
-  onUninstallPlugin
+  onUninstallPlugin,
+  onReadDirectory,
+  onReadFile,
+  onChangeOpenFileContent,
+  onSaveOpenFile
 }: Props) {
   const [tab, setTab] = useState(0);
   return (
@@ -152,7 +174,17 @@ export function RightInspector({
             onUninstallPlugin={onUninstallPlugin}
           />
         )}
-        {tab === 2 && <FilesTab />}
+        {tab === 2 && (
+          <FilesTab
+            cwd={cwd}
+            fileDirectories={fileDirectories}
+            openFile={openFile}
+            onReadDirectory={onReadDirectory}
+            onReadFile={onReadFile}
+            onChangeOpenFileContent={onChangeOpenFileContent}
+            onSaveOpenFile={onSaveOpenFile}
+          />
+        )}
       </Box>
     </Box>
   );
@@ -1159,27 +1191,187 @@ function AppSummaryRow({ app }: { app: PluginAppEntry }) {
   );
 }
 
-function FilesTab() {
+function FilesTab({
+  cwd,
+  fileDirectories,
+  openFile,
+  onReadDirectory,
+  onReadFile,
+  onChangeOpenFileContent,
+  onSaveOpenFile
+}: {
+  cwd: string;
+  fileDirectories: Record<string, FsDirectoryEntry[]>;
+  openFile: Props["openFile"];
+  onReadDirectory: Props["onReadDirectory"];
+  onReadFile: Props["onReadFile"];
+  onChangeOpenFileContent: Props["onChangeOpenFileContent"];
+  onSaveOpenFile: Props["onSaveOpenFile"];
+}) {
+  const [rootPath, setRootPath] = useState(cwd);
+  const [expandedDirs, setExpandedDirs] = useState<Record<string, boolean>>({});
+  const dirty = openFile ? openFile.content !== openFile.savedContent : false;
+
+  useEffect(() => {
+    setRootPath(cwd);
+  }, [cwd]);
+
+  useEffect(() => {
+    if (rootPath && !fileDirectories[rootPath]) {
+      onReadDirectory(rootPath);
+    }
+  }, [fileDirectories, onReadDirectory, rootPath]);
+
   return (
-    <Stack spacing={1.5}>
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-          File workspace
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          The app-server filesystem APIs and Monaco editor surface are planned for the next implementation slice. Current turns still render file changes and diffs as tool items.
-        </Typography>
+    <Stack spacing={1.25}>
+      <Paper variant="outlined" sx={{ p: 1.25 }}>
+        <Stack direction="row" spacing={1}>
+          <TextField size="small" label="Root path" value={rootPath} onChange={(event) => setRootPath(event.target.value)} sx={{ flex: 1 }} />
+          <Button size="small" startIcon={<RefreshIcon />} onClick={() => onReadDirectory(rootPath)}>
+            Load
+          </Button>
+        </Stack>
       </Paper>
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-          Terminal
-        </Typography>
-        <Typography color="text.secondary" sx={{ mt: 1 }}>
-          PTY-backed terminals will use the app-server command/process APIs. Command output from Codex tool calls already appears in the chat stream.
-        </Typography>
-      </Paper>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "minmax(150px, 0.9fr) minmax(0, 1.4fr)" },
+          gap: 1,
+          minHeight: 430
+        }}
+      >
+        <Paper variant="outlined" sx={{ p: 1, minWidth: 0, maxHeight: 520, overflow: "auto" }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+            Explorer
+          </Typography>
+          <Box sx={{ mt: 1 }}>
+            {renderDirectory(rootPath, 0)}
+          </Box>
+        </Paper>
+        <Paper variant="outlined" sx={{ minWidth: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                {openFile?.path ?? "No file selected"}
+              </Typography>
+              {openFile && (
+                <Typography variant="caption" color="text.secondary">
+                  {dirty ? "Unsaved changes" : "Saved"}
+                </Typography>
+              )}
+            </Box>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<SaveIcon />}
+              disabled={!openFile || openFile.loading || openFile.saving || !dirty}
+              onClick={onSaveOpenFile}
+            >
+              {openFile?.saving ? "Saving" : "Save"}
+            </Button>
+          </Stack>
+          <Box sx={{ minHeight: 360 }}>
+            {openFile ? (
+              <Editor
+                height="100%"
+                path={openFile.path}
+                language={languageForPath(openFile.path)}
+                value={openFile.content}
+                loading="Loading editor..."
+                options={{
+                  minimap: { enabled: false },
+                  scrollBeyondLastLine: false,
+                  fontSize: 13,
+                  wordWrap: "on",
+                  automaticLayout: true
+                }}
+                onChange={(value) => onChangeOpenFileContent(value ?? "")}
+              />
+            ) : (
+              <Box sx={{ p: 2 }}>
+                <Typography color="text.secondary">Select a file to edit.</Typography>
+              </Box>
+            )}
+          </Box>
+        </Paper>
+      </Box>
     </Stack>
   );
+
+  function renderDirectory(path: string, depth: number): ReactNode {
+    const entries = fileDirectories[path];
+    if (!entries) {
+      return (
+        <Button size="small" startIcon={<FolderIcon />} onClick={() => onReadDirectory(path)} sx={{ justifyContent: "flex-start", pl: 1 + depth }}>
+          Load {path === rootPath ? "root" : path.split("/").pop()}
+        </Button>
+      );
+    }
+    if (entries.length === 0) {
+      return (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", pl: 1 + depth }}>
+          Empty directory
+        </Typography>
+      );
+    }
+    return entries.map((entry) => (
+      <Box key={entry.path}>
+        <Button
+          size="small"
+          startIcon={entry.isDirectory ? <FolderIcon /> : <DescriptionIcon />}
+          onClick={() => {
+            if (entry.isDirectory) {
+              setExpandedDirs((current) => ({ ...current, [entry.path]: !current[entry.path] }));
+              if (!fileDirectories[entry.path]) {
+                onReadDirectory(entry.path);
+              }
+              return;
+            }
+            if (entry.isFile) {
+              onReadFile(entry.path);
+            }
+          }}
+          sx={{ justifyContent: "flex-start", textAlign: "left", width: "100%", pl: 1 + depth * 1.5 }}
+        >
+          <Typography component="span" variant="caption" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {entry.name}
+          </Typography>
+        </Button>
+        {entry.isDirectory && expandedDirs[entry.path] && <Box>{renderDirectory(entry.path, depth + 1)}</Box>}
+      </Box>
+    ));
+  }
+}
+
+function languageForPath(path: string): string {
+  const extension = path.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "ts":
+    case "tsx":
+      return "typescript";
+    case "js":
+    case "jsx":
+      return "javascript";
+    case "json":
+      return "json";
+    case "md":
+      return "markdown";
+    case "css":
+      return "css";
+    case "html":
+      return "html";
+    case "py":
+      return "python";
+    case "rs":
+      return "rust";
+    case "toml":
+      return "toml";
+    case "yaml":
+    case "yml":
+      return "yaml";
+    default:
+      return "plaintext";
+  }
 }
 
 function prettyJson(value: unknown): string {

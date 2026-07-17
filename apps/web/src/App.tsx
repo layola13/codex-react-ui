@@ -30,6 +30,7 @@ import {
   parseMcpServers,
   parseMcpResourceContents,
   parseApps,
+  parseFsDirectory,
   parseInstalledPluginMarketplaces,
   parsePluginDetail,
   parsePluginInstallAuthNotice,
@@ -39,6 +40,7 @@ import {
   type ClientState,
   type ComposerImageAttachment,
   type ComposerMention,
+  type FsDirectoryEntry,
   type McpResourceContentEntry,
   type PluginEntry,
   type PluginInstallAuthNotice,
@@ -136,6 +138,8 @@ export function App() {
   const [pluginAuthNotices, setPluginAuthNotices] = useState<Record<string, PluginInstallAuthNotice>>({});
   const [skillExtraRoots, setSkillExtraRoots] = useState<string[]>([]);
   const [skillPreviews, setSkillPreviews] = useState<Record<string, string>>({});
+  const [fileDirectories, setFileDirectories] = useState<Record<string, FsDirectoryEntry[]>>({});
+  const [openFile, setOpenFile] = useState<{ path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null>(null);
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
@@ -561,6 +565,57 @@ export function App() {
     });
   }, []);
 
+  const readDirectory = useCallback(
+    async (path: string) => {
+      try {
+        const result = await client.rpc("fs/readDirectory", { path });
+        setFileDirectories((current) => ({ ...current, [path]: parseFsDirectory(result, path) }));
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const readFile = useCallback(
+    async (path: string) => {
+      setOpenFile({ path, content: "", savedContent: "", loading: true, saving: false });
+      try {
+        const result = await client.rpc("fs/readFile", { path });
+        const dataBase64 = asRecord(result).dataBase64;
+        const content = typeof dataBase64 === "string" ? decodeBase64Text(dataBase64) : "";
+        setOpenFile({ path, content, savedContent: content, loading: false, saving: false });
+      } catch (error) {
+        setOpenFile((current) => (current?.path === path ? { ...current, loading: false } : current));
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const changeOpenFileContent = useCallback((content: string) => {
+    setOpenFile((current) => (current ? { ...current, content } : current));
+  }, []);
+
+  const saveOpenFile = useCallback(async () => {
+    if (!openFile || openFile.loading) {
+      return;
+    }
+    const { path, content } = openFile;
+    setOpenFile((current) => (current?.path === path ? { ...current, saving: true } : current));
+    try {
+      await client.rpc("fs/writeFile", { path, dataBase64: encodeBase64Text(content) });
+      setOpenFile((current) => (current?.path === path ? { ...current, savedContent: content, saving: false } : current));
+      const parentPath = path.slice(0, path.lastIndexOf("/")) || "/";
+      if (fileDirectories[parentPath]) {
+        await readDirectory(parentPath);
+      }
+    } catch (error) {
+      setOpenFile((current) => (current?.path === path ? { ...current, saving: false } : current));
+      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [client, fileDirectories, openFile, readDirectory]);
+
   const startMcpOauth = useCallback(
     async (serverName: string) => {
       try {
@@ -685,6 +740,9 @@ export function App() {
           skillPreviews={skillPreviews}
           mcpResourceContents={mcpResourceContents}
           mcpOauthUrls={mcpOauthUrls}
+          cwd={cwd}
+          fileDirectories={fileDirectories}
+          openFile={openFile}
           onAnswerRequest={answerRequest}
           onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
           onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
@@ -701,6 +759,10 @@ export function App() {
           onInsertPluginMention={insertPluginMention}
           onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
           onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
+          onReadDirectory={(path) => void readDirectory(path)}
+          onReadFile={(path) => void readFile(path)}
+          onChangeOpenFileContent={changeOpenFileContent}
+          onSaveOpenFile={() => void saveOpenFile()}
         />
       </Box>
       <Snackbar
@@ -780,4 +842,13 @@ function decodeBase64Text(value: string): string {
   const binary = window.atob(value);
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
   return new TextDecoder().decode(bytes);
+}
+
+function encodeBase64Text(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return window.btoa(binary);
 }

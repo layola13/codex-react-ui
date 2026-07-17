@@ -90,6 +90,10 @@ test.beforeEach(async ({ page }) => {
     }
 
     let skillExtraRoots: string[] = [];
+    const virtualFiles: Record<string, string> = {
+      "/root/projects/README.md": "# Mock Project\n\nEditable from Playwright.\n",
+      "/root/projects/src/App.tsx": "export const value = 1;\n"
+    };
     const installedPlugin = {
       id: "mock-plugin@mock-market",
       remotePluginId: "remote-mock",
@@ -239,9 +243,35 @@ test.beforeEach(async ({ page }) => {
             : [];
           return {};
         case "fs/readFile":
+          if ((params as { path?: string } | undefined)?.path === "/tmp/mock/SKILL.md") {
+            return {
+              dataBase64: btoa("# Mock Skill\n\nLocal preview from Playwright.")
+            };
+          }
           return {
-            dataBase64: btoa("# Mock Skill\n\nLocal preview from Playwright.")
+            dataBase64: btoa(virtualFiles[(params as { path?: string } | undefined)?.path ?? ""] ?? "")
           };
+        case "fs/readDirectory": {
+          const path = (params as { path?: string } | undefined)?.path ?? "/root/projects";
+          const entries =
+            path === "/root/projects"
+              ? [
+                  { fileName: "src", isDirectory: true, isFile: false },
+                  { fileName: "README.md", isDirectory: false, isFile: true }
+                ]
+              : path === "/root/projects/src"
+                ? [{ fileName: "App.tsx", isDirectory: false, isFile: true }]
+                : [];
+          return { entries };
+        }
+        case "fs/writeFile": {
+          const path = (params as { path?: string } | undefined)?.path;
+          const dataBase64 = (params as { dataBase64?: string } | undefined)?.dataBase64;
+          if (path && dataBase64) {
+            virtualFiles[path] = atob(dataBase64);
+          }
+          return {};
+        }
         case "plugin/list":
           return {
             marketplaces: [{ name: "mock-market", path: null, interface: { displayName: "Mock Market" }, plugins: [installedPlugin, authPlugin] }],
@@ -468,4 +498,35 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
   });
   await expect(page.getByText("Authentication needed after install")).toBeVisible();
   await expect(page.getByText("Auth Console")).toBeVisible();
+});
+
+test("browses and edits files through filesystem RPCs", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Files" }).click();
+
+  await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
+  await page.getByRole("button", { name: "README.md" }).click();
+  await expect(page.getByText("Mock Project")).toBeVisible({ timeout: 10000 });
+
+  const nextContent = "# Updated Project\n\nSaved from Playwright.\n";
+  await page.getByRole("textbox", { name: "Editor content" }).focus();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.insertText(nextContent);
+  await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { path?: string; dataBase64?: string } }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "fs/writeFile" &&
+        message.params?.path === "/root/projects/README.md" &&
+        typeof message.params.dataBase64 === "string" &&
+        atob(message.params.dataBase64).includes("Saved from Playwright.")
+    );
+  });
+
+  await expect(page.getByText("Saved").last()).toBeVisible();
 });
