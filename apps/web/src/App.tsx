@@ -28,7 +28,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import TuneIcon from "@mui/icons-material/Tune";
 import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
+import { Group as PanelGroup, Panel } from "react-resizable-panels";
 import {
   permissionToTurnOverrides,
   type DangerousPermissionAuditEvent,
@@ -74,6 +74,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { RightInspector } from "./components/RightInspector";
 import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawer";
+import { ResizeHandle } from "./components/ResizeHandle";
 import {
   applyConfigWriteToView,
   buildConfigValueWrite,
@@ -81,19 +82,22 @@ import {
   type CodexConfigFieldKey,
   type CodexUserConfigView
 } from "./state/codexConfigSettings";
-import { installedThemePluginDefaults, isThemeId, type ThemeId, type ThemeMode } from "./theme";
+import { installedThemePluginDefaults, isThemeId, type ThemeId, type ThemeMode, type ThemePlugin } from "./theme";
 
 const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
   leftPanelVisible: "codex-react-ui.left-panel-visible",
   inspectorVisible: "codex-react-ui.inspector-visible",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
-  panelLayout: "codex-react-ui.panel-layout"
+  panelLayout: "codex-react-ui.panel-layout",
+  filesPanelLayout: "codex-react-ui.files-panel-layout"
 } as const;
 
 type AppProps = {
   themeMode: ThemeMode;
+  customThemePlugins: ThemePlugin[];
   onThemeModeChange: (mode: ThemeMode) => void;
+  onCustomThemePluginsChange: (plugins: ThemePlugin[]) => void;
 };
 
 type Action =
@@ -169,7 +173,7 @@ function reducer(state: ClientState, action: Action): ClientState {
   }
 }
 
-export function App({ themeMode, onThemeModeChange }: AppProps) {
+export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustomThemePluginsChange }: AppProps) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const [permission, setPermission] = useState<PermissionPresetId>("workspaceAsk");
   const [selectedModel, setSelectedModel] = useState("");
@@ -181,7 +185,12 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
   const [inspectorVisible, setInspectorVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.inspectorVisible, true));
   const [petDockEnabled, setPetDockEnabled] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.petDockEnabled, true));
-  const [panelLayout, setPanelLayout] = useState<Record<string, number> | undefined>(() => readPanelLayout());
+  const [panelLayout, setPanelLayout] = useState<Record<string, number> | undefined>(() =>
+    readPanelLayout(UI_STORAGE_KEYS.panelLayout)
+  );
+  const [filesPanelLayout, setFilesPanelLayout] = useState<Record<string, number> | undefined>(() =>
+    readPanelLayout(UI_STORAGE_KEYS.filesPanelLayout)
+  );
   const [codexConfig, setCodexConfig] = useState<CodexUserConfigView | null>(null);
   const [codexConfigLoading, setCodexConfigLoading] = useState(false);
   const [codexConfigSaving, setCodexConfigSaving] = useState(false);
@@ -243,6 +252,33 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
       }
     },
     [onThemeModeChange, themeMode]
+  );
+
+  const saveCustomThemePlugin = useCallback(
+    (plugin: ThemePlugin) => {
+      onCustomThemePluginsChange(
+        customThemePlugins.some((entry) => entry.id === plugin.id)
+          ? customThemePlugins.map((entry) => (entry.id === plugin.id ? plugin : entry))
+          : [...customThemePlugins, plugin]
+      );
+      setInstalledThemePluginIds((current) => (current.includes(plugin.id) ? current : [...current, plugin.id]));
+      onThemeModeChange(plugin.id);
+    },
+    [customThemePlugins, onCustomThemePluginsChange, onThemeModeChange]
+  );
+
+  const removeCustomThemePlugin = useCallback(
+    (id: ThemeId) => {
+      onCustomThemePluginsChange(customThemePlugins.filter((entry) => entry.id !== id));
+      setInstalledThemePluginIds((current) => {
+        const next = current.filter((entry) => entry !== id || installedThemePluginDefaults().includes(entry));
+        return next.length > 0 ? next : installedThemePluginDefaults();
+      });
+      if (themeMode === id) {
+        onThemeModeChange("official-light");
+      }
+    },
+    [customThemePlugins, onCustomThemePluginsChange, onThemeModeChange, themeMode]
   );
 
   const appendTerminalOutput = useCallback((processId: string, output: string) => {
@@ -1062,6 +1098,11 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
   function renderInspector() {
     return (
       <RightInspector
+        filesPanelLayout={filesPanelLayout}
+        onFilesPanelLayoutChange={(layout) => {
+          setFilesPanelLayout(layout);
+          localStorage.setItem(UI_STORAGE_KEYS.filesPanelLayout, JSON.stringify(layout));
+        }}
         account={state.account}
         models={state.models}
         providers={state.providers}
@@ -1355,6 +1396,7 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
         open={settingsOpen}
         themeMode={themeMode}
         installedThemePluginIds={installedThemePluginIds}
+        customThemePlugins={customThemePlugins}
         leftPanelVisible={leftPanelVisible}
         inspectorVisible={inspectorVisible}
         petDockEnabled={petDockEnabled}
@@ -1373,6 +1415,8 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
         onThemeModeChange={onThemeModeChange}
         onInstallThemePlugin={installThemePlugin}
         onUninstallThemePlugin={uninstallThemePlugin}
+        onSaveCustomThemePlugin={saveCustomThemePlugin}
+        onRemoveCustomThemePlugin={removeCustomThemePlugin}
         onLeftPanelVisibleChange={setLeftPanelVisible}
         onInspectorVisibleChange={setInspectorVisible}
         onPetDockEnabledChange={setPetDockEnabled}
@@ -1392,36 +1436,6 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
         </Alert>
       </Snackbar>
     </Box>
-  );
-}
-
-function ResizeHandle() {
-  return (
-    <PanelResizeHandle>
-      <Box
-        sx={{
-          width: 8,
-          height: "100%",
-          cursor: "col-resize",
-          display: "flex",
-          alignItems: "stretch",
-          justifyContent: "center",
-          bgcolor: "background.default",
-          "&::before": {
-            content: '""',
-            width: 1,
-            bgcolor: "divider"
-          },
-          "&:hover": {
-            bgcolor: "action.hover"
-          },
-          "&:hover::before": {
-            width: 2,
-            bgcolor: "primary.main"
-          }
-        }}
-      />
-    </PanelResizeHandle>
   );
 }
 
@@ -1448,15 +1462,16 @@ function readInstalledThemes(): ThemeId[] {
     if (!Array.isArray(parsed)) {
       return defaults;
     }
-    const valid = parsed.filter((entry): entry is ThemeId => typeof entry === "string" && isThemeId(entry));
+    // Keep user-defined plugin ids even when they are not in the builtin catalog.
+    const valid = parsed.filter((entry): entry is ThemeId => typeof entry === "string" && entry.length > 0);
     return [...defaults, ...valid.filter((entry) => !defaults.includes(entry))];
   } catch {
     return defaults;
   }
 }
 
-function readPanelLayout(): Record<string, number> | undefined {
-  const raw = localStorage.getItem(UI_STORAGE_KEYS.panelLayout);
+function readPanelLayout(storageKey: string): Record<string, number> | undefined {
+  const raw = localStorage.getItem(storageKey);
   if (!raw) {
     return undefined;
   }

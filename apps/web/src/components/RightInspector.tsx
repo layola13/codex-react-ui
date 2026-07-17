@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { Group as PanelGroup, Panel } from "react-resizable-panels";
+import { ResizeHandle } from "./ResizeHandle";
 import Editor, { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import {
@@ -69,6 +71,8 @@ type Props = {
   fileDirectories: Record<string, FsDirectoryEntry[]>;
   openFile: { path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null;
   terminalSessions: TerminalSession[];
+  filesPanelLayout?: Record<string, number>;
+  onFilesPanelLayoutChange?: (layout: Record<string, number>) => void;
   auditEvents: DangerousPermissionAuditEvent[];
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
@@ -100,6 +104,8 @@ type Props = {
 };
 
 export function RightInspector({
+  filesPanelLayout,
+  onFilesPanelLayoutChange,
   account,
   models,
   providers,
@@ -210,6 +216,8 @@ export function RightInspector({
         )}
         {tab === 2 && (
           <FilesTab
+            filesPanelLayout={filesPanelLayout}
+            onFilesPanelLayoutChange={onFilesPanelLayoutChange}
             cwd={cwd}
             fileDirectories={fileDirectories}
             openFile={openFile}
@@ -1388,6 +1396,8 @@ function FilesTab({
   fileDirectories,
   openFile,
   terminalSessions,
+  filesPanelLayout,
+  onFilesPanelLayoutChange,
   onReadDirectory,
   onReadFile,
   onChangeOpenFileContent,
@@ -1401,6 +1411,8 @@ function FilesTab({
   fileDirectories: Record<string, FsDirectoryEntry[]>;
   openFile: Props["openFile"];
   terminalSessions: TerminalSession[];
+  filesPanelLayout?: Record<string, number>;
+  onFilesPanelLayoutChange?: (layout: Record<string, number>) => void;
   onReadDirectory: Props["onReadDirectory"];
   onReadFile: Props["onReadFile"];
   onChangeOpenFileContent: Props["onChangeOpenFileContent"];
@@ -1431,8 +1443,8 @@ function FilesTab({
   }, [fileDirectories, onReadDirectory, rootPath]);
 
   return (
-    <Stack spacing={1.25}>
-      <Paper variant="outlined" sx={{ p: 1.25 }}>
+    <Box sx={{ height: { xs: "auto", md: "min(72vh, 760px)" }, minHeight: 520, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
+      <Paper variant="outlined" sx={{ p: 1.25, mb: 1 }}>
         <Stack direction="row" spacing={1}>
           <TextField size="small" label="Root path" value={rootPath} onChange={(event) => setRootPath(event.target.value)} sx={{ flex: 1 }} />
           <Button size="small" startIcon={<RefreshIcon />} onClick={() => onReadDirectory(rootPath)}>
@@ -1440,176 +1452,193 @@ function FilesTab({
           </Button>
         </Stack>
       </Paper>
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", lg: "minmax(150px, 0.9fr) minmax(0, 1.4fr)" },
-          gap: 1,
-          minHeight: 430
-        }}
-      >
-        <Paper variant="outlined" sx={{ p: 1, minWidth: 0, maxHeight: 520, overflow: "auto" }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-            Explorer
-          </Typography>
-          <Box sx={{ mt: 1 }}>
-            {renderDirectory(rootPath, 0)}
-          </Box>
-        </Paper>
-        <Paper variant="outlined" sx={{ minWidth: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1, borderBottom: "1px solid", borderColor: "divider" }}>
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
-                {openFile?.path ?? "No file selected"}
-              </Typography>
-              {openFile && (
-                <Typography variant="caption" color="text.secondary">
-                  {dirty ? "Unsaved changes" : "Saved"}
-                </Typography>
-              )}
+      <Box sx={{ minHeight: 0, height: "100%" }}>
+        <PanelGroup
+          orientation="vertical"
+          id="codex-react-ui-files-vertical"
+          defaultLayout={filesPanelLayout}
+          onLayoutChanged={(layout, meta) => {
+            if (!meta.isUserInteraction) {
+              return;
+            }
+            onFilesPanelLayoutChange?.(layout);
+          }}
+        >
+          <Panel id="files-workspace" defaultSize="62%" minSize="28%">
+            <Box sx={{ height: "100%", minHeight: 0, p: 0.25 }}>
+              <PanelGroup orientation="horizontal" id="codex-react-ui-files-horizontal">
+                <Panel id="files-explorer" defaultSize="32%" minSize="18%" maxSize="50%">
+                  <Paper variant="outlined" sx={{ p: 1, height: "100%", minWidth: 0, overflow: "auto" }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+                      Explorer
+                    </Typography>
+                    <Box sx={{ mt: 1 }}>{renderDirectory(rootPath, 0)}</Box>
+                  </Paper>
+                </Panel>
+                <ResizeHandle />
+                <Panel id="files-editor" defaultSize="68%" minSize="30%">
+                  <Paper variant="outlined" sx={{ minWidth: 0, height: "100%", overflow: "hidden", display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                          {openFile?.path ?? "No file selected"}
+                        </Typography>
+                        {openFile && (
+                          <Typography variant="caption" color="text.secondary">
+                            {dirty ? "Unsaved changes" : "Saved"}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<SaveIcon />}
+                        disabled={!openFile || openFile.loading || openFile.saving || !dirty}
+                        onClick={onSaveOpenFile}
+                      >
+                        {openFile?.saving ? "Saving" : "Save"}
+                      </Button>
+                    </Stack>
+                    <Box sx={{ minHeight: 0 }}>
+                      {openFile ? (
+                        <Editor
+                          height="100%"
+                          path={openFile.path}
+                          language={languageForPath(openFile.path)}
+                          value={openFile.content}
+                          loading="Loading editor..."
+                          options={{
+                            minimap: { enabled: false },
+                            scrollBeyondLastLine: false,
+                            fontSize: 13,
+                            wordWrap: "on",
+                            automaticLayout: true
+                          }}
+                          onChange={(value) => onChangeOpenFileContent(value ?? "")}
+                        />
+                      ) : (
+                        <Box sx={{ p: 2 }}>
+                          <Typography color="text.secondary">Select a file to edit.</Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  </Paper>
+                </Panel>
+              </PanelGroup>
             </Box>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<SaveIcon />}
-              disabled={!openFile || openFile.loading || openFile.saving || !dirty}
-              onClick={onSaveOpenFile}
-            >
-              {openFile?.saving ? "Saving" : "Save"}
-            </Button>
-          </Stack>
-          <Box sx={{ minHeight: 360 }}>
-            {openFile ? (
-              <Editor
-                height="100%"
-                path={openFile.path}
-                language={languageForPath(openFile.path)}
-                value={openFile.content}
-                loading="Loading editor..."
-                options={{
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  fontSize: 13,
-                  wordWrap: "on",
-                  automaticLayout: true
-                }}
-                onChange={(value) => onChangeOpenFileContent(value ?? "")}
-              />
-            ) : (
-              <Box sx={{ p: 2 }}>
-                <Typography color="text.secondary">Select a file to edit.</Typography>
-              </Box>
-            )}
-          </Box>
-        </Paper>
-      </Box>
-      <Paper variant="outlined" sx={{ p: 1.25 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-          Terminal
-        </Typography>
-        <Stack spacing={1} sx={{ mt: 1 }}>
-          <TextField
-            size="small"
-            label="Command"
-            value={terminalCommand}
-            onChange={(event) => setTerminalCommand(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                onRunTerminalCommand(terminalCommand, terminalCwd, terminalSize);
-              }
-            }}
-          />
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <TextField size="small" label="Command cwd" value={terminalCwd} onChange={(event) => setTerminalCwd(event.target.value)} sx={{ flex: 1 }} />
-            <TextField
-              size="small"
-              label="Rows"
-              type="number"
-              value={terminalSize.rows}
-              onChange={(event) => setTerminalSize((current) => ({ ...current, rows: Math.max(1, Number(event.target.value) || current.rows) }))}
-              sx={{ width: 90 }}
-            />
-            <TextField
-              size="small"
-              label="Cols"
-              type="number"
-              value={terminalSize.cols}
-              onChange={(event) => setTerminalSize((current) => ({ ...current, cols: Math.max(1, Number(event.target.value) || current.cols) }))}
-              sx={{ width: 90 }}
-            />
-          </Stack>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button size="small" variant="contained" startIcon={<PlayArrowIcon />} onClick={() => onRunTerminalCommand(terminalCommand, terminalCwd, terminalSize)}>
-              Run
-            </Button>
-            <Button size="small" disabled={!activeTerminal} onClick={() => activeTerminal && onResizeTerminal(activeTerminal.processId, terminalSize)}>
-              Resize
-            </Button>
-            <Button size="small" color="error" disabled={!activeTerminal} startIcon={<DeleteIcon />} onClick={() => activeTerminal && onTerminateTerminal(activeTerminal.processId)}>
-              Terminate
-            </Button>
-          </Stack>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <TextField
-              size="small"
-              label="Stdin"
-              value={terminalInput}
-              onChange={(event) => setTerminalInput(event.target.value)}
-              disabled={!activeTerminal}
-              sx={{ flex: 1 }}
-            />
-            <Button
-              size="small"
-              disabled={!activeTerminal}
-              onClick={() => {
-                if (!activeTerminal) {
-                  return;
-                }
-                onWriteTerminalInput(activeTerminal.processId, terminalInput.endsWith("\n") ? terminalInput : `${terminalInput}\n`);
-                setTerminalInput("");
-              }}
-            >
-              Send stdin
-            </Button>
-          </Stack>
-          <Stack spacing={1}>
-            {terminalSessions.length === 0 && <Typography color="text.secondary">No terminal sessions yet.</Typography>}
-            {terminalSessions.map((session) => (
-              <Box key={session.processId} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
-                    {session.command}
-                  </Typography>
-                  <Chip size="small" label={session.exitCode == null ? session.status : `${session.status} ${session.exitCode}`} color={terminalStatusColor(session.status)} />
-                </Stack>
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
-                  {session.cwd} / {session.cols}x{session.rows}
-                </Typography>
-                <Box
-                  component="pre"
-                  sx={{
-                    m: 0,
-                    mt: 0.75,
-                    p: 1,
-                    bgcolor: "#101418",
-                    color: "#e7edf2",
-                    borderRadius: 1,
-                    minHeight: 120,
-                    maxHeight: 260,
-                    overflow: "auto",
-                    fontSize: 12,
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere"
+          </Panel>
+          <ResizeHandle orientation="vertical" />
+          <Panel id="files-terminal" defaultSize="38%" minSize="22%">
+            <Paper variant="outlined" sx={{ p: 1.25, height: "100%", overflow: "auto" }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+                Terminal
+              </Typography>
+              <Stack spacing={1} sx={{ mt: 1 }}>
+                <TextField
+                  size="small"
+                  label="Command"
+                  value={terminalCommand}
+                  onChange={(event) => setTerminalCommand(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      onRunTerminalCommand(terminalCommand, terminalCwd, terminalSize);
+                    }
                   }}
-                >
-                  {session.output || "Waiting for output..."}
-                </Box>
-              </Box>
-            ))}
-          </Stack>
-        </Stack>
-      </Paper>
-    </Stack>
+                />
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <TextField size="small" label="Command cwd" value={terminalCwd} onChange={(event) => setTerminalCwd(event.target.value)} sx={{ flex: 1 }} />
+                  <TextField
+                    size="small"
+                    label="Rows"
+                    type="number"
+                    value={terminalSize.rows}
+                    onChange={(event) => setTerminalSize((current) => ({ ...current, rows: Math.max(1, Number(event.target.value) || current.rows) }))}
+                    sx={{ width: 90 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="Cols"
+                    type="number"
+                    value={terminalSize.cols}
+                    onChange={(event) => setTerminalSize((current) => ({ ...current, cols: Math.max(1, Number(event.target.value) || current.cols) }))}
+                    sx={{ width: 90 }}
+                  />
+                </Stack>
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Button size="small" variant="contained" startIcon={<PlayArrowIcon />} onClick={() => onRunTerminalCommand(terminalCommand, terminalCwd, terminalSize)}>
+                    Run
+                  </Button>
+                  <Button size="small" disabled={!activeTerminal} onClick={() => activeTerminal && onResizeTerminal(activeTerminal.processId, terminalSize)}>
+                    Resize
+                  </Button>
+                  <Button size="small" color="error" disabled={!activeTerminal} startIcon={<DeleteIcon />} onClick={() => activeTerminal && onTerminateTerminal(activeTerminal.processId)}>
+                    Terminate
+                  </Button>
+                </Stack>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                  <TextField
+                    size="small"
+                    label="Stdin"
+                    value={terminalInput}
+                    onChange={(event) => setTerminalInput(event.target.value)}
+                    disabled={!activeTerminal}
+                    sx={{ flex: 1 }}
+                  />
+                  <Button
+                    size="small"
+                    disabled={!activeTerminal}
+                    onClick={() => {
+                      if (!activeTerminal) {
+                        return;
+                      }
+                      onWriteTerminalInput(activeTerminal.processId, terminalInput.endsWith("\n") ? terminalInput : `${terminalInput}\n`);
+                      setTerminalInput("");
+                    }}
+                  >
+                    Send stdin
+                  </Button>
+                </Stack>
+                <Stack spacing={1}>
+                  {terminalSessions.length === 0 && <Typography color="text.secondary">No terminal sessions yet.</Typography>}
+                  {terminalSessions.map((session) => (
+                    <Box key={session.processId} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                          {session.command}
+                        </Typography>
+                        <Chip size="small" label={session.exitCode == null ? session.status : `${session.status} ${session.exitCode}`} color={terminalStatusColor(session.status)} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                        {session.cwd} / {session.cols}x{session.rows}
+                      </Typography>
+                      <Box
+                        component="pre"
+                        sx={{
+                          m: 0,
+                          mt: 0.75,
+                          p: 1,
+                          bgcolor: "#101418",
+                          color: "#e7edf2",
+                          borderRadius: 1,
+                          minHeight: 100,
+                          maxHeight: 220,
+                          overflow: "auto",
+                          fontSize: 12,
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere"
+                        }}
+                      >
+                        {session.output || "Waiting for output..."}
+                      </Box>
+                    </Box>
+                  ))}
+                </Stack>
+              </Stack>
+            </Paper>
+          </Panel>
+        </PanelGroup>
+      </Box>
+    </Box>
   );
 
   function renderDirectory(path: string, depth: number): ReactNode {
