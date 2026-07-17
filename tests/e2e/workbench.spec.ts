@@ -677,7 +677,7 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   await page.getByLabel("Custom theme primary").fill("#0EA5E9");
   await page.getByLabel("Custom theme secondary").fill("#F97316");
   await page.getByLabel("Custom theme background").fill("#0B1220");
-  await page.getByLabel("Custom theme dark mode").check();
+  await page.getByRole("checkbox", { name: "Custom theme dark mode" }).check();
   await page.getByLabel("Save custom theme plugin").click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-aurora-studio-/);
 
@@ -950,8 +950,10 @@ test("keeps files explorer editor and terminal panes resizable", async ({ page }
   await page.goto("/");
   await page.getByRole("tab", { name: "Files" }).click();
   await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
-  await expect(page.getByText("Terminal")).toBeVisible();
-  await expect(page.locator('[data-panel-group]').first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Terminal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Explorer" })).toBeVisible();
+  // Nested VS Code-style splits render as panel groups from react-resizable-panels.
+  await expect(page.locator("[data-panel-group-id], [data-panel-group]").first()).toBeVisible();
   await page.screenshot({
     path: "snapshot/codex-ui-files-resizable.png",
     fullPage: true
