@@ -53,9 +53,10 @@
 - Added focused Playwright coverage for installed-only plugin mentions, mention payloads, plugin app/template rendering, and install-time app authentication prompts.
 - Added a Monaco-backed file explorer/editor in the Files tab using `fs/readDirectory`, `fs/readFile`, and `fs/writeFile`.
 - Added focused Playwright coverage for browsing a mocked filesystem, opening a file in Monaco, editing it, and saving through `fs/writeFile`.
+- Added terminal/process controls in the Files tab using PTY-backed `command/exec`, streamed `command/exec/outputDelta`, stdin writes, resize, and terminate RPCs.
+- Added focused Playwright coverage for command execution, streamed terminal output, stdin write, resize, and terminate controls.
 
 ## Known Gaps
 
-- Terminal surfaces still need full implementation.
 - Playwright smoke coverage exists, but browser screenshot regression is not yet added.
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.

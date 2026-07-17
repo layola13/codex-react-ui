@@ -36,6 +36,7 @@ test.beforeEach(async ({ page }) => {
       public onmessage: ((event: MessageEvent) => void) | null = null;
       public onclose: ((event: CloseEvent) => void) | null = null;
       public onerror: ((event: Event) => void) | null = null;
+      private readonly commandExecRequests = new Map<string, string>();
 
       public constructor(public readonly url: string) {
         super();
@@ -69,6 +70,64 @@ test.beforeEach(async ({ page }) => {
           return;
         }
         if (message.type !== "rpc" || !message.id) {
+          return;
+        }
+        if (message.method === "command/exec") {
+          const processId = (message.params as { processId?: string } | undefined)?.processId;
+          if (processId) {
+            this.commandExecRequests.set(processId, message.id);
+            setTimeout(() => {
+              this.emit({
+                type: "codex.notification",
+                message: {
+                  method: "command/exec/outputDelta",
+                  params: {
+                    processId,
+                    stream: "stdout",
+                    deltaBase64: btoa("terminal-ready\n"),
+                    capReached: false
+                  }
+                }
+              });
+            }, 0);
+          }
+          return;
+        }
+        if (message.method === "command/exec/write") {
+          const params = message.params as { processId?: string; deltaBase64?: string } | undefined;
+          if (params?.processId && params.deltaBase64) {
+            const input = atob(params.deltaBase64);
+            setTimeout(() => {
+              this.emit({
+                type: "codex.notification",
+                message: {
+                  method: "command/exec/outputDelta",
+                  params: {
+                    processId: params.processId,
+                    stream: "stdout",
+                    deltaBase64: btoa(`stdin:${input}`),
+                    capReached: false
+                  }
+                }
+              });
+            }, 0);
+          }
+          setTimeout(() => this.emit({ type: "rpc.result", id: message.id, result: {} }), 0);
+          return;
+        }
+        if (message.method === "command/exec/resize") {
+          setTimeout(() => this.emit({ type: "rpc.result", id: message.id, result: {} }), 0);
+          return;
+        }
+        if (message.method === "command/exec/terminate") {
+          const processId = (message.params as { processId?: string } | undefined)?.processId;
+          const execRequestId = processId ? this.commandExecRequests.get(processId) : null;
+          setTimeout(() => {
+            this.emit({ type: "rpc.result", id: message.id, result: {} });
+            if (execRequestId) {
+              this.emit({ type: "rpc.result", id: execRequestId, result: { exitCode: 143, stdout: "", stderr: "" } });
+            }
+          }, 0);
           return;
         }
         const result = rpcResult(message.method ?? "", message.params);
@@ -529,4 +588,45 @@ test("browses and edits files through filesystem RPCs", async ({ page }) => {
   });
 
   await expect(page.getByText("Saved").last()).toBeVisible();
+});
+
+test("runs terminal commands with stdin resize and terminate controls", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Files" }).click();
+
+  await page.getByLabel("Command", { exact: true }).fill("printf terminal-ready");
+  await page.getByRole("button", { name: "Run" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { processId?: string; command?: string[]; tty?: boolean } }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "command/exec" &&
+        message.params?.tty === true &&
+        message.params?.command?.join(" ") === "/bin/bash -lc printf terminal-ready"
+    );
+  });
+  await expect(page.getByText("$ printf terminal-ready")).toBeVisible();
+
+  await page.getByLabel("Stdin").fill("hello terminal");
+  await page.getByRole("button", { name: "Send stdin" }).click();
+  await expect(page.getByText("stdin:hello terminal")).toBeVisible();
+
+  await page.getByLabel("Rows").fill("30");
+  await page.getByLabel("Cols").fill("100");
+  await page.getByRole("button", { name: "Resize" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { size?: { rows?: number; cols?: number } } }> })
+      .__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "command/exec/resize" && message.params?.size?.rows === 30 && message.params?.size?.cols === 100);
+  });
+
+  await page.getByRole("button", { name: "Terminate" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string }> }).__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "command/exec/terminate");
+  });
+  await expect(page.getByText("terminated 143")).toBeVisible();
 });

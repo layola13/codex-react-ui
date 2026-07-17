@@ -46,7 +46,8 @@ import {
   type PluginInstallAuthNotice,
   type PluginDetailEntry,
   type PluginMarketplace,
-  type SkillEntry
+  type SkillEntry,
+  type TerminalSession
 } from "./state/codexClient";
 import { HistorySidebar } from "./components/HistorySidebar";
 import { ChatPanel } from "./components/ChatPanel";
@@ -140,6 +141,7 @@ export function App() {
   const [skillPreviews, setSkillPreviews] = useState<Record<string, string>>({});
   const [fileDirectories, setFileDirectories] = useState<Record<string, FsDirectoryEntry[]>>({});
   const [openFile, setOpenFile] = useState<{ path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null>(null);
+  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
@@ -148,6 +150,12 @@ export function App() {
     const socketClient = new CodexSocketClient();
     clientRef.current = socketClient;
     return socketClient;
+  }, []);
+
+  const appendTerminalOutput = useCallback((processId: string, output: string) => {
+    setTerminalSessions((current) =>
+      current.map((session) => (session.processId === processId ? { ...session, output: `${session.output}${output}` } : session))
+    );
   }, []);
 
   const composerModels = useMemo(() => {
@@ -269,6 +277,14 @@ export function App() {
       }
       if (message.type === "codex.notification") {
         dispatch({ type: "notification", message: message.message });
+        if (message.message.method === "command/exec/outputDelta") {
+          const params = asRecord(message.message.params);
+          const processId = typeof params.processId === "string" ? params.processId : null;
+          const deltaBase64 = typeof params.deltaBase64 === "string" ? params.deltaBase64 : null;
+          if (processId && deltaBase64) {
+            appendTerminalOutput(processId, decodeBase64Text(deltaBase64));
+          }
+        }
         if (message.message.method === "skills/changed") {
           void loadTooling({ forceSkillReload: true });
         }
@@ -295,7 +311,7 @@ export function App() {
       client.removeEventListener("connected", onConnected);
       client.removeEventListener("server-message", onMessage);
     };
-  }, [client, loadTooling, state.providers]);
+  }, [appendTerminalOutput, client, loadTooling, state.providers]);
 
   useEffect(() => {
     let mounted = true;
@@ -616,6 +632,96 @@ export function App() {
     }
   }, [client, fileDirectories, openFile, readDirectory]);
 
+  const runTerminalCommand = useCallback(
+    async (command: string, commandCwd: string, size: { rows: number; cols: number }) => {
+      const trimmed = command.trim();
+      if (!trimmed) {
+        return;
+      }
+      const processId = `term-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setTerminalSessions((current) => [
+        {
+          processId,
+          command: trimmed,
+          cwd: commandCwd,
+          output: `$ ${trimmed}\n`,
+          status: "running",
+          rows: size.rows,
+          cols: size.cols
+        },
+        ...current
+      ]);
+      try {
+        const result = await client.rpc("command/exec", {
+          processId,
+          command: ["/bin/bash", "-lc", trimmed],
+          cwd: commandCwd,
+          tty: true,
+          streamStdin: true,
+          streamStdoutStderr: true,
+          size: { rows: size.rows, cols: size.cols }
+        });
+        const record = asRecord(result);
+        const exitCode = typeof record.exitCode === "number" ? record.exitCode : undefined;
+        const stdout = typeof record.stdout === "string" ? record.stdout : "";
+        const stderr = typeof record.stderr === "string" ? record.stderr : "";
+        setTerminalSessions((current) =>
+          current.map((session) =>
+            session.processId === processId
+              ? {
+                  ...session,
+                  output: `${session.output}${stdout}${stderr}`,
+                  status: session.status === "terminated" ? "terminated" : exitCode === 0 ? "completed" : "failed",
+                  exitCode
+                }
+              : session
+          )
+        );
+      } catch (error) {
+        appendTerminalOutput(processId, `\n${error instanceof Error ? error.message : String(error)}\n`);
+        setTerminalSessions((current) => current.map((session) => (session.processId === processId ? { ...session, status: "failed" } : session)));
+      }
+    },
+    [appendTerminalOutput, client]
+  );
+
+  const writeTerminalInput = useCallback(
+    async (processId: string, input: string) => {
+      try {
+        await client.rpc("command/exec/write", { processId, deltaBase64: encodeBase64Text(input) });
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const terminateTerminal = useCallback(
+    async (processId: string) => {
+      try {
+        await client.rpc("command/exec/terminate", { processId });
+        setTerminalSessions((current) => current.map((session) => (session.processId === processId ? { ...session, status: "terminated" } : session)));
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const resizeTerminal = useCallback(
+    async (processId: string, size: { rows: number; cols: number }) => {
+      try {
+        await client.rpc("command/exec/resize", { processId, size });
+        setTerminalSessions((current) =>
+          current.map((session) => (session.processId === processId ? { ...session, rows: size.rows, cols: size.cols } : session))
+        );
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
   const startMcpOauth = useCallback(
     async (serverName: string) => {
       try {
@@ -743,6 +849,7 @@ export function App() {
           cwd={cwd}
           fileDirectories={fileDirectories}
           openFile={openFile}
+          terminalSessions={terminalSessions}
           onAnswerRequest={answerRequest}
           onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
           onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
@@ -763,6 +870,10 @@ export function App() {
           onReadFile={(path) => void readFile(path)}
           onChangeOpenFileContent={changeOpenFileContent}
           onSaveOpenFile={() => void saveOpenFile()}
+          onRunTerminalCommand={(command, commandCwd, size) => void runTerminalCommand(command, commandCwd, size)}
+          onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
+          onTerminateTerminal={(processId) => void terminateTerminal(processId)}
+          onResizeTerminal={(processId, size) => void resizeTerminal(processId, size)}
         />
       </Box>
       <Snackbar

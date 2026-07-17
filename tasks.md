@@ -27,7 +27,7 @@
 - [x] Add Skills extra roots and local skill markdown preview.
 - [x] Add plugin installed-only mention picker and richer plugin app/auth handling.
 - [x] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
-- [ ] Add terminal/process controls for command execution and PTY interaction.
+- [x] Add terminal/process controls for command execution and PTY interaction.
 - [ ] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
 
 ## Later

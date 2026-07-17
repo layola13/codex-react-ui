@@ -21,7 +21,7 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
    - MCP servers list/reload, OAuth login, resource preview, and direct tool-call forms are implemented
    - Skills list/enable/disable, extra roots, and local markdown preview are implemented
    - Plugins list/install/uninstall, installed-only mention picker, detail views, remote skill preview, app/auth handling, and composer mentions are implemented
-   - Monaco-backed file explorer/editor is implemented; terminal tools remain
+   - Monaco-backed file explorer/editor and terminal/process controls are implemented
 
 ## Engineering Rules
 
@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Implement terminal/process controls for command execution and PTY interaction, with focused Playwright coverage.
+Add Playwright screenshot regression checks for desktop and mobile workbench layouts.

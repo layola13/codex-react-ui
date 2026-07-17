@@ -142,6 +142,17 @@ export type FsDirectoryEntry = {
   isFile: boolean;
 };
 
+export type TerminalSession = {
+  processId: string;
+  command: string;
+  cwd: string;
+  output: string;
+  status: "running" | "completed" | "failed" | "terminated";
+  exitCode?: number;
+  rows: number;
+  cols: number;
+};
+
 export type ComposerMention = {
   name: string;
   path: string;
