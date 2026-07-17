@@ -36,6 +36,11 @@
 
 ## 2026-07-17
 
+- Re-ran workspace verification after installing the local deps, Playwright Chromium, and missing host browser libraries.
+- Verified the current slice is green:
+  - `pnpm typecheck`
+  - `pnpm build`
+  - `pnpm test:e2e` (11/11 Chromium tests)
 - Added MCP direct tool-call forms in the MCP inspector, including per-tool JSON argument editing, schema preview, call status, error rendering, and result rendering.
 - Preserved MCP tool schema metadata in the web client state and expanded chat item rendering for MCP tool call payloads.
 - Added focused Playwright coverage for a mocked MCP tool call flow.

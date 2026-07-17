@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Run completion verification against the task list and keep hardening based on any gaps found.
+Verification completed on 2026-07-17: typecheck, build, and Playwright e2e are green after installing the local workspace deps and Chromium host libraries.
