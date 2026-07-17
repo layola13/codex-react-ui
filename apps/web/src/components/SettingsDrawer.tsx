@@ -722,7 +722,7 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
           <TextField size="small" label="Primary" value={primary} onChange={(event) => setPrimary(event.target.value)} inputProps={{ "aria-label": "Custom theme primary" }} />
           <TextField size="small" label="Secondary" value={secondary} onChange={(event) => setSecondary(event.target.value)} inputProps={{ "aria-label": "Custom theme secondary" }} />
           <TextField size="small" label="Background" value={background} onChange={(event) => setBackground(event.target.value)} inputProps={{ "aria-label": "Custom theme background" }} />
-          <FormControlLabel control={<Switch checked={dark} onChange={(event) => setDark(event.target.checked)} />} label="Custom theme dark mode" />
+          <FormControlLabel control={<Switch checked={dark} onChange={(event) => setDark(event.target.checked)} inputProps={{ "aria-label": "Custom theme dark mode" }} />} label="Dark" />
         </Stack>
         {error ? (
           <Alert severity="error" variant="outlined">

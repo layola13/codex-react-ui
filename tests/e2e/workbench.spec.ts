@@ -678,7 +678,7 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   await page.getByLabel("Custom theme primary").fill("#0EA5E9");
   await page.getByLabel("Custom theme secondary").fill("#F97316");
   await page.getByLabel("Custom theme background").fill("#0B1220");
-  await page.getByRole("checkbox", { name: "Custom theme dark mode" }).check();
+  await page.getByRole("switch", { name: "Custom theme dark mode" }).check();
   await page.getByLabel("Save custom theme plugin").click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-aurora-studio-/);
 
