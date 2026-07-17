@@ -34,6 +34,18 @@
   - `/root/projects/hubproxy/.env_grok`: alias resolution maps `codex` through `gpt-5.5` to `grok-4.5`; `/models`, `/responses`, and `/chat/completions` all returned HTTP 200.
   - `/root/projects/hubproxy/.env_nvidia`: `/models` returned HTTP 200 for `z-ai/glm-5.2`, but `/responses` returned HTTP 404 and `/chat/completions` returned HTTP 401, so this relay is saved/configurable but not currently usable through Codex's Responses wire path.
 
+## 2026-07-17
+
+- Added MCP direct tool-call forms in the MCP inspector, including per-tool JSON argument editing, schema preview, call status, error rendering, and result rendering.
+- Preserved MCP tool schema metadata in the web client state and expanded chat item rendering for MCP tool call payloads.
+- Added focused Playwright coverage for a mocked MCP tool call flow.
+- Installed the Playwright Chromium runtime and verified the Chromium project passes.
+- Verified `/root/projects/hubproxy/.env` against the relay endpoints:
+  - `RESPONSES_BASE_URL/models` returned HTTP 200.
+  - `RESPONSES_BASE_URL/responses` returned HTTP 200 with a POST body using `DEFAULT_MODEL`.
+  - `CHAT_BASE_URL/models` returned HTTP 200.
+  - `CHAT_BASE_URL/chat/completions` returned HTTP 200 with a POST body using `DEFAULT_MODEL`.
+
 ## Known Gaps
 
 - MCP direct tool-call forms, local skill markdown preview/extra roots, richer plugin auth/app handling, Monaco editor, and terminal surfaces still need full implementation.

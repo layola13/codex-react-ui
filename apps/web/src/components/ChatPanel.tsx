@@ -81,8 +81,9 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
                       }}
                     >
                       {item.text}
-                    </Typography>
-                  )}
+                      </Typography>
+                    )}
+                  {item.type === "mcpToolCall" && renderMcpToolCall(item)}
                   {item.images && item.images.length > 0 && (
                     <Stack direction="row" spacing={1} sx={{ mt: 1, overflowX: "auto" }}>
                       {item.images.map((image, index) => (
@@ -117,4 +118,78 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
 
 function isRenderableImageUrl(url: string): boolean {
   return url.startsWith("data:image/") || url.startsWith("blob:") || url.startsWith("http://") || url.startsWith("https://");
+}
+
+function renderMcpToolCall(item: { payload?: unknown }) {
+  const payload = isRecord(item.payload) ? item.payload : null;
+  if (!payload) {
+    return null;
+  }
+  const server = stringValue(payload.server);
+  const tool = stringValue(payload.tool);
+  const args = "arguments" in payload ? payload.arguments : undefined;
+  const result = isRecord(payload.result) ? payload.result : null;
+  const errorMessage = stringValue(isRecord(payload.error) ? payload.error.message : undefined);
+
+  return (
+    <Box sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.75 }}>
+        {server && <Chip size="small" label={server} />}
+        {tool && <Chip size="small" label={tool} />}
+        {stringValue(payload.status) && <Chip size="small" label={stringValue(payload.status)} />}
+        {typeof payload.durationMs === "number" && <Chip size="small" label={`${payload.durationMs}ms`} />}
+      </Stack>
+      {args != null && (
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            Arguments
+          </Typography>
+          <Typography component="pre" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, m: 0, mt: 0.5 }}>
+            {prettyJson(args)}
+          </Typography>
+        </Box>
+      )}
+      {errorMessage && (
+        <Alert severity="error" sx={{ mb: 1 }}>
+          {errorMessage}
+        </Alert>
+      )}
+      {result && (
+        <Box>
+          <Typography variant="caption" color="text.secondary">
+            Result
+          </Typography>
+          {result.content != null && (
+            <Typography component="pre" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, m: 0, mt: 0.5 }}>
+              {prettyJson(result.content)}
+            </Typography>
+          )}
+          {result.structuredContent != null && (
+            <Typography component="pre" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, m: 0, mt: 0.5 }}>
+              {prettyJson(result.structuredContent)}
+            </Typography>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function prettyJson(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? "";
+  } catch {
+    return String(value);
+  }
 }

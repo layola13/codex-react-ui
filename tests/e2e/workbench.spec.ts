@@ -49,7 +49,7 @@ test.beforeEach(async ({ page }) => {
       }
 
       public send(raw: string): void {
-        const message = JSON.parse(raw) as { id?: string; method?: string; type?: string; model?: string };
+        const message = JSON.parse(raw) as { id?: string; method?: string; type?: string; model?: string; params?: unknown };
         outbound.push(message);
         if (message.type === "provider.activate" && message.id) {
           setTimeout(
@@ -71,7 +71,7 @@ test.beforeEach(async ({ page }) => {
         if (message.type !== "rpc" || !message.id) {
           return;
         }
-        const result = rpcResult(message.method ?? "");
+        const result = rpcResult(message.method ?? "", message.params);
         setTimeout(() => this.emit({ type: "rpc.result", id: message.id, result }), 0);
       }
 
@@ -89,7 +89,7 @@ test.beforeEach(async ({ page }) => {
       }
     }
 
-    function rpcResult(method: string): unknown {
+    function rpcResult(method: string, params?: unknown): unknown {
       switch (method) {
         case "account/read":
           return { authMode: "mock" };
@@ -108,12 +108,39 @@ test.beforeEach(async ({ page }) => {
                 name: "mock-mcp",
                 serverInfo: { name: "mock", version: "1.0.0" },
                 authStatus: "unsupported",
-                tools: { ping: { name: "ping", title: "Ping", description: "Ping tool", inputSchema: {} } },
+                tools: {
+                  ping: {
+                    name: "ping",
+                    title: "Ping",
+                    description: "Ping tool",
+                    inputSchema: {
+                      type: "object",
+                      properties: {
+                        message: { type: "string", default: "hello" }
+                      }
+                    },
+                    outputSchema: {
+                      type: "object",
+                      properties: {
+                        ok: { type: "boolean" }
+                      }
+                    }
+                  }
+                },
                 resources: [{ name: "readme", title: "Readme", uri: "mock://readme", description: "Mock resource" }],
                 resourceTemplates: []
               }
             ],
             nextCursor: null
+          };
+        case "mcpServer/tool/call":
+          return {
+            content: [{ type: "text", text: "pong" }],
+            structuredContent: {
+              ok: true,
+              echo: (params as { arguments?: { message?: string } } | undefined)?.arguments ?? null
+            },
+            _meta: null
           };
         case "skills/list":
           return {
@@ -171,4 +198,35 @@ test("resolves chained provider aliases before starting a turn", async ({ page }
       .__codexUiOutbound;
     return messages?.some((message) => message.type === "rpc" && message.method === "turn/start" && message.params?.model === "grok-4.5");
   });
+});
+
+test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByText("Mock thread").click();
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await page.getByRole("tab", { name: "MCP 1" }).click();
+
+  await expect(page.getByRole("button", { name: "Call tool" })).toBeEnabled();
+  await expect(page.getByText("Select a conversation to enable MCP tool calls.")).toHaveCount(0);
+
+  const argsEditor = page.getByLabel("Arguments JSON").first();
+  await argsEditor.fill('{"message":"from-playwright"}');
+  await page.getByRole("button", { name: "Call tool" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { server?: string; tool?: string; arguments?: { message?: string } } }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "mcpServer/tool/call" &&
+        message.params?.server === "mock-mcp" &&
+        message.params?.tool === "ping" &&
+        message.params?.arguments?.message === "from-playwright"
+    );
+  });
+
+  await expect(page.getByText('"ok": true')).toBeVisible();
+  await expect(page.getByText('"message": "from-playwright"')).toBeVisible();
 });

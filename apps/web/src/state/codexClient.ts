@@ -20,6 +20,9 @@ export type McpToolEntry = {
   name: string;
   title?: string;
   description?: string;
+  inputSchema: JsonValue;
+  outputSchema?: JsonValue;
+  annotations?: JsonValue;
 };
 
 export type McpResourceEntry = {
@@ -621,7 +624,10 @@ function mcpToolToEntry(tool: Record<string, unknown>): McpToolEntry {
   return {
     name: stringValue(tool.name) ?? "unnamed-tool",
     title: stringValue(tool.title),
-    description: stringValue(tool.description)
+    description: stringValue(tool.description),
+    inputSchema: "inputSchema" in tool ? (tool.inputSchema as JsonValue) : {},
+    outputSchema: "outputSchema" in tool ? (tool.outputSchema as JsonValue) : undefined,
+    annotations: "annotations" in tool ? (tool.annotations as JsonValue) : undefined
   };
 }
 
@@ -761,13 +767,32 @@ function itemTitle(item: Record<string, unknown>): string {
     case "reasoning":
       return "Reasoning";
     case "mcpToolCall":
-      return "MCP tool";
+      return [`MCP`, stringValue(item.server), stringValue(item.tool)].filter(Boolean).join(" / ");
+    case "dynamicToolCall":
+      return [`Tool`, stringValue(item.namespace), stringValue(item.tool)].filter(Boolean).join(" / ");
     default:
       return type;
   }
 }
 
 function itemText(item: Record<string, unknown>): string {
+  if (stringValue(item.type) === "mcpToolCall") {
+    const payload = asRecord(item.result);
+    const error = asRecord(item.error);
+    const errorMessage = stringValue(error.message);
+    if (errorMessage) {
+      return errorMessage;
+    }
+    if (Array.isArray(payload.content) && payload.content.length > 0) {
+      return payload.content.map((entry) => summarizeJsonValue(entry)).filter(Boolean).join("\n");
+    }
+    if ("structuredContent" in payload && payload.structuredContent != null) {
+      return summarizeJsonValue(payload.structuredContent);
+    }
+    if ("arguments" in item) {
+      return summarizeJsonValue(item.arguments);
+    }
+  }
   if (typeof item.text === "string") {
     return item.text;
   }
@@ -824,4 +849,21 @@ function itemImages(item: Record<string, unknown>): WorkbenchImage[] | undefined
 
 function isPresent<T>(value: T | null | undefined): value is T {
   return value != null;
+}
+
+function summarizeJsonValue(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? "";
+  } catch {
+    return String(value);
+  }
 }

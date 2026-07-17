@@ -23,7 +23,7 @@
 
 ## Next
 
-- [ ] Add MCP direct tool-call forms with argument JSON editing.
+- [x] Add MCP direct tool-call forms with argument JSON editing.
 - [ ] Add Skills extra roots and local skill markdown preview.
 - [ ] Add plugin installed-only mention picker and richer plugin app/auth handling.
 - [ ] Add Monaco-backed file explorer/editor using app-server filesystem APIs.

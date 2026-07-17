@@ -523,6 +523,21 @@ export function App() {
     [client, state.activeThreadId]
   );
 
+  const callMcpTool = useCallback(
+    async (serverName: string, toolName: string, args: JsonValue) => {
+      if (!state.activeThreadId) {
+        throw new Error("Select a conversation before calling an MCP tool");
+      }
+      return client.rpc("mcpServer/tool/call", {
+        threadId: state.activeThreadId,
+        server: serverName,
+        tool: toolName,
+        arguments: args
+      });
+    },
+    [client, state.activeThreadId]
+  );
+
   const statusColor =
     state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
 
@@ -590,6 +605,7 @@ export function App() {
           account={state.account}
           models={state.models}
           providers={state.providers}
+          activeThreadId={state.activeThreadId}
           pendingRequests={state.pendingRequests}
           tooling={state.tooling}
           toolingLoading={state.toolingLoading}
@@ -604,6 +620,7 @@ export function App() {
           onReloadMcp={() => void reloadMcp()}
           onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
           onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
+          onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
           onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
           onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
           onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}

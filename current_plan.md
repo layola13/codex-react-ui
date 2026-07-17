@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Implement MCP direct tool-call forms with JSON argument editing, including result rendering and focused Playwright coverage.
+Implement Skills extra roots and local skill markdown preview, with focused Playwright coverage.

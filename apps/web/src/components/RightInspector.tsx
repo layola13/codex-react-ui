@@ -42,6 +42,7 @@ type Props = {
   account: JsonValue | null;
   models: ModelEntry[];
   providers: ProviderConfig[];
+  activeThreadId: string | null;
   pendingRequests: PendingServerRequest[];
   tooling: ToolingState;
   toolingLoading: boolean;
@@ -56,6 +57,7 @@ type Props = {
   onReloadMcp: () => void;
   onStartMcpOauth: (serverName: string) => void;
   onReadMcpResource: (serverName: string, uri: string) => void;
+  onCallMcpTool: (serverName: string, toolName: string, args: JsonValue) => Promise<JsonValue>;
   onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
   onReadPluginDetail: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onReadPluginSkill: (marketplace: PluginMarketplace, plugin: PluginEntry, skillName: string) => void;
@@ -68,6 +70,7 @@ export function RightInspector({
   account,
   models,
   providers,
+  activeThreadId,
   pendingRequests,
   tooling,
   toolingLoading,
@@ -82,6 +85,7 @@ export function RightInspector({
   onReloadMcp,
   onStartMcpOauth,
   onReadMcpResource,
+  onCallMcpTool,
   onToggleSkill,
   onReadPluginDetail,
   onReadPluginSkill,
@@ -109,6 +113,7 @@ export function RightInspector({
         )}
         {tab === 1 && (
           <ToolsTab
+            activeThreadId={activeThreadId}
             pendingRequests={pendingRequests}
             tooling={tooling}
             toolingLoading={toolingLoading}
@@ -121,6 +126,7 @@ export function RightInspector({
             onReloadMcp={onReloadMcp}
             onStartMcpOauth={onStartMcpOauth}
             onReadMcpResource={onReadMcpResource}
+            onCallMcpTool={onCallMcpTool}
             onToggleSkill={onToggleSkill}
             onReadPluginDetail={onReadPluginDetail}
             onReadPluginSkill={onReadPluginSkill}
@@ -348,7 +354,34 @@ function parseAliases(value: string): ProviderConfig["modelAliases"] {
     .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
 }
 
+function toolCallKey(serverName: string, toolName: string): string {
+  return `${serverName}:${toolName}`;
+}
+
+function parseToolArgumentsPreview(schema: JsonValue): string {
+  return prettyJson(defaultToolArguments(schema));
+}
+
+function defaultToolArguments(schema: JsonValue): JsonValue {
+  if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+    const record = schema as Record<string, unknown>;
+    if ("default" in record) {
+      return record.default as JsonValue;
+    }
+  }
+  return {};
+}
+
+function parseToolArguments(rawArgs: string): JsonValue {
+  const trimmed = rawArgs.trim();
+  if (!trimmed) {
+    return {};
+  }
+  return JSON.parse(trimmed) as JsonValue;
+}
+
 function ToolsTab({
+  activeThreadId,
   pendingRequests,
   tooling,
   toolingLoading,
@@ -361,6 +394,7 @@ function ToolsTab({
   onReloadMcp,
   onStartMcpOauth,
   onReadMcpResource,
+  onCallMcpTool,
   onToggleSkill,
   onReadPluginDetail,
   onReadPluginSkill,
@@ -368,6 +402,7 @@ function ToolsTab({
   onInstallPlugin,
   onUninstallPlugin
 }: {
+  activeThreadId: string | null;
   pendingRequests: PendingServerRequest[];
   tooling: ToolingState;
   toolingLoading: boolean;
@@ -380,6 +415,7 @@ function ToolsTab({
   onReloadMcp: Props["onReloadMcp"];
   onStartMcpOauth: Props["onStartMcpOauth"];
   onReadMcpResource: Props["onReadMcpResource"];
+  onCallMcpTool: Props["onCallMcpTool"];
   onToggleSkill: Props["onToggleSkill"];
   onReadPluginDetail: Props["onReadPluginDetail"];
   onReadPluginSkill: Props["onReadPluginSkill"];
@@ -422,9 +458,11 @@ function ToolsTab({
           tooling={tooling}
           mcpResourceContents={mcpResourceContents}
           mcpOauthUrls={mcpOauthUrls}
+          activeThreadId={activeThreadId}
           onReloadMcp={onReloadMcp}
           onStartMcpOauth={onStartMcpOauth}
           onReadMcpResource={onReadMcpResource}
+          onCallMcpTool={onCallMcpTool}
         />
       )}
       {toolTab === 1 && <SkillsPanel tooling={tooling} onToggleSkill={onToggleSkill} />}
@@ -494,17 +532,49 @@ function McpPanel({
   tooling,
   mcpResourceContents,
   mcpOauthUrls,
+  activeThreadId,
   onReloadMcp,
   onStartMcpOauth,
-  onReadMcpResource
+  onReadMcpResource,
+  onCallMcpTool
 }: {
   tooling: ToolingState;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
+  activeThreadId: string | null;
   onReloadMcp: Props["onReloadMcp"];
   onStartMcpOauth: Props["onStartMcpOauth"];
   onReadMcpResource: Props["onReadMcpResource"];
+  onCallMcpTool: Props["onCallMcpTool"];
 }) {
+  const [toolArgs, setToolArgs] = useState<Record<string, string>>({});
+  const [toolResults, setToolResults] = useState<Record<string, string>>({});
+  const [toolErrors, setToolErrors] = useState<Record<string, string>>({});
+  const [toolStatuses, setToolStatuses] = useState<Record<string, string>>({});
+  const [callingTool, setCallingTool] = useState<string | null>(null);
+
+  const submitToolCall = async (serverName: string, toolName: string, rawArgs: string): Promise<void> => {
+    const key = toolCallKey(serverName, toolName);
+    if (!activeThreadId) {
+      setToolErrors((current) => ({ ...current, [key]: "Select a conversation before calling an MCP tool." }));
+      return;
+    }
+    setCallingTool(key);
+    setToolErrors((current) => ({ ...current, [key]: "" }));
+    setToolStatuses((current) => ({ ...current, [key]: "Calling tool..." }));
+    try {
+      const parsedArgs = parseToolArguments(rawArgs);
+      const result = await onCallMcpTool(serverName, toolName, parsedArgs);
+      setToolResults((current) => ({ ...current, [key]: prettyJson(result) }));
+      setToolStatuses((current) => ({ ...current, [key]: "Tool call completed." }));
+    } catch (error) {
+      setToolErrors((current) => ({ ...current, [key]: error instanceof Error ? error.message : String(error) }));
+      setToolStatuses((current) => ({ ...current, [key]: "Tool call failed." }));
+    } finally {
+      setCallingTool(null);
+    }
+  };
+
   return (
     <Stack spacing={1}>
       <Stack direction="row" alignItems="center" spacing={1}>
@@ -515,71 +585,138 @@ function McpPanel({
           Reload
         </Button>
       </Stack>
+      {!activeThreadId && (
+        <Alert severity="info">
+          Select a conversation to enable MCP tool calls.
+        </Alert>
+      )}
       {tooling.mcpServers.length === 0 && <Typography color="text.secondary">No MCP servers discovered.</Typography>}
       {tooling.mcpServers.map((server) => {
         const authUrl = mcpOauthUrls[server.name];
         return (
-        <Paper key={server.name} variant="outlined" sx={{ p: 1.25 }}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-              {server.name}
-            </Typography>
-            <Chip size="small" label={server.authStatus} color={server.authStatus === "notLoggedIn" ? "warning" : "default"} />
-          </Stack>
-          {server.serverInfo && (
-            <Typography variant="caption" color="text.secondary">
-              {server.serverInfo}
-            </Typography>
-          )}
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-            <Chip size="small" label={`tools ${server.tools.length}`} />
-            <Chip size="small" label={`resources ${server.resources.length}`} />
-            <Chip size="small" label={`templates ${server.resourceTemplates.length}`} />
-          </Stack>
-          {server.tools.length > 0 && (
-            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-              {server.tools.slice(0, 8).map((tool) => (
-                <Chip key={tool.name} size="small" variant="outlined" label={tool.title ?? tool.name} />
-              ))}
-              {server.tools.length > 8 && <Chip size="small" variant="outlined" label={`+${server.tools.length - 8}`} />}
+          <Paper key={server.name} variant="outlined" sx={{ p: 1.25 }}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+                {server.name}
+              </Typography>
+              <Chip size="small" label={server.authStatus} color={server.authStatus === "notLoggedIn" ? "warning" : "default"} />
             </Stack>
-          )}
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-            <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => onStartMcpOauth(server.name)}>
-              OAuth
-            </Button>
-            {authUrl && (
-              <Button size="small" href={authUrl} target="_blank" rel="noreferrer">
-                Auth URL
-              </Button>
+            {server.serverInfo && (
+              <Typography variant="caption" color="text.secondary">
+                {server.serverInfo}
+              </Typography>
             )}
-          </Stack>
-          {server.resources.length > 0 && (
-            <Stack spacing={0.75} sx={{ mt: 1 }}>
-              {server.resources.slice(0, 4).map((resource) => {
-                const uri = resource.uri;
-                const contents = uri ? mcpResourceContents[`${server.name}:${uri}`] : undefined;
-                return (
-                  <Box key={resource.uri ?? resource.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
-                        {resource.title ?? resource.name}
-                      </Typography>
-                      <Button size="small" disabled={!uri} onClick={() => uri && onReadMcpResource(server.name, uri)}>
-                        Read
-                      </Button>
-                    </Stack>
-                    {contents && (
-                      <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", mt: 0.75, maxHeight: 180, overflow: "auto" }}>
-                        {contents.map((content) => content.text ?? `[blob ${content.mimeType ?? "application/octet-stream"}]`).join("\n\n")}
-                      </Typography>
-                    )}
-                  </Box>
-                );
-              })}
+            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+              <Chip size="small" label={`tools ${server.tools.length}`} />
+              <Chip size="small" label={`resources ${server.resources.length}`} />
+              <Chip size="small" label={`templates ${server.resourceTemplates.length}`} />
             </Stack>
-          )}
-        </Paper>
+            {server.tools.length > 0 && (
+              <Stack spacing={1} sx={{ mt: 1 }}>
+                {server.tools.slice(0, 8).map((tool) => {
+                  const key = toolCallKey(server.name, tool.name);
+                  const value = toolArgs[key] ?? parseToolArgumentsPreview(tool.inputSchema);
+                  const disabled = !activeThreadId || callingTool === key;
+                  return (
+                    <Box key={tool.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, overflowWrap: "anywhere" }}>
+                            {tool.title ?? tool.name}
+                          </Typography>
+                          {tool.description && (
+                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                              {tool.description}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Chip size="small" label={tool.name} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+                        Input schema
+                      </Typography>
+                      <Typography component="pre" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, m: 0, mt: 0.5, maxHeight: 120, overflow: "auto" }}>
+                        {prettyJson(tool.inputSchema)}
+                      </Typography>
+                      <TextField
+                        size="small"
+                        label="Arguments JSON"
+                        multiline
+                        minRows={4}
+                        fullWidth
+                        sx={{ mt: 1 }}
+                        value={value}
+                        onChange={(event) => setToolArgs((current) => ({ ...current, [key]: event.target.value }))}
+                      />
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<PlayArrowIcon />}
+                          disabled={disabled}
+                          onClick={() => void submitToolCall(server.name, tool.name, value)}
+                        >
+                          Call tool
+                        </Button>
+                        <Chip size="small" label={disabled ? "select conversation" : "ready"} color={disabled ? "warning" : "success"} />
+                      </Stack>
+                      {toolStatuses[key] && (
+                        <Alert severity="info" sx={{ mt: 1 }}>
+                          {toolStatuses[key]}
+                        </Alert>
+                      )}
+                      {toolErrors[key] && (
+                        <Alert severity="error" sx={{ mt: 1 }}>
+                          {toolErrors[key]}
+                        </Alert>
+                      )}
+                      {toolResults[key] && (
+                        <Typography component="pre" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, mt: 1, m: 0, maxHeight: 220, overflow: "auto" }}>
+                          {toolResults[key]}
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })}
+                {server.tools.length > 8 && <Chip size="small" variant="outlined" label={`+${server.tools.length - 8}`} />}
+              </Stack>
+            )}
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+              <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => onStartMcpOauth(server.name)}>
+                OAuth
+              </Button>
+              {authUrl && (
+                <Button size="small" href={authUrl} target="_blank" rel="noreferrer">
+                  Auth URL
+                </Button>
+              )}
+            </Stack>
+            {server.resources.length > 0 && (
+              <Stack spacing={0.75} sx={{ mt: 1 }}>
+                {server.resources.slice(0, 4).map((resource) => {
+                  const uri = resource.uri;
+                  const contents = uri ? mcpResourceContents[`${server.name}:${uri}`] : undefined;
+                  return (
+                    <Box key={resource.uri ?? resource.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                          {resource.title ?? resource.name}
+                        </Typography>
+                        <Button size="small" disabled={!uri} onClick={() => uri && onReadMcpResource(server.name, uri)}>
+                          Read
+                        </Button>
+                      </Stack>
+                      {contents && (
+                        <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", mt: 0.75, maxHeight: 180, overflow: "auto" }}>
+                          {contents.map((content) => content.text ?? `[blob ${content.mimeType ?? "application/octet-stream"}]`).join("\n\n")}
+                        </Typography>
+                      )}
+                    </Box>
+                  );
+                })}
+              </Stack>
+            )}
+          </Paper>
         );
       })}
     </Stack>
@@ -796,4 +933,15 @@ function FilesTab() {
       </Paper>
     </Stack>
   );
+}
+
+function prettyJson(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? "";
+  } catch {
+    return String(value);
+  }
 }
