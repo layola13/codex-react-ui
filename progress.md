@@ -65,10 +65,10 @@
 - Added UI profile import/export for provider metadata without API keys, with merge import preserving existing local credential state.
 - Added local JSONL audit logging for dangerous permission `thread/start` and `turn/start` calls, plus Config-tab visibility for recent audit records.
 
-- Settings drawer now loads live Codex user config via `config/read` and persists curated fields through `config/batchWrite` with `reloadUserConfig` (model defaults, reasoning effort/summary, verbosity, approval policy, sandbox mode, web search).
-- Theme plugins remain local-only (install/switch/remove); never written into Codex config.toml; provider API keys stay out of config writes.
-- Desktop workbench panels stay resizable with localStorage layout persistence.
-- Playwright e2e covers Settings config load/edit/re-read and theme independence; screenshot `snapshot/codex-ui-settings-open.png`.
+- Settings drawer now loads live Codex user config via `config/read` and persists curated fields through `config/batchWrite` with `reloadUserConfig` (model/review defaults, reasoning effort/summary, verbosity, service tier, approval policy, sandbox mode, web search, user instructions, developer instructions).
+- Theme plugins remain local-only (install/switch/remove/create/delete); never written into Codex config.toml; provider API keys stay out of config writes.
+- Desktop workbench panels stay resizable with localStorage layout persistence, including nested Files explorer/editor/terminal splits.
+- Playwright e2e covers Settings config load/edit/re-read, custom theme plugin creation, theme/config independence, and resizable Files panes; screenshots `snapshot/codex-ui-settings-open.png`, `snapshot/codex-ui-settings-appearance.png`, `snapshot/codex-ui-settings-layout.png`, and `snapshot/codex-ui-files-resizable.png`.
 
 ## Known Gaps
 
