@@ -2,14 +2,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CssBaseline, ThemeProvider } from "@mui/material";
 import { App } from "./App";
-import { createCodexTheme, type ThemeMode } from "./theme";
+import { createCodexTheme, isThemeId, type ThemeMode } from "./theme";
 
 const THEME_STORAGE_KEY = "codex-react-ui.theme-mode";
 
 function Root() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "black" || stored === "light" ? stored : "light";
+    if (stored === "black") return "official-black";
+    if (stored === "light") return "official-light";
+    return isThemeId(stored) ? stored : "official-light";
   });
   const theme = useMemo(() => createCodexTheme(themeMode), [themeMode]);
 

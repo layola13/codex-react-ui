@@ -516,11 +516,14 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
 
   await page.getByLabel("Open settings").click();
   await expect(page.getByText("Appearance")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Install theme plugin" })).toBeVisible();
   await expect(page.getByRole("switch", { name: "Enabled" }).first()).toBeVisible();
-  await page.getByLabel("Theme mode").click();
-  await page.getByRole("option", { name: "Black" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "black");
+  await expect(page.getByRole("button", { name: "Install" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Install" }).first().click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "dream-rose");
+  await page.getByLabel("Skin theme").click();
+  await page.getByRole("option", { name: "Official Black" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
+  await page.getByRole("button", { name: "Remove" }).click();
   await page.getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("tab", { name: "Second task" }).click();

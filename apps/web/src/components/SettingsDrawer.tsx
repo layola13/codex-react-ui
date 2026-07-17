@@ -25,7 +25,7 @@ import SecurityIcon from "@mui/icons-material/Security";
 import SettingsSuggestIcon from "@mui/icons-material/SettingsSuggest";
 import TuneIcon from "@mui/icons-material/Tune";
 import { permissionPresets, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
-import type { ThemeMode } from "../theme";
+import { themePlugins, type ThemeId, type ThemeMode } from "../theme";
 import { PetDock } from "./PetDock";
 
 export type ReasoningOption = {
@@ -37,6 +37,7 @@ export type ReasoningOption = {
 type Props = {
   open: boolean;
   themeMode: ThemeMode;
+  installedThemePluginIds: ThemeId[];
   leftPanelVisible: boolean;
   inspectorVisible: boolean;
   petDockEnabled: boolean;
@@ -49,6 +50,8 @@ type Props = {
   reasoningOptions: ReasoningOption[];
   onClose: () => void;
   onThemeModeChange: (mode: ThemeMode) => void;
+  onInstallThemePlugin: (id: ThemeId) => void;
+  onUninstallThemePlugin: (id: ThemeId) => void;
   onLeftPanelVisibleChange: (visible: boolean) => void;
   onInspectorVisibleChange: (visible: boolean) => void;
   onPetDockEnabledChange: (enabled: boolean) => void;
@@ -60,6 +63,7 @@ type Props = {
 export function SettingsDrawer({
   open,
   themeMode,
+  installedThemePluginIds,
   leftPanelVisible,
   inspectorVisible,
   petDockEnabled,
@@ -72,6 +76,8 @@ export function SettingsDrawer({
   reasoningOptions,
   onClose,
   onThemeModeChange,
+  onInstallThemePlugin,
+  onUninstallThemePlugin,
   onLeftPanelVisibleChange,
   onInspectorVisibleChange,
   onPetDockEnabledChange,
@@ -113,31 +119,32 @@ export function SettingsDrawer({
         </Stack>
         <Box sx={{ overflow: "auto", px: 2, pb: 2 }}>
           <SettingsSection icon={<ColorLensIcon fontSize="small" />} title="Appearance">
-            <SettingRow title="Official theme" description="Light and Black are built in defaults. Theme plugins can extend this later.">
+            <SettingRow title="Active skin" description="Official themes are always installed. Local/customer skins can be installed and switched here.">
               <FormControl size="small" sx={{ minWidth: 160 }}>
-                <InputLabel>Theme</InputLabel>
+                <InputLabel>Skin</InputLabel>
                 <Select
                   value={themeMode}
-                  label="Theme"
-                  inputProps={{ "aria-label": "Theme mode" }}
+                  label="Skin"
+                  inputProps={{ "aria-label": "Skin theme" }}
                   onChange={(event) => onThemeModeChange(event.target.value as ThemeMode)}
                 >
-                  <MenuItem value="light">Light</MenuItem>
-                  <MenuItem value="black">Black</MenuItem>
+                  {themePlugins
+                    .filter((plugin) => installedThemePluginIds.includes(plugin.id))
+                    .map((plugin) => (
+                      <MenuItem key={plugin.id} value={plugin.id}>
+                        {plugin.name}
+                      </MenuItem>
+                    ))}
                 </Select>
               </FormControl>
             </SettingRow>
-            <SettingRow title="Theme plugin slot" description="Reserved install and switch surface for customer-specific themes.">
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <Chip size="small" label="Built-in active" color="primary" variant="outlined" />
-                <Chip size="small" label="Rose concept" variant="outlined" />
-                <Chip size="small" label="Studio black-gold" variant="outlined" />
-                <Chip size="small" label="Dream Skin compatible" variant="outlined" />
-                <Button size="small" variant="outlined" startIcon={<ExtensionIcon />} disabled>
-                  Install theme plugin
-                </Button>
-              </Stack>
-            </SettingRow>
+            <ThemePluginManager
+              activeThemeId={themeMode}
+              installedThemePluginIds={installedThemePluginIds}
+              onThemeModeChange={onThemeModeChange}
+              onInstallThemePlugin={onInstallThemePlugin}
+              onUninstallThemePlugin={onUninstallThemePlugin}
+            />
             <SettingRow title="Skin safety boundary" description="Theme plugins and API relay providers are independent. Restoring Light/Black never rewrites provider keys or base URLs.">
               <Chip size="small" label="Separated" color="success" variant="outlined" />
             </SettingRow>
@@ -243,6 +250,85 @@ function SettingsSection({ icon, title, children }: { icon: ReactNode; title: st
         </Typography>
       </Stack>
       <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, overflow: "hidden" }}>{children}</Box>
+    </Box>
+  );
+}
+
+function ThemePluginManager({
+  activeThemeId,
+  installedThemePluginIds,
+  onThemeModeChange,
+  onInstallThemePlugin,
+  onUninstallThemePlugin
+}: {
+  activeThemeId: ThemeId;
+  installedThemePluginIds: ThemeId[];
+  onThemeModeChange: (mode: ThemeMode) => void;
+  onInstallThemePlugin: (id: ThemeId) => void;
+  onUninstallThemePlugin: (id: ThemeId) => void;
+}) {
+  return (
+    <Box sx={{ borderTop: "1px solid", borderColor: "divider" }}>
+      {themePlugins.map((plugin) => {
+        const installed = installedThemePluginIds.includes(plugin.id);
+        const active = activeThemeId === plugin.id;
+        const removable = plugin.source !== "official" && installed && !active;
+        return (
+          <Stack
+            key={plugin.id}
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.25}
+            alignItems={{ xs: "stretch", sm: "center" }}
+            sx={{ p: 1.25, borderBottom: "1px solid", borderColor: "divider" }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ flex: 1, minWidth: 0 }}>
+              <Stack direction="row" spacing={0.25} sx={{ flex: "0 0 auto" }} aria-hidden>
+                {[plugin.preview.primary, plugin.preview.secondary, plugin.preview.background].map((color) => (
+                  <Box
+                    key={color}
+                    sx={{
+                      width: 18,
+                      height: 28,
+                      bgcolor: color,
+                      borderRadius: 0.75,
+                      border: "1px solid",
+                      borderColor: "divider"
+                    }}
+                  />
+                ))}
+              </Stack>
+              <Box sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {plugin.name}
+                  </Typography>
+                  <Chip size="small" label={plugin.source === "official" ? "official" : plugin.source === "customer-slot" ? "customer" : "local"} />
+                  {active && <Chip size="small" label="active" color="primary" />}
+                </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+                  {plugin.description}
+                </Typography>
+              </Box>
+            </Stack>
+            <Stack direction="row" spacing={1} justifyContent={{ xs: "flex-start", sm: "flex-end" }}>
+              {installed ? (
+                <Button size="small" variant={active ? "contained" : "outlined"} disabled={active} onClick={() => onThemeModeChange(plugin.id)}>
+                  {active ? "Active" : "Switch"}
+                </Button>
+              ) : (
+                <Button size="small" variant="outlined" startIcon={<ExtensionIcon />} onClick={() => onInstallThemePlugin(plugin.id)}>
+                  Install
+                </Button>
+              )}
+              {removable && (
+                <Button size="small" color="inherit" onClick={() => onUninstallThemePlugin(plugin.id)}>
+                  Remove
+                </Button>
+              )}
+            </Stack>
+          </Stack>
+        );
+      })}
     </Box>
   );
 }

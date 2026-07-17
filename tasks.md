@@ -9,7 +9,7 @@
 - [x] Add a top horizontal task tab bar for switching multiple active/history conversations.
 - [x] Add a Three.js-ready pet dock surface without making the core chat layout depend on decorative art.
 - [x] Render chat content as Markdown and highlight code/diff blocks in a theme-aware way.
-- [ ] Re-run Playwright screenshot steps and save per-step screenshots to `/root/projects/snapshot`.
+- [x] Re-run Playwright screenshot steps and save per-step screenshots to `/root/projects/snapshot`.
 - [x] Initialize this project as an independent Git repository.
 - [x] Keep generated build output, dependencies, logs, and local env files out of Git.
 - [x] Build the Codex engine bridge with `codex app-server --stdio`.

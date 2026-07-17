@@ -74,7 +74,15 @@ import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { RightInspector } from "./components/RightInspector";
 import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawer";
-import type { ThemeMode } from "./theme";
+import { installedThemePluginDefaults, isThemeId, type ThemeId, type ThemeMode } from "./theme";
+
+const UI_STORAGE_KEYS = {
+  installedThemes: "codex-react-ui.installed-theme-plugins",
+  leftPanelVisible: "codex-react-ui.left-panel-visible",
+  inspectorVisible: "codex-react-ui.inspector-visible",
+  petDockEnabled: "codex-react-ui.pet-dock-enabled",
+  panelLayout: "codex-react-ui.panel-layout"
+} as const;
 
 type AppProps = {
   themeMode: ThemeMode;
@@ -162,9 +170,11 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("/root/projects");
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
-  const [inspectorVisible, setInspectorVisible] = useState(true);
-  const [petDockEnabled, setPetDockEnabled] = useState(true);
+  const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
+  const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
+  const [inspectorVisible, setInspectorVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.inspectorVisible, true));
+  const [petDockEnabled, setPetDockEnabled] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.petDockEnabled, true));
+  const [panelLayout, setPanelLayout] = useState<Record<string, number> | undefined>(() => readPanelLayout());
   const [reasoningAnchor, setReasoningAnchor] = useState<HTMLElement | null>(null);
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
@@ -186,6 +196,43 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
     clientRef.current = socketClient;
     return socketClient;
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.installedThemes, JSON.stringify(installedThemePluginIds));
+  }, [installedThemePluginIds]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.leftPanelVisible, JSON.stringify(leftPanelVisible));
+  }, [leftPanelVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.inspectorVisible, JSON.stringify(inspectorVisible));
+  }, [inspectorVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.petDockEnabled, JSON.stringify(petDockEnabled));
+  }, [petDockEnabled]);
+
+  const installThemePlugin = useCallback(
+    (id: ThemeId) => {
+      setInstalledThemePluginIds((current) => (current.includes(id) ? current : [...current, id]));
+      onThemeModeChange(id);
+    },
+    [onThemeModeChange]
+  );
+
+  const uninstallThemePlugin = useCallback(
+    (id: ThemeId) => {
+      setInstalledThemePluginIds((current) => {
+        const next = current.filter((entry) => entry !== id || installedThemePluginDefaults().includes(entry));
+        return next.length > 0 ? next : installedThemePluginDefaults();
+      });
+      if (themeMode === id) {
+        onThemeModeChange("official-light");
+      }
+    },
+    [onThemeModeChange, themeMode]
+  );
 
   const appendTerminalOutput = useCallback((processId: string, output: string) => {
     setTerminalSessions((current) =>
@@ -1177,7 +1224,18 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
       <Box sx={{ minHeight: 0, overflow: desktopLayout ? "hidden" : "auto" }}>
         {desktopLayout ? (
           <Box sx={{ height: "100%", minHeight: 0 }}>
-          <PanelGroup orientation="horizontal" id="codex-react-ui-workbench-panels">
+          <PanelGroup
+            orientation="horizontal"
+            id="codex-react-ui-workbench-panels"
+            defaultLayout={panelLayout}
+            onLayoutChanged={(layout, meta) => {
+              if (!meta.isUserInteraction) {
+                return;
+              }
+              setPanelLayout(layout);
+              localStorage.setItem(UI_STORAGE_KEYS.panelLayout, JSON.stringify(layout));
+            }}
+          >
             {leftPanelVisible && (
               <>
                 <Panel id="history" defaultSize="20%" minSize="14%" maxSize="34%">
@@ -1224,6 +1282,7 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
       <SettingsDrawer
         open={settingsOpen}
         themeMode={themeMode}
+        installedThemePluginIds={installedThemePluginIds}
         leftPanelVisible={leftPanelVisible}
         inspectorVisible={inspectorVisible}
         petDockEnabled={petDockEnabled}
@@ -1236,6 +1295,8 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
         reasoningOptions={reasoningOptions}
         onClose={() => setSettingsOpen(false)}
         onThemeModeChange={onThemeModeChange}
+        onInstallThemePlugin={installThemePlugin}
+        onUninstallThemePlugin={uninstallThemePlugin}
         onLeftPanelVisibleChange={setLeftPanelVisible}
         onInspectorVisibleChange={setInspectorVisible}
         onPetDockEnabledChange={setPetDockEnabled}
@@ -1284,6 +1345,55 @@ function ResizeHandle() {
       />
     </PanelResizeHandle>
   );
+}
+
+function readStoredBoolean(key: string, fallback: boolean): boolean {
+  const raw = localStorage.getItem(key);
+  if (raw == null) {
+    return fallback;
+  }
+  try {
+    return Boolean(JSON.parse(raw));
+  } catch {
+    return fallback;
+  }
+}
+
+function readInstalledThemes(): ThemeId[] {
+  const defaults = installedThemePluginDefaults();
+  const raw = localStorage.getItem(UI_STORAGE_KEYS.installedThemes);
+  if (!raw) {
+    return defaults;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return defaults;
+    }
+    const valid = parsed.filter((entry): entry is ThemeId => typeof entry === "string" && isThemeId(entry));
+    return [...defaults, ...valid.filter((entry) => !defaults.includes(entry))];
+  } catch {
+    return defaults;
+  }
+}
+
+function readPanelLayout(): Record<string, number> | undefined {
+  const raw = localStorage.getItem(UI_STORAGE_KEYS.panelLayout);
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    const layout = Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, number] => typeof entry[0] === "string" && typeof entry[1] === "number")
+    );
+    return Object.keys(layout).length > 0 ? layout : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function reasoningLabel(value: string): string {
