@@ -30,9 +30,11 @@ import type { JsonValue, ProviderConfig } from "@codex-ui/shared";
 import type {
   ModelEntry,
   McpResourceContentEntry,
+  PluginAppEntry,
   PendingServerRequest,
   PluginDetailEntry,
   PluginEntry,
+  PluginInstallAuthNotice,
   PluginMarketplace,
   SkillEntry,
   ToolingState
@@ -48,6 +50,7 @@ type Props = {
   toolingLoading: boolean;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
+  pluginAuthNotices: Record<string, PluginInstallAuthNotice>;
   skillExtraRoots: string[];
   skillPreviews: Record<string, string>;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
@@ -80,6 +83,7 @@ export function RightInspector({
   toolingLoading,
   pluginDetails,
   pluginSkillPreviews,
+  pluginAuthNotices,
   skillExtraRoots,
   skillPreviews,
   mcpResourceContents,
@@ -127,6 +131,7 @@ export function RightInspector({
             toolingLoading={toolingLoading}
             pluginDetails={pluginDetails}
             pluginSkillPreviews={pluginSkillPreviews}
+            pluginAuthNotices={pluginAuthNotices}
             skillExtraRoots={skillExtraRoots}
             skillPreviews={skillPreviews}
             mcpResourceContents={mcpResourceContents}
@@ -406,6 +411,7 @@ function ToolsTab({
   toolingLoading,
   pluginDetails,
   pluginSkillPreviews,
+  pluginAuthNotices,
   skillExtraRoots,
   skillPreviews,
   mcpResourceContents,
@@ -431,6 +437,7 @@ function ToolsTab({
   toolingLoading: boolean;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
+  pluginAuthNotices: Record<string, PluginInstallAuthNotice>;
   skillExtraRoots: string[];
   skillPreviews: Record<string, string>;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
@@ -507,6 +514,7 @@ function ToolsTab({
           tooling={tooling}
           pluginDetails={pluginDetails}
           pluginSkillPreviews={pluginSkillPreviews}
+          pluginAuthNotices={pluginAuthNotices}
           onReadPluginDetail={onReadPluginDetail}
           onReadPluginSkill={onReadPluginSkill}
           onInsertPluginMention={onInsertPluginMention}
@@ -862,6 +870,7 @@ function PluginsPanel({
   tooling,
   pluginDetails,
   pluginSkillPreviews,
+  pluginAuthNotices,
   onReadPluginDetail,
   onReadPluginSkill,
   onInsertPluginMention,
@@ -871,14 +880,83 @@ function PluginsPanel({
   tooling: ToolingState;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
+  pluginAuthNotices: Record<string, PluginInstallAuthNotice>;
   onReadPluginDetail: Props["onReadPluginDetail"];
   onReadPluginSkill: Props["onReadPluginSkill"];
   onInsertPluginMention: Props["onInsertPluginMention"];
   onInstallPlugin: Props["onInstallPlugin"];
   onUninstallPlugin: Props["onUninstallPlugin"];
 }) {
+  const installedMentionPlugins = useMemo(() => {
+    const entries: Array<{ key: string; marketplace: PluginMarketplace; plugin: PluginEntry }> = [];
+    const seen = new Set<string>();
+    const sourceMarketplaces = tooling.installedPluginMarketplaces.length > 0 ? tooling.installedPluginMarketplaces : tooling.pluginMarketplaces;
+    for (const marketplace of sourceMarketplaces) {
+      for (const plugin of marketplace.plugins) {
+        if (!plugin.installed || !plugin.enabled || seen.has(plugin.id)) {
+          continue;
+        }
+        seen.add(plugin.id);
+        entries.push({ key: `${marketplace.name}:${plugin.id}`, marketplace, plugin });
+      }
+    }
+    return entries;
+  }, [tooling.installedPluginMarketplaces, tooling.pluginMarketplaces]);
+  const [selectedMentionKey, setSelectedMentionKey] = useState("");
+  const selectedMention = installedMentionPlugins.find((entry) => entry.key === selectedMentionKey) ?? installedMentionPlugins[0];
+
   return (
     <Stack spacing={1}>
+      <Paper variant="outlined" sx={{ p: 1.25 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+          Installed mentions
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Composer mentions are limited to plugins that are installed and enabled.
+        </Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
+          <FormControl size="small" sx={{ flex: 1, minWidth: 180 }}>
+            <InputLabel>Installed plugin</InputLabel>
+            <Select
+              value={selectedMention?.key ?? ""}
+              label="Installed plugin"
+              onChange={(event) => setSelectedMentionKey(event.target.value)}
+              disabled={installedMentionPlugins.length === 0}
+            >
+              {installedMentionPlugins.map((entry) => (
+                <MenuItem key={entry.key} value={entry.key}>
+                  {entry.plugin.displayName}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Button
+            size="small"
+            variant="contained"
+            disabled={!selectedMention}
+            onClick={() => selectedMention && onInsertPluginMention(selectedMention.marketplace, selectedMention.plugin)}
+          >
+            Insert mention
+          </Button>
+        </Stack>
+        {installedMentionPlugins.length === 0 && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            No installed plugins are available for mention insertion.
+          </Typography>
+        )}
+      </Paper>
+      {tooling.apps.length > 0 && (
+        <Paper variant="outlined" sx={{ p: 1.25 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+            Apps
+          </Typography>
+          <Stack spacing={0.75} sx={{ mt: 1 }}>
+            {tooling.apps.slice(0, 6).map((app) => (
+              <AppSummaryRow key={app.id} app={app} />
+            ))}
+          </Stack>
+        </Paper>
+      )}
       {tooling.pluginMarketplaces.length === 0 && <Typography color="text.secondary">No plugin marketplaces discovered.</Typography>}
       {tooling.pluginMarketplaces.map((marketplace) => (
         <Paper key={`${marketplace.name}:${marketplace.path ?? "remote"}`} variant="outlined" sx={{ p: 1.25 }}>
@@ -896,6 +974,7 @@ function PluginsPanel({
               const unavailable = plugin.availability !== "AVAILABLE";
               const featured = tooling.featuredPluginIds.includes(plugin.id);
               const detail = pluginDetails[plugin.id];
+              const authNotice = pluginAuthNotices[plugin.id];
               return (
                 <Box key={plugin.id} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
                   <Stack direction="row" spacing={1} alignItems="center">
@@ -927,9 +1006,14 @@ function PluginsPanel({
                     <Button size="small" onClick={() => onReadPluginDetail(marketplace, plugin)}>
                       Details
                     </Button>
-                    <Button size="small" onClick={() => onInsertPluginMention(marketplace, plugin)}>
+                    <Button size="small" disabled={!plugin.installed || !plugin.enabled} onClick={() => onInsertPluginMention(marketplace, plugin)}>
                       Mention
                     </Button>
+                    {plugin.websiteUrl && (
+                      <Button size="small" href={plugin.websiteUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
+                        Website
+                      </Button>
+                    )}
                     {detail?.shareUrl && (
                       <Button size="small" href={detail.shareUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
                         Share
@@ -941,14 +1025,38 @@ function PluginsPanel({
                     {plugin.installed && <Chip size="small" label={plugin.enabled ? "enabled" : "disabled"} />}
                     {featured && <Chip size="small" label="featured" color="primary" />}
                     {unavailable && <Chip size="small" label={plugin.availability} color="warning" />}
+                    <Chip size="small" label={`auth ${plugin.authPolicy}`} variant="outlined" />
+                    <Chip size="small" label={`install ${plugin.installPolicy}`} variant="outlined" />
+                    {plugin.category && <Chip size="small" label={plugin.category} />}
                     {(plugin.localVersion || plugin.version) && <Chip size="small" label={plugin.localVersion ?? plugin.version} />}
                   </Stack>
+                  {plugin.defaultPrompt.length > 0 && (
+                    <Stack spacing={0.5} sx={{ mt: 1 }}>
+                      {plugin.defaultPrompt.map((prompt) => (
+                        <Typography key={prompt} variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                          {prompt}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  )}
                   {plugin.capabilities.length > 0 && (
                     <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                       {plugin.capabilities.slice(0, 5).map((capability) => (
                         <Chip key={capability} size="small" variant="outlined" label={capability} />
                       ))}
                     </Stack>
+                  )}
+                  {authNotice && authNotice.apps.length > 0 && (
+                    <Box sx={{ mt: 1, borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 750 }}>
+                        Authentication needed after install
+                      </Typography>
+                      <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                        {authNotice.apps.map((app) => (
+                          <AppSummaryRow key={app.id} app={app} />
+                        ))}
+                      </Stack>
+                    </Box>
                   )}
                   {detail && (
                     <Box sx={{ mt: 1, borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
@@ -961,9 +1069,31 @@ function PluginsPanel({
                         <Chip size="small" label={`skills ${detail.skills.length}`} />
                         <Chip size="small" label={`hooks ${detail.hooks.length}`} />
                         <Chip size="small" label={`apps ${detail.apps.length}`} />
+                        <Chip size="small" label={`templates ${detail.appTemplates.length}`} />
                         <Chip size="small" label={`mcp ${detail.mcpServers.length}`} />
                         {detail.scheduledTaskCount != null && <Chip size="small" label={`tasks ${detail.scheduledTaskCount}`} />}
                       </Stack>
+                      {detail.apps.length > 0 && (
+                        <Stack spacing={0.75} sx={{ mt: 1 }}>
+                          {detail.apps.map((app) => (
+                            <AppSummaryRow key={app.id} app={app} />
+                          ))}
+                        </Stack>
+                      )}
+                      {detail.appTemplates.length > 0 && (
+                        <Stack spacing={0.75} sx={{ mt: 1 }}>
+                          {detail.appTemplates.map((template) => (
+                            <Box key={template.templateId} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
+                              <Typography variant="caption" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                                {template.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                                {[template.category, template.reason && `unavailable ${template.reason}`].filter(Boolean).join(" / ")}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      )}
                       {detail.skills.length > 0 && (
                         <Stack spacing={0.75} sx={{ mt: 1 }}>
                           {detail.skills.map((skill) => {
@@ -997,6 +1127,35 @@ function PluginsPanel({
         </Paper>
       ))}
     </Stack>
+  );
+}
+
+function AppSummaryRow({ app }: { app: PluginAppEntry }) {
+  return (
+    <Box sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="caption" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+            {app.name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+            {[app.category, app.developer, app.isEnabled === false ? "disabled" : null, app.isAccessible === false ? "needs access" : null]
+              .filter(Boolean)
+              .join(" / ")}
+          </Typography>
+        </Box>
+        {app.installUrl && (
+          <Button size="small" href={app.installUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
+            Connect
+          </Button>
+        )}
+      </Stack>
+      {app.description && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, overflowWrap: "anywhere" }}>
+          {app.description}
+        </Typography>
+      )}
+    </Box>
   );
 }
 

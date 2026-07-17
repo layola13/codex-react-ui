@@ -48,9 +48,12 @@
 - Added Skills extra roots management backed by `skills/extraRoots/set`, with reloaded `skills/list` inventory across the workspace and saved extra roots.
 - Added local skill Markdown preview using `fs/readFile` and client-side base64 decoding.
 - Added focused Playwright coverage for saving extra skill roots and previewing local skill Markdown.
+- Added installed-only plugin mention insertion backed by `plugin/installed`, while preserving full marketplace browsing through `plugin/list`.
+- Added richer plugin auth/app handling, including auth policy/install policy metadata, `plugin/install` app-auth notices, plugin app/template summaries, and `app/list` connector state.
+- Added focused Playwright coverage for installed-only plugin mentions, mention payloads, plugin app/template rendering, and install-time app authentication prompts.
 
 ## Known Gaps
 
-- Richer plugin auth/app handling, Monaco editor, and terminal surfaces still need full implementation.
+- Monaco editor and terminal surfaces still need full implementation.
 - Playwright smoke coverage exists, but browser screenshot regression is not yet added.
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.

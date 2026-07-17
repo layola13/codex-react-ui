@@ -29,7 +29,10 @@ import {
   initialClientState,
   parseMcpServers,
   parseMcpResourceContents,
+  parseApps,
+  parseInstalledPluginMarketplaces,
   parsePluginDetail,
+  parsePluginInstallAuthNotice,
   parsePluginMarketplaces,
   parseSkillGroups,
   threadReadToTurns,
@@ -38,6 +41,7 @@ import {
   type ComposerMention,
   type McpResourceContentEntry,
   type PluginEntry,
+  type PluginInstallAuthNotice,
   type PluginDetailEntry,
   type PluginMarketplace,
   type SkillEntry
@@ -129,6 +133,7 @@ export function App() {
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
   const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
+  const [pluginAuthNotices, setPluginAuthNotices] = useState<Record<string, PluginInstallAuthNotice>>({});
   const [skillExtraRoots, setSkillExtraRoots] = useState<string[]>([]);
   const [skillPreviews, setSkillPreviews] = useState<Record<string, string>>({});
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
@@ -181,19 +186,23 @@ export function App() {
       dispatch({ type: "toolingLoading", loading: true });
       const effectiveSkillExtraRoots = options?.skillExtraRoots ?? skillExtraRoots;
       const skillCwds = [cwd, ...effectiveSkillExtraRoots].filter((entry, index, entries) => entry && entries.indexOf(entry) === index);
-      const [mcpResult, skillResult, pluginResult] = await Promise.allSettled([
+      const [mcpResult, skillResult, pluginResult, installedPluginResult, appResult] = await Promise.allSettled([
         client.rpc("mcpServerStatus/list", { detail: "full" }),
         client.rpc("skills/list", { cwds: skillCwds, forceReload: options?.forceSkillReload ?? false }),
         client.rpc("plugin/list", {
           cwds: [cwd],
           marketplaceKinds: ["local", "workspace-directory", "vertical", "shared-with-me", "created-by-me-remote"]
-        })
+        }),
+        client.rpc("plugin/installed", { cwds: [cwd], installSuggestionPluginNames: [] }),
+        client.rpc("app/list", { threadId: state.activeThreadId, limit: 50, forceRefetch: options?.forceSkillReload ?? false })
       ]);
 
       const nextTooling: ClientState["tooling"] = {
         mcpServers: [],
         skillGroups: [],
         pluginMarketplaces: [],
+        installedPluginMarketplaces: [],
+        apps: [],
         featuredPluginIds: [],
         marketplaceErrors: []
       };
@@ -217,12 +226,32 @@ export function App() {
         errors.push(errorMessage("Plugin inventory", pluginResult.reason));
       }
 
+      if (installedPluginResult.status === "fulfilled") {
+        const installed = parseInstalledPluginMarketplaces(installedPluginResult.value);
+        nextTooling.installedPluginMarketplaces = installed.installedPluginMarketplaces;
+        nextTooling.marketplaceErrors = [...nextTooling.marketplaceErrors, ...installed.marketplaceErrors];
+      } else {
+        nextTooling.installedPluginMarketplaces = nextTooling.pluginMarketplaces
+          .map((marketplace) => ({
+            ...marketplace,
+            plugins: marketplace.plugins.filter((plugin) => plugin.installed)
+          }))
+          .filter((marketplace) => marketplace.plugins.length > 0);
+        errors.push(errorMessage("Installed plugins", installedPluginResult.reason));
+      }
+
+      if (appResult.status === "fulfilled") {
+        nextTooling.apps = parseApps(appResult.value);
+      } else {
+        errors.push(errorMessage("App inventory", appResult.reason));
+      }
+
       dispatch({ type: "tooling", tooling: nextTooling });
       for (const message of errors) {
         dispatch({ type: "error", message });
       }
     },
-    [client, cwd, skillExtraRoots]
+    [client, cwd, skillExtraRoots, state.activeThreadId]
   );
 
   useEffect(() => {
@@ -454,11 +483,13 @@ export function App() {
   const installPlugin = useCallback(
     async (marketplace: PluginMarketplace, plugin: PluginEntry) => {
       try {
-        await client.rpc("plugin/install", {
+        const result = await client.rpc("plugin/install", {
           marketplacePath: marketplace.path ?? null,
           remoteMarketplaceName: marketplace.path ? null : marketplace.name,
           pluginName: plugin.name
         });
+        const authNotice = parsePluginInstallAuthNotice(result);
+        setPluginAuthNotices((current) => ({ ...current, [plugin.id]: authNotice }));
         await loadTooling({ forceSkillReload: true });
       } catch (error) {
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
@@ -649,6 +680,7 @@ export function App() {
           toolingLoading={state.toolingLoading}
           pluginDetails={pluginDetails}
           pluginSkillPreviews={pluginSkillPreviews}
+          pluginAuthNotices={pluginAuthNotices}
           skillExtraRoots={skillExtraRoots}
           skillPreviews={skillPreviews}
           mcpResourceContents={mcpResourceContents}

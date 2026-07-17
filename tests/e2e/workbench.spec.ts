@@ -90,6 +90,80 @@ test.beforeEach(async ({ page }) => {
     }
 
     let skillExtraRoots: string[] = [];
+    const installedPlugin = {
+      id: "mock-plugin@mock-market",
+      remotePluginId: "remote-mock",
+      name: "mock-plugin",
+      version: "1.0.0",
+      localVersion: "1.0.0",
+      shareContext: null,
+      source: { type: "remote" },
+      installed: true,
+      enabled: true,
+      installPolicy: "AVAILABLE",
+      installPolicySource: null,
+      authPolicy: "ON_USE",
+      availability: "AVAILABLE",
+      interface: {
+        displayName: "Mock Plugin",
+        shortDescription: "Mock plugin",
+        longDescription: null,
+        developerName: "Mock Dev",
+        category: "Search",
+        capabilities: ["search"],
+        websiteUrl: "https://example.test/mock-plugin",
+        privacyPolicyUrl: null,
+        termsOfServiceUrl: null,
+        defaultPrompt: ["Search the mock catalog"],
+        brandColor: null,
+        composerIcon: null,
+        composerIconUrl: null,
+        logo: null,
+        logoDark: null,
+        logoUrl: null,
+        logoUrlDark: null,
+        screenshots: [],
+        screenshotUrls: []
+      },
+      keywords: []
+    };
+    const authPlugin = {
+      id: "auth-plugin@mock-market",
+      remotePluginId: "remote-auth",
+      name: "auth-plugin",
+      version: "1.0.0",
+      localVersion: null,
+      shareContext: null,
+      source: { type: "remote" },
+      installed: false,
+      enabled: false,
+      installPolicy: "AVAILABLE",
+      installPolicySource: null,
+      authPolicy: "ON_INSTALL",
+      availability: "AVAILABLE",
+      interface: {
+        displayName: "Auth Plugin",
+        shortDescription: "Needs auth",
+        longDescription: null,
+        developerName: "Auth Dev",
+        category: "Productivity",
+        capabilities: ["calendar"],
+        websiteUrl: null,
+        privacyPolicyUrl: null,
+        termsOfServiceUrl: null,
+        defaultPrompt: null,
+        brandColor: null,
+        composerIcon: null,
+        composerIconUrl: null,
+        logo: null,
+        logoDark: null,
+        logoUrl: null,
+        logoUrlDark: null,
+        screenshots: [],
+        screenshotUrls: []
+      },
+      keywords: []
+    };
 
     function rpcResult(method: string, params?: unknown): unknown {
       switch (method) {
@@ -170,9 +244,70 @@ test.beforeEach(async ({ page }) => {
           };
         case "plugin/list":
           return {
-            marketplaces: [{ name: "mock-market", path: null, interface: { displayName: "Mock Market" }, plugins: [{ id: "mock-plugin@mock-market", remotePluginId: "remote-mock", name: "mock-plugin", version: "1.0.0", localVersion: null, shareContext: null, source: { type: "remote" }, installed: true, enabled: true, installPolicy: "ALLOWED", installPolicySource: null, authPolicy: "NONE", availability: "AVAILABLE", interface: { displayName: "Mock Plugin", shortDescription: "Mock plugin", longDescription: null, developerName: null, category: null, capabilities: ["search"], websiteUrl: null, privacyPolicyUrl: null, termsOfServiceUrl: null, defaultPrompt: null, brandColor: null, composerIcon: null, composerIconUrl: null, logo: null, logoDark: null, logoUrl: null, logoUrlDark: null, screenshots: [], screenshotUrls: [] }, keywords: [] }] }],
+            marketplaces: [{ name: "mock-market", path: null, interface: { displayName: "Mock Market" }, plugins: [installedPlugin, authPlugin] }],
             marketplaceLoadErrors: [],
             featuredPluginIds: ["mock-plugin@mock-market"]
+          };
+        case "plugin/installed":
+          return {
+            marketplaces: [{ name: "mock-market", path: null, interface: { displayName: "Mock Market" }, plugins: [installedPlugin] }],
+            marketplaceLoadErrors: []
+          };
+        case "plugin/read":
+          return {
+            plugin: {
+              marketplaceName: "mock-market",
+              marketplacePath: null,
+              summary: installedPlugin,
+              shareUrl: "https://example.test/share/mock-plugin",
+              description: "Detailed mock plugin description.",
+              skills: [{ name: "mock-skill", description: "Mock skill", enabled: true, path: "/tmp/mock/SKILL.md" }],
+              hooks: [{ key: "on-turn", eventName: "turn" }],
+              apps: [{ id: "mock-calendar", name: "Mock Calendar", description: "Calendar access", installUrl: "https://example.test/connect/calendar", category: "Calendar" }],
+              appTemplates: [
+                {
+                  templateId: "calendar-template",
+                  name: "Calendar Template",
+                  description: "Template calendar app",
+                  category: "Calendar",
+                  canonicalConnectorId: "calendar",
+                  logoUrl: null,
+                  logoUrlDark: null,
+                  materializedAppIds: ["mock-calendar"],
+                  reason: null
+                }
+              ],
+              mcpServers: ["mock-mcp"],
+              scheduledTasks: []
+            }
+          };
+        case "plugin/install":
+          return {
+            authPolicy: "ON_INSTALL",
+            appsNeedingAuth: [{ id: "auth-console", name: "Auth Console", description: "Connect before use", installUrl: "https://example.test/connect/auth", category: "Auth" }]
+          };
+        case "app/list":
+          return {
+            data: [
+              {
+                id: "mock-calendar",
+                name: "Mock Calendar",
+                description: "Calendar access",
+                logoUrl: null,
+                logoUrlDark: null,
+                iconAssets: null,
+                iconDarkAssets: null,
+                distributionChannel: "mock",
+                branding: { category: "Calendar", developer: "Mock Dev", website: "https://example.test/calendar", privacyPolicy: null, termsOfService: null, isDiscoverableApp: true },
+                appMetadata: null,
+                labels: null,
+                installUrl: "https://example.test/connect/calendar",
+                isAccessible: false,
+                isEnabled: true,
+                pluginDisplayNames: ["Mock Plugin"]
+              }
+            ],
+            nextCursor: null
           };
         default:
           return {};
@@ -200,7 +335,7 @@ test("renders the workbench and tooling panels", async ({ page }) => {
   await page.getByRole("tab", { name: "Skills 1" }).click();
   await expect(page.getByText("mock-skill")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Plugins 1" }).click();
+  await page.getByRole("tab", { name: "Plugins 2" }).click();
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
 });
 
@@ -288,4 +423,49 @@ test("saves skill extra roots and previews local markdown", async ({ page }) => 
 
   await page.getByRole("button", { name: "Preview markdown" }).first().click();
   await expect(page.getByText("Local preview from Playwright.")).toBeVisible();
+});
+
+test("uses installed-only plugin mentions and shows plugin app auth state", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await page.getByRole("tab", { name: "Plugins 2" }).click();
+
+  const installedPicker = page.getByRole("combobox").last();
+  await expect(installedPicker).toHaveText(/Mock Plugin/);
+  await installedPicker.click();
+  await expect(page.getByRole("option", { name: "Mock Plugin" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Auth Plugin" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Auth Plugin" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Insert mention" }).click();
+  const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
+  await expect(composer).toHaveValue(/@mock-plugin/);
+  await page.getByRole("button", { name: "Send" }).focus();
+  await page.keyboard.press("Enter");
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { input?: Array<{ type?: string; path?: string }> } }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.input?.some((input) => input.type === "mention" && input.path === "plugin://mock-plugin@mock-market")
+    );
+  });
+
+  await page.getByRole("button", { name: "Details" }).first().click();
+  await expect(page.getByText("auth ON_USE")).toBeVisible();
+  await expect(page.getByText("Mock Calendar").first()).toBeVisible();
+  await expect(page.getByText("Calendar Template")).toBeVisible();
+
+  await page.getByRole("button", { name: "Install", exact: true }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { pluginName?: string } }> })
+      .__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "plugin/install" && message.params?.pluginName === "auth-plugin");
+  });
+  await expect(page.getByText("Authentication needed after install")).toBeVisible();
+  await expect(page.getByText("Auth Console")).toBeVisible();
 });

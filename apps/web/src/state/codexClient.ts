@@ -69,8 +69,44 @@ export type PluginEntry = {
   enabled: boolean;
   source: string;
   availability: string;
+  authPolicy: string;
+  installPolicy: string;
+  installPolicySource?: string;
+  category?: string;
+  developerName?: string;
+  websiteUrl?: string;
+  privacyPolicyUrl?: string;
+  termsOfServiceUrl?: string;
+  defaultPrompt: string[];
+  logoUrl?: string;
+  screenshotUrls: string[];
   capabilities: string[];
   keywords: string[];
+};
+
+export type PluginAppEntry = {
+  id: string;
+  name: string;
+  description?: string;
+  installUrl?: string;
+  category?: string;
+  isAccessible?: boolean;
+  isEnabled?: boolean;
+  pluginDisplayNames: string[];
+  logoUrl?: string;
+  developer?: string;
+  website?: string;
+};
+
+export type PluginAppTemplateEntry = {
+  templateId: string;
+  name: string;
+  description?: string;
+  category?: string;
+  canonicalConnectorId?: string;
+  logoUrl?: string;
+  materializedAppIds: string[];
+  reason?: string;
 };
 
 export type PluginDetailEntry = {
@@ -81,9 +117,15 @@ export type PluginDetailEntry = {
   shareUrl?: string;
   skills: Array<{ name: string; description?: string; enabled: boolean; path?: string; remoteReadable: boolean }>;
   hooks: Array<{ key: string; eventName: string }>;
-  apps: Array<{ id: string; name: string; description?: string }>;
+  apps: PluginAppEntry[];
+  appTemplates: PluginAppTemplateEntry[];
   mcpServers: string[];
   scheduledTaskCount?: number;
+};
+
+export type PluginInstallAuthNotice = {
+  authPolicy: string;
+  apps: PluginAppEntry[];
 };
 
 export type McpResourceContentEntry = {
@@ -111,6 +153,8 @@ export type ToolingState = {
   mcpServers: McpServerEntry[];
   skillGroups: SkillGroup[];
   pluginMarketplaces: PluginMarketplace[];
+  installedPluginMarketplaces: PluginMarketplace[];
+  apps: PluginAppEntry[];
   featuredPluginIds: string[];
   marketplaceErrors: string[];
 };
@@ -196,6 +240,8 @@ export const initialClientState: ClientState = {
     mcpServers: [],
     skillGroups: [],
     pluginMarketplaces: [],
+    installedPluginMarketplaces: [],
+    apps: [],
     featuredPluginIds: [],
     marketplaceErrors: []
   },
@@ -527,6 +573,17 @@ export function parsePluginMarketplaces(value: JsonValue): Pick<ToolingState, "p
   };
 }
 
+export function parseInstalledPluginMarketplaces(value: JsonValue): Pick<ToolingState, "installedPluginMarketplaces" | "marketplaceErrors"> {
+  const record = asRecord(value);
+  return {
+    installedPluginMarketplaces: asArray(record.marketplaces).map((marketplace) => marketplaceToEntry(asRecord(marketplace))),
+    marketplaceErrors: asArray(record.marketplaceLoadErrors).map((error) => {
+      const raw = asRecord(error);
+      return [stringValue(raw.marketplacePath), stringValue(raw.message)].filter(Boolean).join(": ") || "Installed plugin load failed";
+    })
+  };
+}
+
 export function parsePluginDetail(value: JsonValue): PluginDetailEntry | null {
   const detail = asRecord(asRecord(value).plugin);
   const summary = asRecord(detail.summary);
@@ -559,15 +616,40 @@ export function parsePluginDetail(value: JsonValue): PluginDetailEntry | null {
     }),
     apps: asArray(detail.apps).map((app) => {
       const raw = asRecord(app);
-      return {
-        id: stringValue(raw.id) ?? "app",
-        name: stringValue(raw.name) ?? "App",
-        description: stringValue(raw.description)
-      };
+      return appSummaryToEntry(raw);
     }),
+    appTemplates: asArray(detail.appTemplates).map((template) => appTemplateToEntry(asRecord(template))),
     mcpServers: asArray(detail.mcpServers).map(String),
     scheduledTaskCount: Array.isArray(detail.scheduledTasks) ? detail.scheduledTasks.length : undefined
   };
+}
+
+export function parsePluginInstallAuthNotice(value: JsonValue): PluginInstallAuthNotice {
+  const record = asRecord(value);
+  return {
+    authPolicy: stringValue(record.authPolicy) ?? "unknown",
+    apps: asArray(record.appsNeedingAuth).map((app) => appSummaryToEntry(asRecord(app)))
+  };
+}
+
+export function parseApps(value: JsonValue): PluginAppEntry[] {
+  return asArray(asRecord(value).data).map((app) => {
+    const raw = asRecord(app);
+    const branding = asRecord(raw.branding);
+    return {
+      id: stringValue(raw.id) ?? "app",
+      name: stringValue(raw.name) ?? "App",
+      description: stringValue(raw.description),
+      installUrl: stringValue(raw.installUrl),
+      category: stringValue(branding.category),
+      isAccessible: boolValue(raw.isAccessible),
+      isEnabled: boolValue(raw.isEnabled),
+      pluginDisplayNames: asArray(raw.pluginDisplayNames).map(String),
+      logoUrl: stringValue(raw.logoUrl) ?? stringValue(raw.logoUrlDark),
+      developer: stringValue(branding.developer),
+      website: stringValue(branding.website)
+    };
+  });
 }
 
 export function parseMcpResourceContents(value: JsonValue): McpResourceContentEntry[] {
@@ -678,8 +760,43 @@ function pluginToEntry(plugin: Record<string, unknown>): PluginEntry {
     enabled: boolValue(plugin.enabled) ?? false,
     source: sourceLabel(plugin.source),
     availability: stringValue(plugin.availability) ?? "unknown",
+    authPolicy: stringValue(plugin.authPolicy) ?? "unknown",
+    installPolicy: stringValue(plugin.installPolicy) ?? "unknown",
+    installPolicySource: stringValue(plugin.installPolicySource),
+    category: stringValue(pluginInterface.category),
+    developerName: stringValue(pluginInterface.developerName),
+    websiteUrl: stringValue(pluginInterface.websiteUrl),
+    privacyPolicyUrl: stringValue(pluginInterface.privacyPolicyUrl),
+    termsOfServiceUrl: stringValue(pluginInterface.termsOfServiceUrl),
+    defaultPrompt: asArray(pluginInterface.defaultPrompt).map(String),
+    logoUrl: stringValue(pluginInterface.logoUrl) ?? stringValue(pluginInterface.logoUrlDark) ?? stringValue(pluginInterface.composerIconUrl),
+    screenshotUrls: asArray(pluginInterface.screenshotUrls).map(String),
     capabilities: asArray(pluginInterface.capabilities).map(String),
     keywords: asArray(plugin.keywords).map(String)
+  };
+}
+
+function appSummaryToEntry(app: Record<string, unknown>): PluginAppEntry {
+  return {
+    id: stringValue(app.id) ?? "app",
+    name: stringValue(app.name) ?? "App",
+    description: stringValue(app.description),
+    installUrl: stringValue(app.installUrl),
+    category: stringValue(app.category),
+    pluginDisplayNames: []
+  };
+}
+
+function appTemplateToEntry(template: Record<string, unknown>): PluginAppTemplateEntry {
+  return {
+    templateId: stringValue(template.templateId) ?? "template",
+    name: stringValue(template.name) ?? "App template",
+    description: stringValue(template.description),
+    category: stringValue(template.category),
+    canonicalConnectorId: stringValue(template.canonicalConnectorId),
+    logoUrl: stringValue(template.logoUrl) ?? stringValue(template.logoUrlDark),
+    materializedAppIds: asArray(template.materializedAppIds).map(String),
+    reason: stringValue(template.reason)
   };
 }
 

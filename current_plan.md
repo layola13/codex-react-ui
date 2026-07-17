@@ -20,7 +20,7 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
    - provider/key management is implemented with keyring persistence and model alias resolution
    - MCP servers list/reload, OAuth login, resource preview, and direct tool-call forms are implemented
    - Skills list/enable/disable, extra roots, and local markdown preview are implemented
-   - Plugins list/install/uninstall, detail views, remote skill preview, and composer mentions are implemented; richer auth/app handling remains
+   - Plugins list/install/uninstall, installed-only mention picker, detail views, remote skill preview, app/auth handling, and composer mentions are implemented
    - file and terminal tools
 
 ## Engineering Rules
@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Implement plugin installed-only mention picker and richer plugin app/auth handling, with focused Playwright coverage.
+Implement Monaco-backed file explorer/editor using app-server filesystem APIs, with focused Playwright coverage.
