@@ -89,6 +89,8 @@ test.beforeEach(async ({ page }) => {
       }
     }
 
+    let skillExtraRoots: string[] = [];
+
     function rpcResult(method: string, params?: unknown): unknown {
       switch (method) {
         case "account/read":
@@ -144,7 +146,27 @@ test.beforeEach(async ({ page }) => {
           };
         case "skills/list":
           return {
-            data: [{ cwd: "/root/projects", skills: [{ name: "mock-skill", description: "Mock skill", path: "/tmp/mock/SKILL.md", scope: "user", enabled: true }], errors: [] }]
+            data: [
+              {
+                cwd: "/root/projects",
+                skills: [{ name: "mock-skill", description: "Mock skill", path: "/tmp/mock/SKILL.md", scope: "user", enabled: true }],
+                errors: []
+              },
+              ...skillExtraRoots.map((cwd) => ({
+                cwd,
+                skills: [{ name: "extra-skill", description: "Extra skill", path: `${cwd}/SKILL.md`, scope: "user", enabled: true }],
+                errors: []
+              }))
+            ]
+          };
+        case "skills/extraRoots/set":
+          skillExtraRoots = Array.isArray((params as { extraRoots?: string[] } | undefined)?.extraRoots)
+            ? ((params as { extraRoots?: string[] }).extraRoots ?? []).map(String)
+            : [];
+          return {};
+        case "fs/readFile":
+          return {
+            dataBase64: btoa("# Mock Skill\n\nLocal preview from Playwright.")
           };
         case "plugin/list":
           return {
@@ -229,4 +251,41 @@ test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
 
   await expect(page.getByText('"ok": true')).toBeVisible();
   await expect(page.getByText('"message": "from-playwright"')).toBeVisible();
+});
+
+test("saves skill extra roots and previews local markdown", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await page.getByRole("tab", { name: "Skills 1" }).click();
+
+  const extraRoots = page.getByLabel("Extra roots");
+  await extraRoots.fill("/root/projects/extra-skills\n/root/projects/more-skills");
+  await page.getByRole("button", { name: "Save roots" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { extraRoots?: string[] } }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "skills/extraRoots/set" &&
+        message.params?.extraRoots?.includes("/root/projects/extra-skills") &&
+        message.params?.extraRoots?.includes("/root/projects/more-skills")
+    );
+  });
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { cwds?: string[] } }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "skills/list" &&
+        message.params?.cwds?.includes("/root/projects/extra-skills") &&
+        message.params?.cwds?.includes("/root/projects/more-skills")
+    );
+  });
+
+  await page.getByRole("button", { name: "Preview markdown" }).first().click();
+  await expect(page.getByText("Local preview from Playwright.")).toBeVisible();
 });

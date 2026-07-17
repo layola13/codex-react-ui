@@ -48,6 +48,8 @@ type Props = {
   toolingLoading: boolean;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
+  skillExtraRoots: string[];
+  skillPreviews: Record<string, string>;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
@@ -59,6 +61,8 @@ type Props = {
   onReadMcpResource: (serverName: string, uri: string) => void;
   onCallMcpTool: (serverName: string, toolName: string, args: JsonValue) => Promise<JsonValue>;
   onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
+  onSaveSkillExtraRoots: (roots: string[]) => void;
+  onReadSkillPreview: (skill: SkillEntry) => void;
   onReadPluginDetail: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onReadPluginSkill: (marketplace: PluginMarketplace, plugin: PluginEntry, skillName: string) => void;
   onInsertPluginMention: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
@@ -76,6 +80,8 @@ export function RightInspector({
   toolingLoading,
   pluginDetails,
   pluginSkillPreviews,
+  skillExtraRoots,
+  skillPreviews,
   mcpResourceContents,
   mcpOauthUrls,
   onAnswerRequest,
@@ -87,6 +93,8 @@ export function RightInspector({
   onReadMcpResource,
   onCallMcpTool,
   onToggleSkill,
+  onSaveSkillExtraRoots,
+  onReadSkillPreview,
   onReadPluginDetail,
   onReadPluginSkill,
   onInsertPluginMention,
@@ -119,6 +127,8 @@ export function RightInspector({
             toolingLoading={toolingLoading}
             pluginDetails={pluginDetails}
             pluginSkillPreviews={pluginSkillPreviews}
+            skillExtraRoots={skillExtraRoots}
+            skillPreviews={skillPreviews}
             mcpResourceContents={mcpResourceContents}
             mcpOauthUrls={mcpOauthUrls}
             onAnswerRequest={onAnswerRequest}
@@ -128,6 +138,8 @@ export function RightInspector({
             onReadMcpResource={onReadMcpResource}
             onCallMcpTool={onCallMcpTool}
             onToggleSkill={onToggleSkill}
+            onSaveSkillExtraRoots={onSaveSkillExtraRoots}
+            onReadSkillPreview={onReadSkillPreview}
             onReadPluginDetail={onReadPluginDetail}
             onReadPluginSkill={onReadPluginSkill}
             onInsertPluginMention={onInsertPluginMention}
@@ -345,6 +357,13 @@ function parseCsv(value: string): string[] {
     .filter(Boolean);
 }
 
+function parseLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function parseAliases(value: string): ProviderConfig["modelAliases"] {
   return parseCsv(value)
     .map((entry) => {
@@ -387,6 +406,8 @@ function ToolsTab({
   toolingLoading,
   pluginDetails,
   pluginSkillPreviews,
+  skillExtraRoots,
+  skillPreviews,
   mcpResourceContents,
   mcpOauthUrls,
   onAnswerRequest,
@@ -396,6 +417,8 @@ function ToolsTab({
   onReadMcpResource,
   onCallMcpTool,
   onToggleSkill,
+  onSaveSkillExtraRoots,
+  onReadSkillPreview,
   onReadPluginDetail,
   onReadPluginSkill,
   onInsertPluginMention,
@@ -408,6 +431,8 @@ function ToolsTab({
   toolingLoading: boolean;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
+  skillExtraRoots: string[];
+  skillPreviews: Record<string, string>;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
   onAnswerRequest: Props["onAnswerRequest"];
@@ -417,6 +442,8 @@ function ToolsTab({
   onReadMcpResource: Props["onReadMcpResource"];
   onCallMcpTool: Props["onCallMcpTool"];
   onToggleSkill: Props["onToggleSkill"];
+  onSaveSkillExtraRoots: Props["onSaveSkillExtraRoots"];
+  onReadSkillPreview: Props["onReadSkillPreview"];
   onReadPluginDetail: Props["onReadPluginDetail"];
   onReadPluginSkill: Props["onReadPluginSkill"];
   onInsertPluginMention: Props["onInsertPluginMention"];
@@ -465,7 +492,16 @@ function ToolsTab({
           onCallMcpTool={onCallMcpTool}
         />
       )}
-      {toolTab === 1 && <SkillsPanel tooling={tooling} onToggleSkill={onToggleSkill} />}
+      {toolTab === 1 && (
+        <SkillsPanel
+          tooling={tooling}
+          extraRoots={skillExtraRoots}
+          previews={skillPreviews}
+          onToggleSkill={onToggleSkill}
+          onSaveExtraRoots={onSaveSkillExtraRoots}
+          onReadPreview={onReadSkillPreview}
+        />
+      )}
       {toolTab === 2 && (
         <PluginsPanel
           tooling={tooling}
@@ -723,9 +759,49 @@ function McpPanel({
   );
 }
 
-function SkillsPanel({ tooling, onToggleSkill }: { tooling: ToolingState; onToggleSkill: Props["onToggleSkill"] }) {
+function SkillsPanel({
+  tooling,
+  extraRoots,
+  previews,
+  onToggleSkill,
+  onSaveExtraRoots,
+  onReadPreview
+}: {
+  tooling: ToolingState;
+  extraRoots: string[];
+  previews: Record<string, string>;
+  onToggleSkill: Props["onToggleSkill"];
+  onSaveExtraRoots: (roots: string[]) => void;
+  onReadPreview: (skill: SkillEntry) => void;
+}) {
+  const [extraRootsText, setExtraRootsText] = useState(extraRoots.join("\n"));
+
   return (
     <Stack spacing={1}>
+      <Paper variant="outlined" sx={{ p: 1.25 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
+          Skill roots
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Add one extra root per line. These roots are sent to `skills/extraRoots/set` and then reloaded into the inventory.
+        </Typography>
+        <TextField
+          sx={{ mt: 1 }}
+          size="small"
+          fullWidth
+          multiline
+          minRows={3}
+          label="Extra roots"
+          value={extraRootsText}
+          onChange={(event) => setExtraRootsText(event.target.value)}
+        />
+        <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+          <Button size="small" variant="contained" startIcon={<SaveIcon />} onClick={() => onSaveExtraRoots(parseLines(extraRootsText))}>
+            Save roots
+          </Button>
+          <Chip size="small" label={`${extraRoots.length} saved`} />
+        </Stack>
+      </Paper>
       {tooling.skillGroups.length === 0 && <Typography color="text.secondary">No skills discovered.</Typography>}
       {tooling.skillGroups.map((group) => (
         <Paper key={group.cwd} variant="outlined" sx={{ p: 1.25 }}>
@@ -761,6 +837,18 @@ function SkillsPanel({ tooling, onToggleSkill }: { tooling: ToolingState; onTogg
                     label={skill.enabled ? "Enabled" : "Disabled"}
                   />
                 </Stack>
+                {skill.path && (
+                  <Stack spacing={0.75} sx={{ mt: 1 }}>
+                    <Button size="small" onClick={() => onReadPreview(skill)}>
+                      Preview markdown
+                    </Button>
+                    {previews[skill.path] && (
+                      <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", m: 0, maxHeight: 240, overflow: "auto" }}>
+                        {previews[skill.path]}
+                      </Typography>
+                    )}
+                  </Stack>
+                )}
               </Box>
             ))}
           </Stack>

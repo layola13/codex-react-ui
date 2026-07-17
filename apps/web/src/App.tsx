@@ -129,6 +129,8 @@ export function App() {
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
   const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
+  const [skillExtraRoots, setSkillExtraRoots] = useState<string[]>([]);
+  const [skillPreviews, setSkillPreviews] = useState<Record<string, string>>({});
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
@@ -175,11 +177,13 @@ export function App() {
   }, [client]);
 
   const loadTooling = useCallback(
-    async (options?: { forceSkillReload?: boolean }) => {
+    async (options?: { forceSkillReload?: boolean; skillExtraRoots?: string[] }) => {
       dispatch({ type: "toolingLoading", loading: true });
+      const effectiveSkillExtraRoots = options?.skillExtraRoots ?? skillExtraRoots;
+      const skillCwds = [cwd, ...effectiveSkillExtraRoots].filter((entry, index, entries) => entry && entries.indexOf(entry) === index);
       const [mcpResult, skillResult, pluginResult] = await Promise.allSettled([
         client.rpc("mcpServerStatus/list", { detail: "full" }),
-        client.rpc("skills/list", { cwds: [cwd], forceReload: options?.forceSkillReload ?? false }),
+        client.rpc("skills/list", { cwds: skillCwds, forceReload: options?.forceSkillReload ?? false }),
         client.rpc("plugin/list", {
           cwds: [cwd],
           marketplaceKinds: ["local", "workspace-directory", "vertical", "shared-with-me", "created-by-me-remote"]
@@ -218,7 +222,7 @@ export function App() {
         dispatch({ type: "error", message });
       }
     },
-    [client, cwd]
+    [client, cwd, skillExtraRoots]
   );
 
   useEffect(() => {
@@ -411,6 +415,40 @@ export function App() {
       }
     },
     [client, loadTooling]
+  );
+
+  const saveSkillExtraRoots = useCallback(
+    async (roots: string[]) => {
+      const normalized = roots.map((entry) => entry.trim()).filter(Boolean);
+      try {
+        await client.rpc("skills/extraRoots/set", { extraRoots: normalized });
+        setSkillExtraRoots(normalized);
+        await loadTooling({ forceSkillReload: true, skillExtraRoots: normalized });
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client, loadTooling]
+  );
+
+  const readSkillPreview = useCallback(
+    async (skill: SkillEntry) => {
+      if (!skill.path) {
+        dispatch({ type: "error", message: `Skill ${skill.name} does not expose a local path` });
+        return;
+      }
+      try {
+        const result = await client.rpc("fs/readFile", { path: skill.path });
+        const dataBase64 = asRecord(result).dataBase64;
+        setSkillPreviews((current) => ({
+          ...current,
+          [skill.path]: typeof dataBase64 === "string" ? decodeBase64Text(dataBase64) : "No preview available"
+        }));
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
   );
 
   const installPlugin = useCallback(
@@ -611,6 +649,8 @@ export function App() {
           toolingLoading={state.toolingLoading}
           pluginDetails={pluginDetails}
           pluginSkillPreviews={pluginSkillPreviews}
+          skillExtraRoots={skillExtraRoots}
+          skillPreviews={skillPreviews}
           mcpResourceContents={mcpResourceContents}
           mcpOauthUrls={mcpOauthUrls}
           onAnswerRequest={answerRequest}
@@ -622,6 +662,8 @@ export function App() {
           onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
           onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
           onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
+          onSaveSkillExtraRoots={(roots) => void saveSkillExtraRoots(roots)}
+          onReadSkillPreview={(skill) => void readSkillPreview(skill)}
           onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
           onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
           onInsertPluginMention={insertPluginMention}
@@ -700,4 +742,10 @@ function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: str
     model = next;
   }
   return model;
+}
+
+function decodeBase64Text(value: string): string {
+  const binary = window.atob(value);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }

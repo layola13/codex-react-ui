@@ -45,9 +45,12 @@
   - `RESPONSES_BASE_URL/responses` returned HTTP 200 with a POST body using `DEFAULT_MODEL`.
   - `CHAT_BASE_URL/models` returned HTTP 200.
   - `CHAT_BASE_URL/chat/completions` returned HTTP 200 with a POST body using `DEFAULT_MODEL`.
+- Added Skills extra roots management backed by `skills/extraRoots/set`, with reloaded `skills/list` inventory across the workspace and saved extra roots.
+- Added local skill Markdown preview using `fs/readFile` and client-side base64 decoding.
+- Added focused Playwright coverage for saving extra skill roots and previewing local skill Markdown.
 
 ## Known Gaps
 
-- MCP direct tool-call forms, local skill markdown preview/extra roots, richer plugin auth/app handling, Monaco editor, and terminal surfaces still need full implementation.
+- Richer plugin auth/app handling, Monaco editor, and terminal surfaces still need full implementation.
 - Playwright smoke coverage exists, but browser screenshot regression is not yet added.
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
