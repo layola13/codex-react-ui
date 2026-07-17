@@ -630,3 +630,23 @@ test("runs terminal commands with stdin resize and terminate controls", async ({
   });
   await expect(page.getByText("terminated 143")).toBeVisible();
 });
+
+test("matches desktop and mobile workbench screenshots", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Tools" }).click();
+  await page.getByRole("tab", { name: "Plugins 2" }).click();
+  await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
+  await expect(page).toHaveScreenshot("workbench-desktop.png", {
+    animations: "disabled",
+    fullPage: false
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Conversations" })).toBeVisible();
+  await expect(page).toHaveScreenshot("workbench-mobile.png", {
+    animations: "disabled",
+    fullPage: false
+  });
+});

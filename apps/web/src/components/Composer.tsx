@@ -167,26 +167,43 @@ export function Composer({
             ))}
           </Stack>
         )}
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Tooltip title="Attach images to this turn.">
-            <span>
-              <Button size="small" startIcon={<ImageIcon />} disabled={disabled} onClick={() => fileInputRef.current?.click()}>
-                Image
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(event) => {
-                  void addImages(event.currentTarget.files);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </span>
-          </Tooltip>
-          <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} spacing={1}>
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: { sm: "0 0 auto" } }}>
+            <Tooltip title="Attach images to this turn.">
+              <span>
+                <Button size="small" startIcon={<ImageIcon />} disabled={disabled} onClick={() => fileInputRef.current?.click()}>
+                  Image
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  hidden
+                  onChange={(event) => {
+                    void addImages(event.currentTarget.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </span>
+            </Tooltip>
+            <Box sx={{ flex: 1, display: { xs: "block", sm: "none" } }} />
+            <Button
+              variant="contained"
+              endIcon={<SendIcon />}
+              disabled={disabled || !hasContent || dangerBlocked}
+              onClick={() => {
+                onSend(text, images, mentions);
+                setText("");
+                setImages([]);
+                setMentions([]);
+              }}
+              sx={{ display: { xs: "inline-flex", sm: "none" } }}
+            >
+              Send
+            </Button>
+          </Stack>
+          <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
             {selectedPreset?.description}
           </Typography>
           <Button
@@ -199,6 +216,7 @@ export function Composer({
               setImages([]);
               setMentions([]);
             }}
+            sx={{ display: { xs: "none", sm: "inline-flex" } }}
           >
             Send
           </Button>

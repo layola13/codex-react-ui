@@ -140,7 +140,17 @@ export function RightInspector({
 }: Props) {
   const [tab, setTab] = useState(0);
   return (
-    <Box sx={{ borderLeft: "1px solid", borderColor: "divider", minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
+    <Box
+      sx={{
+        borderLeft: { xs: 0, md: "1px solid" },
+        borderTop: { xs: "1px solid", md: 0 },
+        borderColor: "divider",
+        minWidth: 0,
+        minHeight: 0,
+        display: "grid",
+        gridTemplateRows: { xs: "auto auto", md: "auto minmax(0, 1fr)" }
+      }}
+    >
       <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
         <Tab label="Config" />
         <Tab label="Tools" />

@@ -28,7 +28,7 @@
 - [x] Add plugin installed-only mention picker and richer plugin app/auth handling.
 - [x] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
 - [x] Add terminal/process controls for command execution and PTY interaction.
-- [ ] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
+- [x] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
 
 ## Later
 

@@ -798,8 +798,10 @@ export function App() {
             md: "300px minmax(0, 1fr) 390px",
             xl: "330px minmax(0, 1fr) 440px"
           },
+          gridAutoRows: { xs: "max-content", md: "auto" },
+          alignContent: { xs: "start", md: "stretch" },
           gap: 0,
-          overflow: "hidden"
+          overflow: { xs: "auto", md: "hidden" }
         }}
       >
         <HistorySidebar
@@ -808,7 +810,14 @@ export function App() {
           onSelect={(threadId) => void loadThread(threadId)}
           onNew={() => dispatch({ type: "activeThread", threadId: null })}
         />
-        <Box sx={{ minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "minmax(0, 1fr) auto" }}>
+        <Box
+          sx={{
+            minWidth: 0,
+            minHeight: 0,
+            display: "grid",
+            gridTemplateRows: { xs: "auto auto auto", md: "minmax(0, 1fr) auto" }
+          }}
+        >
           {state.engine.phase === "starting" && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
               <CircularProgress size={18} />

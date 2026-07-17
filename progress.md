@@ -55,8 +55,8 @@
 - Added focused Playwright coverage for browsing a mocked filesystem, opening a file in Monaco, editing it, and saving through `fs/writeFile`.
 - Added terminal/process controls in the Files tab using PTY-backed `command/exec`, streamed `command/exec/outputDelta`, stdin writes, resize, and terminate RPCs.
 - Added focused Playwright coverage for command execution, streamed terminal output, stdin write, resize, and terminate controls.
+- Added desktop and mobile Playwright screenshot regression checks with committed baseline snapshots.
 
 ## Known Gaps
 
-- Playwright smoke coverage exists, but browser screenshot regression is not yet added.
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
