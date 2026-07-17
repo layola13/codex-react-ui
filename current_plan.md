@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Add stronger audit logging for dangerous permission sessions.
+Run completion verification against the task list and keep hardening based on any gaps found.

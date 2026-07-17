@@ -34,9 +34,24 @@ const importedProvider = {
 };
 
 let providerApiList = [mockProvider];
+let auditApiEvents: Array<{
+  id: string;
+  createdAt: number;
+  method: "thread/start" | "turn/start";
+  severity: "warning" | "critical";
+  reasons: string[];
+  cwd?: string;
+  threadId?: string;
+  model?: string;
+  approvalPolicy?: string;
+  sandbox?: string;
+  sandboxPolicyType?: string;
+  inputSummary?: { items: number; textItems: number; imageItems: number; mentionItems: number };
+}> = [];
 
 test.beforeEach(async ({ page }) => {
   providerApiList = [mockProvider];
+  auditApiEvents = [];
 
   await page.addInitScript(() => {
     const outbound = ((window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound = []);
@@ -448,6 +463,7 @@ test.beforeEach(async ({ page }) => {
     ];
     await route.fulfill({ json: { importedProviders: imported.length, providers: providerApiList } });
   });
+  await page.route("/api/audit/events", (route) => route.fulfill({ json: { data: auditApiEvents } }));
 });
 
 test("renders the workbench and tooling panels", async ({ page }) => {
@@ -547,6 +563,31 @@ test("exports and imports UI profiles without API keys", async ({ page }) => {
   await expect(page.getByText("Imported 1 providers.")).toBeVisible();
   await expect(page.getByText("Imported Relay")).toBeVisible();
   await expect(page.getByText("https://relay.example.test/v1")).toBeVisible();
+});
+
+test("shows dangerous permission audit records", async ({ page }) => {
+  auditApiEvents = [
+    {
+      id: "audit-1",
+      createdAt: 123456789,
+      method: "turn/start",
+      severity: "critical",
+      reasons: ["approvalPolicy=never", "sandboxPolicy=dangerFullAccess"],
+      cwd: "/root/projects",
+      threadId: "thread-1",
+      model: "grok-4.5",
+      approvalPolicy: "never",
+      sandboxPolicyType: "dangerFullAccess",
+      inputSummary: { items: 1, textItems: 1, imageItems: 0, mentionItems: 0 }
+    }
+  ];
+
+  await page.goto("/");
+
+  await expect(page.getByText("Dangerous permission audit")).toBeVisible();
+  await expect(page.getByText("critical")).toBeVisible();
+  await expect(page.getByText(/approvalPolicy=never/)).toBeVisible();
+  await expect(page.getByText(/input 1 items/)).toBeVisible();
 });
 
 test("saves skill extra roots and previews local markdown", async ({ page }) => {

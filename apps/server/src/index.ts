@@ -16,11 +16,13 @@ import {
 } from "@codex-ui/shared";
 import { CodexBridge } from "./codexBridge.js";
 import { ProviderStore } from "./providerStore.js";
+import { AuditLogStore } from "./auditLogStore.js";
 
 const PORT = Number(process.env.CODEX_UI_PORT ?? 43110);
 const HOST = "127.0.0.1";
 const sessionToken = process.env.CODEX_UI_TOKEN ?? randomBytes(24).toString("base64url");
 const providerStore = new ProviderStore();
+const auditLogStore = new AuditLogStore();
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
 const clients = new Set<WebSocket>();
 
@@ -65,6 +67,7 @@ app.post("/api/profile/import", async (request, reply) => {
     return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
   }
 });
+app.get("/api/audit/events", async () => ({ data: await auditLogStore.list() }));
 
 app.get("/ws", { websocket: true }, (socket) => {
   const ws = socket as WebSocket;
@@ -132,6 +135,11 @@ async function handleClientMessage(ws: WebSocket, message: ClientToServerMessage
   switch (message.type) {
     case "rpc": {
       try {
+        try {
+          await auditLogStore.recordDangerousPermission(message.method, message.params);
+        } catch (error) {
+          app.log.warn({ error, method: message.method }, "Failed to write dangerous permission audit event");
+        }
         const result = await bridge.request(message.method, message.params);
         send(ws, { type: "rpc.result", id: message.id, result });
       } catch (error) {

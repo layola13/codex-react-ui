@@ -32,7 +32,7 @@ import SecurityIcon from "@mui/icons-material/Security";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
-import type { JsonValue, ProviderConfig } from "@codex-ui/shared";
+import type { DangerousPermissionAuditEvent, JsonValue, ProviderConfig } from "@codex-ui/shared";
 import type {
   ModelEntry,
   McpResourceContentEntry,
@@ -69,11 +69,13 @@ type Props = {
   fileDirectories: Record<string, FsDirectoryEntry[]>;
   openFile: { path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null;
   terminalSessions: TerminalSession[];
+  auditEvents: DangerousPermissionAuditEvent[];
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
   onExportProfile: () => Promise<void>;
   onImportProfile: (file: File) => Promise<number>;
+  onReloadAuditEvents: () => Promise<void>;
   onReloadTooling: () => void;
   onReloadMcp: () => void;
   onStartMcpOauth: (serverName: string) => void;
@@ -116,11 +118,13 @@ export function RightInspector({
   fileDirectories,
   openFile,
   terminalSessions,
+  auditEvents,
   onAnswerRequest,
   onSaveProvider,
   onActivateProvider,
   onExportProfile,
   onImportProfile,
+  onReloadAuditEvents,
   onReloadTooling,
   onReloadMcp,
   onStartMcpOauth,
@@ -171,6 +175,8 @@ export function RightInspector({
             onActivateProvider={onActivateProvider}
             onExportProfile={onExportProfile}
             onImportProfile={onImportProfile}
+            auditEvents={auditEvents}
+            onReloadAuditEvents={onReloadAuditEvents}
           />
         )}
         {tab === 1 && (
@@ -230,7 +236,9 @@ function ConfigTab({
   onSaveProvider,
   onActivateProvider,
   onExportProfile,
-  onImportProfile
+  onImportProfile,
+  auditEvents,
+  onReloadAuditEvents
 }: {
   account: JsonValue | null;
   models: ModelEntry[];
@@ -239,6 +247,8 @@ function ConfigTab({
   onActivateProvider: (providerId: string, model?: string) => void;
   onExportProfile: () => Promise<void>;
   onImportProfile: (file: File) => Promise<number>;
+  auditEvents: DangerousPermissionAuditEvent[];
+  onReloadAuditEvents: () => Promise<void>;
 }) {
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
 
@@ -256,6 +266,7 @@ function ConfigTab({
         </Typography>
       </Paper>
       <ProfilePanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
+      <AuditPanel events={auditEvents} onReload={onReloadAuditEvents} />
       <ProviderForm models={models} onSaveProvider={onSaveProvider} />
       <Paper variant="outlined" sx={{ p: 1.5 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 750, mb: 1 }}>
@@ -314,6 +325,66 @@ function ConfigTab({
       </Paper>
     </Stack>
   );
+}
+
+function AuditPanel({
+  events,
+  onReload
+}: {
+  events: DangerousPermissionAuditEvent[];
+  onReload: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+        <SecurityIcon fontSize="small" color={events.length ? "warning" : "inherit"} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
+          Dangerous permission audit
+        </Typography>
+        <Chip size="small" label={events.length} color={events.length ? "warning" : "default"} />
+        <Button
+          size="small"
+          startIcon={<RefreshIcon />}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onReload();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Refresh
+        </Button>
+      </Stack>
+      {events.length === 0 && <Typography color="text.secondary">No dangerous permission sessions recorded.</Typography>}
+      <Stack spacing={1}>
+        {events.slice(0, 5).map((event) => (
+          <Box key={event.id} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip size="small" color={event.severity === "critical" ? "error" : "warning"} label={event.severity} />
+              <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                {event.method} {event.model ? `- ${event.model}` : ""}
+              </Typography>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, overflowWrap: "anywhere" }}>
+              {formatAuditTime(event.createdAt)} {event.cwd ? `- ${event.cwd}` : ""} {event.threadId ? `- ${event.threadId}` : ""}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+              {event.reasons.join(", ")}
+              {event.inputSummary ? ` - input ${event.inputSummary.items} items (${event.inputSummary.textItems} text, ${event.inputSummary.imageItems} images, ${event.inputSummary.mentionItems} mentions)` : ""}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Paper>
+  );
+}
+
+function formatAuditTime(value: number): string {
+  return new Date(value).toLocaleString();
 }
 
 function ProfilePanel({

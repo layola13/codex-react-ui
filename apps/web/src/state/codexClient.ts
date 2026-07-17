@@ -5,6 +5,7 @@ import {
   type JsonRpcNotification,
   type JsonRpcRequest,
   type JsonValue,
+  type DangerousPermissionAuditEvent,
   type ProviderActivation,
   type ProviderConfig,
   type ServerToClientMessage,
@@ -418,6 +419,17 @@ export async function importProfile(token: string, profile: UiProfile): Promise<
     throw new Error(`Failed to import profile: ${response.status}`);
   }
   return (await response.json()) as UiProfileImportResult;
+}
+
+export async function fetchAuditEvents(token: string): Promise<DangerousPermissionAuditEvent[]> {
+  const response = await fetch("/api/audit/events", {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to read audit events: ${response.status}`);
+  }
+  const body = (await response.json()) as { data?: DangerousPermissionAuditEvent[] };
+  return body.data ?? [];
 }
 
 export function applyNotification(state: ClientState, notification: JsonRpcNotification): ClientState {

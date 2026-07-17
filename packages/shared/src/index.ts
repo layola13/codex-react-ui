@@ -191,6 +191,26 @@ export interface UiProfileImportResult {
   providers: ProviderConfig[];
 }
 
+export interface DangerousPermissionAuditEvent {
+  id: string;
+  createdAt: number;
+  method: "thread/start" | "turn/start";
+  severity: "warning" | "critical";
+  reasons: string[];
+  cwd?: string;
+  threadId?: string;
+  model?: string;
+  approvalPolicy?: string;
+  sandbox?: string;
+  sandboxPolicyType?: string;
+  inputSummary?: {
+    items: number;
+    textItems: number;
+    imageItems: number;
+    mentionItems: number;
+  };
+}
+
 export interface ThreadSummary {
   id: string;
   preview?: string;

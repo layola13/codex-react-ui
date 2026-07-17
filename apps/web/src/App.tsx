@@ -15,6 +15,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import {
   permissionToTurnOverrides,
+  type DangerousPermissionAuditEvent,
   type JsonValue,
   type PermissionPresetId,
   type ProviderConfig,
@@ -25,6 +26,7 @@ import {
   applyNotification,
   composerInputToUserInput,
   exportProfile,
+  fetchAuditEvents,
   fetchProviders,
   fetchSessionToken,
   importProfile,
@@ -144,6 +146,7 @@ export function App() {
   const [fileDirectories, setFileDirectories] = useState<Record<string, FsDirectoryEntry[]>>({});
   const [openFile, setOpenFile] = useState<{ path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null>(null);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [auditEvents, setAuditEvents] = useState<DangerousPermissionAuditEvent[]>([]);
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
@@ -362,6 +365,23 @@ export function App() {
     [client]
   );
 
+  const loadAuditEvents = useCallback(async () => {
+    if (!state.token) {
+      return;
+    }
+    try {
+      setAuditEvents(await fetchAuditEvents(state.token));
+    } catch (error) {
+      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+    }
+  }, [state.token]);
+
+  useEffect(() => {
+    if (state.token) {
+      void loadAuditEvents();
+    }
+  }, [loadAuditEvents, state.token]);
+
   const sendPrompt = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
       const input = composerInputToUserInput(text, images, mentions);
@@ -401,11 +421,14 @@ export function App() {
           turnParams.model = effectiveModel;
         }
         await client.rpc("turn/start", turnParams);
+        if (permission === "dangerBypass") {
+          await loadAuditEvents();
+        }
       } catch (error) {
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [activeProviderId, client, cwd, permission, selectedModel, state.activeThreadId, state.providers]
+    [activeProviderId, client, cwd, loadAuditEvents, permission, selectedModel, state.activeThreadId, state.providers]
   );
 
   const answerRequest = useCallback(
@@ -902,11 +925,13 @@ export function App() {
           fileDirectories={fileDirectories}
           openFile={openFile}
           terminalSessions={terminalSessions}
+          auditEvents={auditEvents}
           onAnswerRequest={answerRequest}
           onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
           onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
           onExportProfile={() => downloadProfile()}
           onImportProfile={(file) => uploadProfile(file)}
+          onReloadAuditEvents={() => loadAuditEvents()}
           onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
           onReloadMcp={() => void reloadMcp()}
           onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}

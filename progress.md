@@ -58,6 +58,7 @@
 - Added desktop and mobile Playwright screenshot regression checks with committed baseline snapshots.
 - Added `pnpm launch` one-command production-style launcher that builds missing assets and starts the local token-protected Node server serving the web UI.
 - Added UI profile import/export for provider metadata without API keys, with merge import preserving existing local credential state.
+- Added local JSONL audit logging for dangerous permission `thread/start` and `turn/start` calls, plus Config-tab visibility for recent audit records.
 
 ## Known Gaps
 
