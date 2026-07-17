@@ -65,6 +65,12 @@
 - Added UI profile import/export for provider metadata without API keys, with merge import preserving existing local credential state.
 - Added local JSONL audit logging for dangerous permission `thread/start` and `turn/start` calls, plus Config-tab visibility for recent audit records.
 
+- Settings drawer now loads live Codex user config via `config/read` and persists curated fields through `config/batchWrite` with `reloadUserConfig` (model defaults, reasoning effort/summary, verbosity, approval policy, sandbox mode, web search).
+- Theme plugins remain local-only (install/switch/remove); never written into Codex config.toml; provider API keys stay out of config writes.
+- Desktop workbench panels stay resizable with localStorage layout persistence.
+- Playwright e2e covers Settings config load/edit/re-read and theme independence; screenshot `snapshot/codex-ui-settings-open.png`.
+
 ## Known Gaps
 
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
+- Full nested Codex config.toml editor remains out of scope; Settings exposes a curated writable subset.

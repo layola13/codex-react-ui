@@ -1,19 +1,22 @@
 import { alpha, createTheme } from "@mui/material/styles";
 
-export type ThemeId = "official-light" | "official-black" | "dream-rose" | "studio-black-gold" | "glass-blue";
+export type BuiltinThemeId = "official-light" | "official-black" | "dream-rose" | "studio-black-gold" | "glass-blue";
+export type ThemeId = BuiltinThemeId | (string & {});
 export type ThemeMode = ThemeId;
 
 export type ThemePlugin = {
   id: ThemeId;
   name: string;
   description: string;
-  source: "official" | "local-plugin" | "customer-slot";
+  source: "official" | "local-plugin" | "customer-slot" | "user-defined";
   installedByDefault: boolean;
   preview: {
     primary: string;
     secondary: string;
     background: string;
   };
+  /** Optional full palette override for user-defined plugins. */
+  dark?: boolean;
 };
 
 const grey = {
@@ -89,8 +92,8 @@ export const themePlugins: ThemePlugin[] = [
   }
 ];
 
-export function createCodexTheme(mode: ThemeMode) {
-  const palette = themePalette(mode);
+export function createCodexTheme(mode: ThemeMode, customPlugins: ThemePlugin[] = []) {
+  const palette = themePalette(mode, customPlugins);
   const divider = alpha(palette.dividerBase, palette.dark ? 0.14 : 0.24);
 
   return createTheme({
@@ -285,11 +288,79 @@ export function installedThemePluginDefaults(): ThemeId[] {
   return themePlugins.filter((plugin) => plugin.installedByDefault).map((plugin) => plugin.id);
 }
 
-export function isThemeId(value: string | null): value is ThemeId {
+export function isThemeId(value: string | null, customPlugins: ThemePlugin[] = []): value is ThemeId {
+  if (!value) {
+    return false;
+  }
+  if (themePlugins.some((plugin) => plugin.id === value)) {
+    return true;
+  }
+  return customPlugins.some((plugin) => plugin.id === value);
+}
+
+export function isBuiltinThemeId(value: string | null): value is BuiltinThemeId {
   return Boolean(value && themePlugins.some((plugin) => plugin.id === value));
 }
 
-function themePalette(mode: ThemeMode): ThemePalette {
+function mix(color: string, target: string, amount: number): string {
+  const from = parseHex(color);
+  const to = parseHex(target);
+  if (!from || !to) {
+    return color;
+  }
+  const mixChannel = (a: number, b: number) => Math.round(a + (b - a) * amount);
+  return `#${[mixChannel(from[0], to[0]), mixChannel(from[1], to[1]), mixChannel(from[2], to[2])]
+    .map((channel) => channel.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function parseHex(value: string): [number, number, number] | null {
+  const raw = value.trim().replace("#", "");
+  if (raw.length === 3) {
+    const expanded = raw.split("").map((part) => parseInt(part + part, 16));
+    return expanded.length === 3 ? [expanded[0], expanded[1], expanded[2]] : null;
+  }
+  if (raw.length !== 6) {
+    return null;
+  }
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  if ([r, g, b].some((channel) => Number.isNaN(channel))) {
+    return null;
+  }
+  return [r, g, b];
+}
+
+function themePaletteFromPlugin(plugin: ThemePlugin): ThemePalette {
+  const dark = Boolean(plugin.dark);
+  const primary = plugin.preview.primary;
+  const secondary = plugin.preview.secondary;
+  const background = plugin.preview.background;
+  return {
+    dark,
+    primary,
+    primaryLight: mix(primary, "#FFFFFF", 0.35),
+    primaryDark: mix(primary, "#000000", 0.28),
+    secondary,
+    secondaryLight: mix(secondary, "#FFFFFF", 0.32),
+    secondaryDark: mix(secondary, "#000000", 0.28),
+    defaultBg: background,
+    paper: dark ? mix(background, "#FFFFFF", 0.08) : "#FFFFFF",
+    panel: dark ? mix(background, "#FFFFFF", 0.05) : mix(background, "#FFFFFF", 0.55),
+    textPrimary: dark ? "#F9FAFB" : "#1C252E",
+    textSecondary: dark ? "#A8B3BF" : "#637381",
+    dividerBase: dark ? "#FFFFFF" : "#919EAB",
+    contrastText: dark ? "#0B1220" : "#FFFFFF"
+  };
+}
+
+function themePalette(mode: ThemeMode, customPlugins: ThemePlugin[] = []): ThemePalette {
+  const custom = customPlugins.find((plugin) => plugin.id === mode);
+  if (custom) {
+    return themePaletteFromPlugin(custom);
+  }
+
   switch (mode) {
     case "official-black":
       return {

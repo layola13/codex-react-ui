@@ -187,6 +187,16 @@ test.beforeEach(async ({ page }) => {
       "/root/projects/README.md": "# Mock Project\n\nEditable from Playwright.\n",
       "/root/projects/src/App.tsx": "export const value = 1;\n"
     };
+    const engineConfig: Record<string, unknown> = {
+      model: "gpt-5.6-sol",
+      model_provider: "openai",
+      model_reasoning_effort: "medium",
+      model_reasoning_summary: "auto",
+      model_verbosity: "medium",
+      approval_policy: "on-request",
+      sandbox_mode: "workspace-write",
+      web_search: "cached"
+    };
     const installedPlugin = {
       id: "mock-plugin@mock-market",
       remotePluginId: "remote-mock",
@@ -266,6 +276,31 @@ test.beforeEach(async ({ page }) => {
       switch (method) {
         case "account/read":
           return { authMode: "mock" };
+        case "config/read":
+          return {
+            config: { ...engineConfig },
+            origins: {},
+            layers: null
+          };
+        case "config/value/write": {
+          const writeParams = params as { keyPath?: string; value?: unknown } | undefined;
+          if (writeParams?.keyPath) {
+            engineConfig[writeParams.keyPath] = writeParams.value;
+          }
+          return {};
+        }
+        case "config/batchWrite": {
+          const batchParams = params as {
+            edits?: Array<{ keyPath?: string; value?: unknown }>;
+            reloadUserConfig?: boolean;
+          } | undefined;
+          for (const edit of batchParams?.edits ?? []) {
+            if (edit.keyPath) {
+              engineConfig[edit.keyPath] = edit.value;
+            }
+          }
+          return { reloaded: Boolean(batchParams?.reloadUserConfig) };
+        }
         case "model/list":
           return {
             data: [
@@ -516,6 +551,9 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
 
   await page.getByLabel("Open settings").click();
   await expect(page.getByText("Appearance")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Codex Engine Config" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("Medium");
+  await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Cached");
   await expect(page.getByRole("switch", { name: "Enabled" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Install" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Install" }).first().click();
@@ -536,6 +574,106 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { effort?: string } }> })
       .__codexUiOutbound;
     return messages?.some((message) => message.type === "rpc" && message.method === "turn/start" && message.params?.effort === "high");
+  });
+});
+
+test("loads live Codex config in Settings and persists edits via config/batchWrite", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("mock-codex")).toBeVisible();
+
+  await page.getByLabel("Open settings").click();
+  await expect(page.getByRole("heading", { name: "Codex Engine Config" })).toBeVisible();
+  await expect(page.getByLabel("Default model")).toHaveValue("gpt-5.6-sol");
+  await expect(page.getByLabel("Model provider")).toHaveValue("openai");
+  await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("Medium");
+  await expect(page.getByRole("combobox", { name: "Sandbox mode" })).toContainText("Workspace write");
+  await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Cached");
+  await expect(page.getByText("config/read", { exact: true })).toBeVisible();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string }> }).__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "config/read");
+  });
+
+  await page.getByRole("combobox", { name: "Default reasoning effort" }).click();
+  await page.getByRole("option", { name: "High", exact: true }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: {
+            edits?: Array<{ keyPath?: string; value?: unknown }>;
+            reloadUserConfig?: boolean;
+          };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "config/batchWrite" &&
+        message.params?.reloadUserConfig === true &&
+        message.params?.edits?.some((edit) => edit.keyPath === "model_reasoning_effort" && edit.value === "high")
+    );
+  });
+
+  await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("High");
+
+  await page.getByRole("combobox", { name: "Web search" }).click();
+  await page.getByRole("option", { name: "Live" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { edits?: Array<{ keyPath?: string; value?: unknown }> };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "config/batchWrite" &&
+        message.params?.edits?.some((edit) => edit.keyPath === "web_search" && edit.value === "live")
+    );
+  });
+
+  await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Live");
+
+  // Theme remains independent of config writes.
+  await page.getByLabel("Skin theme").click();
+  await page.getByRole("option", { name: "Official Black" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
+
+  const outbound = await page.evaluate(() => {
+    return (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: unknown }> }).__codexUiOutbound ?? [];
+  });
+  const themeLeakedIntoConfig = outbound.some((message) => {
+    if (message.type !== "rpc" || (message.method !== "config/batchWrite" && message.method !== "config/value/write")) {
+      return false;
+    }
+    const raw = JSON.stringify(message.params ?? {});
+    return raw.includes("theme") || raw.includes("official-black") || raw.includes("apiKey") || raw.includes("api_key");
+  });
+  expect(themeLeakedIntoConfig).toBe(false);
+
+  await page.getByRole("button", { name: "Reload Codex config" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string }> }).__codexUiOutbound ?? [];
+    return messages.filter((message) => message.type === "rpc" && message.method === "config/read").length >= 2;
+  });
+  await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("High");
+  await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Live");
+
+  // Visual proof: Settings drawer with live engine config fields (material-kit-style section cards).
+  await page.screenshot({
+    path: "snapshot/codex-ui-settings-open.png",
+    fullPage: true
   });
 });
 

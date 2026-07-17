@@ -74,6 +74,13 @@ import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { RightInspector } from "./components/RightInspector";
 import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawer";
+import {
+  applyConfigWriteToView,
+  buildConfigValueWrite,
+  parseConfigReadResponse,
+  type CodexConfigFieldKey,
+  type CodexUserConfigView
+} from "./state/codexConfigSettings";
 import { installedThemePluginDefaults, isThemeId, type ThemeId, type ThemeMode } from "./theme";
 
 const UI_STORAGE_KEYS = {
@@ -175,6 +182,10 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
   const [inspectorVisible, setInspectorVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.inspectorVisible, true));
   const [petDockEnabled, setPetDockEnabled] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.petDockEnabled, true));
   const [panelLayout, setPanelLayout] = useState<Record<string, number> | undefined>(() => readPanelLayout());
+  const [codexConfig, setCodexConfig] = useState<CodexUserConfigView | null>(null);
+  const [codexConfigLoading, setCodexConfigLoading] = useState(false);
+  const [codexConfigSaving, setCodexConfigSaving] = useState(false);
+  const [codexConfigError, setCodexConfigError] = useState<string | null>(null);
   const [reasoningAnchor, setReasoningAnchor] = useState<HTMLElement | null>(null);
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
@@ -274,6 +285,67 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
     const threads = asRecord(threadResult).data ?? asRecord(threadResult).threads;
     dispatch({ type: "threads", threads: Array.isArray(threads) ? normalizeThreads(threads) : [] });
   }, [client]);
+
+  const loadCodexConfig = useCallback(async () => {
+    setCodexConfigLoading(true);
+    setCodexConfigError(null);
+    try {
+      const result = await client.rpc("config/read", { includeLayers: false });
+      const view = parseConfigReadResponse(result);
+      setCodexConfig(view);
+      // Session toolbar effort/model stay independent; only fill empty model picker from engine default.
+      if (view.model) {
+        setSelectedModel((current) => current || view.model || current);
+      }
+    } catch (error) {
+      setCodexConfigError(errorMessage("Codex config read", error));
+    } finally {
+      setCodexConfigLoading(false);
+    }
+  }, [client]);
+
+  const writeCodexConfigField = useCallback(
+    async (field: CodexConfigFieldKey, value: string) => {
+      const write = buildConfigValueWrite(field, value);
+      if (!write) {
+        return;
+      }
+      // Skip no-op when value already matches loaded config.
+      if (codexConfig && codexConfig[field] === value) {
+        return;
+      }
+      setCodexConfigSaving(true);
+      setCodexConfigError(null);
+      setCodexConfig((current) => (current ? applyConfigWriteToView(current, write.keyPath, write.value) : current));
+      try {
+        // batchWrite supports reloadUserConfig so loaded threads pick up user config.toml edits.
+        await client.rpc("config/batchWrite", {
+          edits: [write],
+          reloadUserConfig: true
+        });
+        const reloaded = await client.rpc("config/read", { includeLayers: false });
+        const view = parseConfigReadResponse(reloaded);
+        setCodexConfig(view);
+      } catch (error) {
+        setCodexConfigError(errorMessage("Codex config write", error));
+        try {
+          const reloaded = await client.rpc("config/read", { includeLayers: false });
+          setCodexConfig(parseConfigReadResponse(reloaded));
+        } catch {
+          /* keep optimistic state if re-read also fails */
+        }
+      } finally {
+        setCodexConfigSaving(false);
+      }
+    },
+    [client, codexConfig]
+  );
+
+  useEffect(() => {
+    if (settingsOpen && state.connected && state.engine.phase === "ready") {
+      void loadCodexConfig();
+    }
+  }, [settingsOpen, state.connected, state.engine.phase, loadCodexConfig]);
 
   const loadTooling = useCallback(
     async (options?: { forceSkillReload?: boolean; skillExtraRoots?: string[] }) => {
@@ -1293,6 +1365,10 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
         selectedModel={selectedModel}
         reasoningEffort={reasoningEffort}
         reasoningOptions={reasoningOptions}
+        codexConfig={codexConfig}
+        codexConfigLoading={codexConfigLoading}
+        codexConfigSaving={codexConfigSaving}
+        codexConfigError={codexConfigError}
         onClose={() => setSettingsOpen(false)}
         onThemeModeChange={onThemeModeChange}
         onInstallThemePlugin={installThemePlugin}
@@ -1303,6 +1379,8 @@ export function App({ themeMode, onThemeModeChange }: AppProps) {
         onCwdChange={setCwd}
         onPermissionChange={setPermission}
         onReasoningEffortChange={setReasoningEffort}
+        onReloadCodexConfig={() => void loadCodexConfig()}
+        onCodexConfigFieldChange={(field, value) => void writeCodexConfigField(field, value)}
       />
       <Snackbar
         open={state.errors.length > 0}
