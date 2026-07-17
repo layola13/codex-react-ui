@@ -17,17 +17,14 @@ import SendIcon from "@mui/icons-material/Send";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
 import { DANGER_CONFIRMATION, permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
-import { dangerousConfirmationMatches, type ComposerImageAttachment, type ComposerMention, type ModelEntry } from "../state/codexClient";
+import { dangerousConfirmationMatches, type ComposerImageAttachment, type ComposerMention } from "../state/codexClient";
 
 type Props = {
   cwd: string;
-  model: string;
-  models: ModelEntry[];
   permission: PermissionPresetId;
   disabled: boolean;
   pendingMention: ComposerMention | null;
   onCwdChange: (cwd: string) => void;
-  onModelChange: (model: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
   onMentionConsumed: () => void;
   onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
@@ -35,13 +32,10 @@ type Props = {
 
 export function Composer({
   cwd,
-  model,
-  models,
   permission,
   disabled,
   pendingMention,
   onCwdChange,
-  onModelChange,
   onPermissionChange,
   onMentionConsumed,
   onSend
@@ -72,19 +66,6 @@ export function Composer({
       <Stack spacing={1.25}>
         <Stack direction={{ xs: "column", lg: "row" }} spacing={1}>
           <TextField size="small" label="Workspace cwd" value={cwd} onChange={(event) => onCwdChange(event.target.value)} sx={{ minWidth: 260, flex: 1 }} />
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>Model</InputLabel>
-            <Select value={model} label="Model" onChange={(event) => onModelChange(event.target.value)}>
-              {models.map((entry) => {
-                const value = entry.model ?? entry.id ?? "";
-                return (
-                  <MenuItem key={value} value={value}>
-                    {entry.displayName ?? value}
-                  </MenuItem>
-                );
-              })}
-            </Select>
-          </FormControl>
           <FormControl size="small" sx={{ minWidth: 260 }}>
             <InputLabel>Permissions</InputLabel>
             <Select value={permission} label="Permissions" onChange={(event) => onPermissionChange(event.target.value as PermissionPresetId)}>

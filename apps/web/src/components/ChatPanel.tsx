@@ -4,6 +4,7 @@ import TerminalIcon from "@mui/icons-material/Terminal";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PersonIcon from "@mui/icons-material/Person";
 import type { WorkbenchTurn } from "../state/codexClient";
+import { MarkdownMessage } from "./MarkdownMessage";
 
 type Props = {
   turns: WorkbenchTurn[];
@@ -48,8 +49,8 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
                       item.type === "agentMessage"
                         ? "background.paper"
                         : item.type === "userMessage"
-                          ? "#f4f8fb"
-                          : "#fafafa"
+                          ? "action.hover"
+                          : "background.default"
                   }}
                 >
                   <Stack direction="row" alignItems="center" spacing={1}>
@@ -67,15 +68,15 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
                     </Typography>
                     {item.status && <Chip size="small" label={item.status} />}
                   </Stack>
-                  {item.text && (
+                  {item.text && item.type === "commandExecution" && (
                     <Typography
                       component="pre"
                       sx={{
                         mt: 1,
                         whiteSpace: "pre-wrap",
                         overflowWrap: "anywhere",
-                        fontFamily: item.type === "commandExecution" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "inherit",
-                        fontSize: item.type === "commandExecution" ? 12 : 14,
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                        fontSize: 12,
                         m: 0,
                         pt: 1
                       }}
@@ -83,6 +84,7 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
                       {item.text}
                       </Typography>
                     )}
+                  {item.text && item.type !== "commandExecution" && <MarkdownMessage text={item.text} />}
                   {item.type === "mcpToolCall" && renderMcpToolCall(item)}
                   {item.images && item.images.length > 0 && (
                     <Stack direction="row" spacing={1} sx={{ mt: 1, overflowX: "auto" }}>

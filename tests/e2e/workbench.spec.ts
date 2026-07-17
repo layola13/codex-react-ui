@@ -267,9 +267,26 @@ test.beforeEach(async ({ page }) => {
         case "account/read":
           return { authMode: "mock" };
         case "model/list":
-          return { data: [{ model: "gpt-5.6-sol", displayName: "GPT 5.6 Sol" }] };
+          return {
+            data: [
+              {
+                model: "gpt-5.6-sol",
+                displayName: "GPT 5.6 Sol",
+                supportedReasoningEfforts: [
+                  { reasoningEffort: "low", description: "Fast low effort" },
+                  { reasoningEffort: "medium", description: "Balanced effort" },
+                  { reasoningEffort: "high", description: "Deep effort" }
+                ]
+              }
+            ]
+          };
         case "thread/list":
-          return { data: [{ id: "thread-1", preview: "Mock thread", status: "idle" }] };
+          return {
+            data: [
+              { id: "thread-1", preview: "Mock thread", status: "idle" },
+              { id: "thread-2", preview: "Second task", status: "idle" }
+            ]
+          };
         case "thread/start":
           return { thread: { id: "thread-new", preview: "New mock thread", status: "idle" } };
         case "turn/start":
@@ -469,9 +486,11 @@ test.beforeEach(async ({ page }) => {
 test("renders the workbench and tooling panels", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Codex React UI" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Codex", exact: true })).toBeVisible();
   await expect(page.getByText("mock-codex")).toBeVisible();
-  await expect(page.getByText("Mock thread")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "New task" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Second task" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Tools" }).click();
   await expect(page.getByRole("tab", { name: "MCP 1" })).toBeVisible();
@@ -482,6 +501,39 @@ test("renders the workbench and tooling panels", async ({ page }) => {
 
   await page.getByRole("tab", { name: "Plugins 2" }).click();
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
+});
+
+test("supports settings, black theme, task tabs, and reasoning effort", async ({ page }) => {
+  await page.goto("/");
+
+  const reasoningButton = page.getByRole("button", { name: "Reasoning strength" });
+  await expect(reasoningButton).toContainText("Medium");
+  await reasoningButton.click();
+  await expect(page.getByText("Reasoning strength")).toBeVisible();
+  await page.getByRole("slider").press("End");
+  await expect(page.locator("button").filter({ hasText: "High" }).first()).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.getByLabel("Open settings").click();
+  await expect(page.getByText("Appearance")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Install theme plugin" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Enabled" }).first()).toBeVisible();
+  await page.getByLabel("Theme mode").click();
+  await page.getByRole("option", { name: "Black" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "black");
+  await page.getByRole("button", { name: "Close" }).click();
+
+  await page.getByRole("tab", { name: "Second task" }).click();
+  await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use high effort");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { effort?: string } }> })
+      .__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "turn/start" && message.params?.effort === "high");
+  });
 });
 
 test("resolves chained provider aliases before starting a turn", async ({ page }) => {
@@ -505,7 +557,7 @@ test("resolves chained provider aliases before starting a turn", async ({ page }
 test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByText("Mock thread").click();
+  await page.getByRole("tab", { name: "Mock thread" }).click();
   await page.getByRole("tab", { name: "Tools" }).click();
   await page.getByRole("tab", { name: "MCP 1" }).click();
 

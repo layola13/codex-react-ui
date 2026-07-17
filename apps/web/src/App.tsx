@@ -6,13 +6,29 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Divider,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Popover,
+  Select,
+  Slider,
   Snackbar,
+  Stack,
   Toolbar,
-  Typography
+  Tooltip,
+  Typography,
+  useMediaQuery
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import AddIcon from "@mui/icons-material/Add";
+import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import SettingsIcon from "@mui/icons-material/Settings";
+import TuneIcon from "@mui/icons-material/Tune";
+import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import {
   permissionToTurnOverrides,
   type DangerousPermissionAuditEvent,
@@ -57,6 +73,13 @@ import { HistorySidebar } from "./components/HistorySidebar";
 import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { RightInspector } from "./components/RightInspector";
+import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawer";
+import type { ThemeMode } from "./theme";
+
+type AppProps = {
+  themeMode: ThemeMode;
+  onThemeModeChange: (mode: ThemeMode) => void;
+};
 
 type Action =
   | { type: "connected"; connected: boolean }
@@ -131,12 +154,18 @@ function reducer(state: ClientState, action: Action): ClientState {
   }
 }
 
-export function App() {
+export function App({ themeMode, onThemeModeChange }: AppProps) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const [permission, setPermission] = useState<PermissionPresetId>("workspaceAsk");
   const [selectedModel, setSelectedModel] = useState("");
+  const [reasoningEffort, setReasoningEffort] = useState("medium");
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("/root/projects");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [inspectorVisible, setInspectorVisible] = useState(true);
+  const [petDockEnabled, setPetDockEnabled] = useState(true);
+  const [reasoningAnchor, setReasoningAnchor] = useState<HTMLElement | null>(null);
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
   const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
@@ -150,6 +179,7 @@ export function App() {
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
+  const desktopLayout = useMediaQuery("(min-width:900px)");
 
   const client = useMemo(() => {
     const socketClient = new CodexSocketClient();
@@ -351,6 +381,33 @@ export function App() {
     }
   }, [selectedModel, state.models]);
 
+  const reasoningOptions = useMemo<ReasoningOption[]>(() => {
+    const selected = composerModels.find((entry) => (entry.model ?? entry.id ?? "") === selectedModel);
+    const supported = selected?.supportedReasoningEfforts ?? [];
+    if (supported.length > 0) {
+      return supported.map((entry) => ({
+        value: entry.reasoningEffort,
+        label: reasoningLabel(entry.reasoningEffort),
+        description: entry.description
+      }));
+    }
+    return [
+      { value: "minimal", label: "Minimal", description: "Fastest responses for small edits and lookups." },
+      { value: "low", label: "Low", description: "Light reasoning for straightforward tasks." },
+      { value: "medium", label: "Medium", description: "Balanced default for normal coding work." },
+      { value: "high", label: "High", description: "Highest built-in effort for complex planning and debugging." }
+    ];
+  }, [composerModels, selectedModel]);
+
+  useEffect(() => {
+    if (reasoningOptions.length > 0 && !reasoningOptions.some((option) => option.value === reasoningEffort)) {
+      const fallback = reasoningOptions[Math.min(2, reasoningOptions.length - 1)];
+      if (fallback) {
+        setReasoningEffort(fallback.value);
+      }
+    }
+  }, [reasoningEffort, reasoningOptions]);
+
   const loadThread = useCallback(
     async (threadId: string) => {
       dispatch({ type: "activeThread", threadId });
@@ -363,6 +420,17 @@ export function App() {
       }
     },
     [client]
+  );
+
+  const selectTaskTab = useCallback(
+    (threadId: string | null) => {
+      if (!threadId) {
+        dispatch({ type: "activeThread", threadId: null });
+        return;
+      }
+      void loadThread(threadId);
+    },
+    [loadThread]
   );
 
   const loadAuditEvents = useCallback(async () => {
@@ -415,7 +483,8 @@ export function App() {
           input,
           cwd,
           sandboxPolicy: permissionOverrides.sandboxPolicy,
-          approvalPolicy: permissionOverrides.approvalPolicy
+          approvalPolicy: permissionOverrides.approvalPolicy,
+          effort: reasoningEffort
         };
         if (effectiveModel) {
           turnParams.model = effectiveModel;
@@ -428,7 +497,7 @@ export function App() {
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [activeProviderId, client, cwd, loadAuditEvents, permission, selectedModel, state.activeThreadId, state.providers]
+    [activeProviderId, client, cwd, loadAuditEvents, permission, reasoningEffort, selectedModel, state.activeThreadId, state.providers]
   );
 
   const answerRequest = useCallback(
@@ -834,127 +903,346 @@ export function App() {
     [client, state.activeThreadId]
   );
 
-  const statusColor =
-    state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
-
-  return (
-    <Box sx={{ height: "100vh", display: "grid", gridTemplateRows: "56px minmax(0, 1fr)" }}>
-      <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
-        <Toolbar variant="dense" sx={{ gap: 1.5 }}>
-          <PlayArrowIcon color="primary" />
-          <Typography variant="h6" sx={{ fontSize: 17, fontWeight: 750, flex: 1 }}>
-            Codex React UI
-          </Typography>
-          <Chip size="small" color={statusColor} label={state.engine.phase} />
-          <Typography variant="body2" color="text.secondary">
-            {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
-          </Typography>
-          <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadBasics()}>
-            Refresh
-          </Button>
-        </Toolbar>
-      </AppBar>
-
+  function renderCenterPanel() {
+    return (
       <Box
         sx={{
+          minWidth: 0,
           minHeight: 0,
+          height: { md: "100%" },
           display: "grid",
-          gridTemplateColumns: {
-            xs: "1fr",
-            md: "300px minmax(0, 1fr) 390px",
-            xl: "330px minmax(0, 1fr) 440px"
-          },
-          gridAutoRows: { xs: "max-content", md: "auto" },
-          alignContent: { xs: "start", md: "stretch" },
-          gap: 0,
-          overflow: { xs: "auto", md: "hidden" }
+          gridTemplateRows: { xs: "auto minmax(360px, 1fr) auto", md: "minmax(0, 1fr) auto" },
+          borderInline: { xs: 0, md: "1px solid" },
+          borderColor: "divider",
+          bgcolor: "background.default"
         }}
       >
-        <HistorySidebar
-          threads={state.threads}
-          activeThreadId={state.activeThreadId}
-          onSelect={(threadId) => void loadThread(threadId)}
-          onNew={() => dispatch({ type: "activeThread", threadId: null })}
-        />
-        <Box
-          sx={{
-            minWidth: 0,
-            minHeight: 0,
-            display: "grid",
-            gridTemplateRows: { xs: "auto auto auto", md: "minmax(0, 1fr) auto" }
-          }}
-        >
-          {state.engine.phase === "starting" && (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
-              <CircularProgress size={18} />
-              <Typography variant="body2">Starting Codex engine...</Typography>
-            </Box>
-          )}
-          <ChatPanel turns={state.turns} activeThreadId={state.activeThreadId} errors={state.errors} />
-          <Divider />
+        {state.engine.phase === "starting" && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2">Starting Codex engine...</Typography>
+          </Box>
+        )}
+        <ChatPanel turns={state.turns} activeThreadId={state.activeThreadId} errors={state.errors} />
+        <Box sx={{ borderTop: "1px solid", borderColor: "divider" }}>
           <Composer
             cwd={cwd}
-            model={selectedModel}
-            models={composerModels}
             permission={permission}
             disabled={!state.connected || state.engine.phase !== "ready"}
             pendingMention={pendingMention}
             onCwdChange={setCwd}
-            onModelChange={setSelectedModel}
             onPermissionChange={setPermission}
             onMentionConsumed={() => setPendingMention(null)}
             onSend={(text, images, mentions) => void sendPrompt(text, images, mentions)}
           />
         </Box>
-        <RightInspector
-          account={state.account}
-          models={state.models}
-          providers={state.providers}
-          activeThreadId={state.activeThreadId}
-          pendingRequests={state.pendingRequests}
-          tooling={state.tooling}
-          toolingLoading={state.toolingLoading}
-          pluginDetails={pluginDetails}
-          pluginSkillPreviews={pluginSkillPreviews}
-          pluginAuthNotices={pluginAuthNotices}
-          skillExtraRoots={skillExtraRoots}
-          skillPreviews={skillPreviews}
-          mcpResourceContents={mcpResourceContents}
-          mcpOauthUrls={mcpOauthUrls}
-          cwd={cwd}
-          fileDirectories={fileDirectories}
-          openFile={openFile}
-          terminalSessions={terminalSessions}
-          auditEvents={auditEvents}
-          onAnswerRequest={answerRequest}
-          onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
-          onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
-          onExportProfile={() => downloadProfile()}
-          onImportProfile={(file) => uploadProfile(file)}
-          onReloadAuditEvents={() => loadAuditEvents()}
-          onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
-          onReloadMcp={() => void reloadMcp()}
-          onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
-          onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
-          onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
-          onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
-          onSaveSkillExtraRoots={(roots) => void saveSkillExtraRoots(roots)}
-          onReadSkillPreview={(skill) => void readSkillPreview(skill)}
-          onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
-          onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
-          onInsertPluginMention={insertPluginMention}
-          onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
-          onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
-          onReadDirectory={(path) => void readDirectory(path)}
-          onReadFile={(path) => void readFile(path)}
-          onChangeOpenFileContent={changeOpenFileContent}
-          onSaveOpenFile={() => void saveOpenFile()}
-          onRunTerminalCommand={(command, commandCwd, size) => void runTerminalCommand(command, commandCwd, size)}
-          onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
-          onTerminateTerminal={(processId) => void terminateTerminal(processId)}
-          onResizeTerminal={(processId, size) => void resizeTerminal(processId, size)}
-        />
       </Box>
+    );
+  }
+
+  function renderInspector() {
+    return (
+      <RightInspector
+        account={state.account}
+        models={state.models}
+        providers={state.providers}
+        activeThreadId={state.activeThreadId}
+        pendingRequests={state.pendingRequests}
+        tooling={state.tooling}
+        toolingLoading={state.toolingLoading}
+        pluginDetails={pluginDetails}
+        pluginSkillPreviews={pluginSkillPreviews}
+        pluginAuthNotices={pluginAuthNotices}
+        skillExtraRoots={skillExtraRoots}
+        skillPreviews={skillPreviews}
+        mcpResourceContents={mcpResourceContents}
+        mcpOauthUrls={mcpOauthUrls}
+        cwd={cwd}
+        fileDirectories={fileDirectories}
+        openFile={openFile}
+        terminalSessions={terminalSessions}
+        auditEvents={auditEvents}
+        onAnswerRequest={answerRequest}
+        onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
+        onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
+        onExportProfile={() => downloadProfile()}
+        onImportProfile={(file) => uploadProfile(file)}
+        onReloadAuditEvents={() => loadAuditEvents()}
+        onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
+        onReloadMcp={() => void reloadMcp()}
+        onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
+        onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
+        onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
+        onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
+        onSaveSkillExtraRoots={(roots) => void saveSkillExtraRoots(roots)}
+        onReadSkillPreview={(skill) => void readSkillPreview(skill)}
+        onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
+        onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
+        onInsertPluginMention={insertPluginMention}
+        onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
+        onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
+        onReadDirectory={(path) => void readDirectory(path)}
+        onReadFile={(path) => void readFile(path)}
+        onChangeOpenFileContent={changeOpenFileContent}
+        onSaveOpenFile={() => void saveOpenFile()}
+        onRunTerminalCommand={(command, commandCwd, size) => void runTerminalCommand(command, commandCwd, size)}
+        onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
+        onTerminateTerminal={(processId) => void terminateTerminal(processId)}
+        onResizeTerminal={(processId, size) => void resizeTerminal(processId, size)}
+      />
+    );
+  }
+
+  const statusColor =
+    state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
+  const taskTabs = state.threads.slice(0, 12);
+  const reasoningIndex = Math.max(0, reasoningOptions.findIndex((option) => option.value === reasoningEffort));
+  const selectedReasoning = reasoningOptions[reasoningIndex] ?? reasoningOptions[0];
+  const reasoningMax = Math.max(0, reasoningOptions.length - 1);
+  const showReasoningGlow = reasoningIndex === reasoningMax && reasoningMax > 0;
+
+  return (
+    <Box sx={{ height: "100vh", display: "grid", gridTemplateRows: "56px 40px minmax(0, 1fr)" }}>
+      <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
+        <Toolbar variant="dense" sx={{ gap: 1, minHeight: 56, px: { xs: 1, sm: 1.5 } }}>
+          <PlayArrowIcon color="primary" />
+          <Typography variant="h6" sx={{ fontSize: 17, fontWeight: 800, display: { xs: "none", sm: "block" } }}>
+            Codex
+          </Typography>
+          <FormControl size="small" sx={{ minWidth: { xs: 148, sm: 220 }, maxWidth: { xs: 180, sm: 300 } }}>
+            <InputLabel>Model</InputLabel>
+            <Select value={selectedModel} label="Model" onChange={(event) => setSelectedModel(event.target.value)}>
+              {composerModels.map((entry) => {
+                const value = entry.model ?? entry.id ?? "";
+                return (
+                  <MenuItem key={value} value={value}>
+                    {entry.displayName ?? value}
+                  </MenuItem>
+                );
+              })}
+            </Select>
+          </FormControl>
+          <Tooltip title="Reasoning strength">
+            <Button
+              size="small"
+              variant={showReasoningGlow ? "contained" : "outlined"}
+              startIcon={<TuneIcon />}
+              onClick={(event) => setReasoningAnchor(event.currentTarget)}
+              sx={{
+                flex: "0 0 auto",
+                boxShadow: showReasoningGlow ? "0 0 0 3px rgba(97, 243, 243, 0.18), 0 0 22px rgba(97, 243, 243, 0.35)" : undefined
+              }}
+            >
+              {selectedReasoning?.label ?? reasoningEffort}
+            </Button>
+          </Tooltip>
+          <Box sx={{ flex: 1, minWidth: 0 }} />
+          <Tooltip title={leftPanelVisible ? "Hide history panel" : "Show history panel"}>
+            <IconButton size="small" onClick={() => setLeftPanelVisible((visible) => !visible)}>
+              <ViewSidebarIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={inspectorVisible ? "Hide inspector panel" : "Show inspector panel"}>
+            <IconButton size="small" onClick={() => setInspectorVisible((visible) => !visible)}>
+              <ViewColumnIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Chip size="small" color={statusColor} label={state.engine.phase} />
+          <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
+            {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
+          </Typography>
+          <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadBasics()}>
+            Refresh
+          </Button>
+          <Tooltip title="Open settings">
+            <IconButton size="small" onClick={() => setSettingsOpen(true)} aria-label="Open settings">
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Toolbar>
+      </AppBar>
+      <Box
+        role="tablist"
+        aria-label="Task tabs"
+        sx={{
+          display: "flex",
+          alignItems: "stretch",
+          gap: 0.5,
+          overflowX: "auto",
+          overflowY: "hidden",
+          px: 1,
+          bgcolor: "background.paper",
+          borderBottom: "1px solid",
+          borderColor: "divider"
+        }}
+      >
+        <Button
+          role="tab"
+          aria-selected={state.activeThreadId === null}
+          size="small"
+          startIcon={<AddIcon />}
+          onClick={() => selectTaskTab(null)}
+          sx={{
+            my: 0.5,
+            flex: "0 0 auto",
+            borderRadius: 1,
+            color: state.activeThreadId === null ? "primary.main" : "text.secondary",
+            bgcolor: state.activeThreadId === null ? "action.selected" : "transparent"
+          }}
+        >
+          New task
+        </Button>
+        {taskTabs.map((thread) => {
+          const active = state.activeThreadId === thread.id;
+          return (
+            <Button
+              key={thread.id}
+              role="tab"
+              aria-selected={active}
+              size="small"
+              startIcon={<ChatBubbleOutlineIcon />}
+              onClick={() => selectTaskTab(thread.id)}
+              sx={{
+                my: 0.5,
+                px: 1.25,
+                flex: "0 0 auto",
+                maxWidth: 220,
+                justifyContent: "flex-start",
+                borderRadius: 1,
+                color: active ? "primary.main" : "text.secondary",
+                bgcolor: active ? "action.selected" : "transparent",
+                border: "1px solid",
+                borderColor: active ? "primary.main" : "transparent",
+                "& .MuiButton-startIcon": { mr: 0.75 }
+              }}
+            >
+              <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {thread.preview || thread.id}
+              </Box>
+            </Button>
+          );
+        })}
+      </Box>
+      <Popover
+        open={Boolean(reasoningAnchor)}
+        anchorEl={reasoningAnchor}
+        onClose={() => setReasoningAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        PaperProps={{ sx: { width: 320, p: 2, mt: 0.75 } }}
+      >
+        <Stack spacing={1.5}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <TuneIcon fontSize="small" color={showReasoningGlow ? "primary" : "inherit"} />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                Reasoning strength
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Sent as `turn/start.effort`
+              </Typography>
+            </Box>
+            <Chip size="small" label={selectedReasoning?.label ?? reasoningEffort} color={showReasoningGlow ? "primary" : "default"} />
+          </Stack>
+          <Slider
+            value={reasoningIndex}
+            min={0}
+            max={reasoningMax}
+            step={1}
+            marks={reasoningOptions.map((option, index) => ({ value: index, label: option.label }))}
+            onChange={(_, value) => {
+              const index = Array.isArray(value) ? value[0] : value;
+              const next = reasoningOptions[index];
+              if (next) {
+                setReasoningEffort(next.value);
+              }
+            }}
+            sx={{
+              mx: 1,
+              ...(showReasoningGlow
+                ? {
+                    "& .MuiSlider-thumb": {
+                      boxShadow: "0 0 0 8px rgba(97, 243, 243, 0.12), 0 0 24px rgba(97, 243, 243, 0.42)"
+                    }
+                  }
+                : {})
+            }}
+          />
+          <Typography variant="body2" color="text.secondary">
+            {selectedReasoning?.description ?? "Adjust model reasoning effort for the next turn."}
+          </Typography>
+        </Stack>
+      </Popover>
+
+      <Box sx={{ minHeight: 0, overflow: desktopLayout ? "hidden" : "auto" }}>
+        {desktopLayout ? (
+          <Box sx={{ height: "100%", minHeight: 0 }}>
+          <PanelGroup orientation="horizontal" id="codex-react-ui-workbench-panels">
+            {leftPanelVisible && (
+              <>
+                <Panel id="history" defaultSize="20%" minSize="14%" maxSize="34%">
+                  <Box sx={{ height: "100%", minHeight: 0 }}>
+                    <HistorySidebar
+                      threads={state.threads}
+                      activeThreadId={state.activeThreadId}
+                      onSelect={(threadId) => selectTaskTab(threadId)}
+                      onNew={() => selectTaskTab(null)}
+                    />
+                  </Box>
+                </Panel>
+                <ResizeHandle />
+              </>
+            )}
+            <Panel id="chat" defaultSize={inspectorVisible ? "52%" : "80%"} minSize="32%">
+              {renderCenterPanel()}
+            </Panel>
+            {inspectorVisible && (
+              <>
+                <ResizeHandle />
+                <Panel id="inspector" defaultSize="28%" minSize="20%" maxSize="42%">
+                  {renderInspector()}
+                </Panel>
+              </>
+            )}
+          </PanelGroup>
+          </Box>
+        ) : (
+          <Box sx={{ display: "grid", gridTemplateRows: "auto auto auto", minHeight: 0 }}>
+            {leftPanelVisible && (
+              <HistorySidebar
+                threads={state.threads}
+                activeThreadId={state.activeThreadId}
+                onSelect={(threadId) => selectTaskTab(threadId)}
+                onNew={() => selectTaskTab(null)}
+              />
+            )}
+            {renderCenterPanel()}
+            {inspectorVisible && renderInspector()}
+          </Box>
+        )}
+      </Box>
+      <SettingsDrawer
+        open={settingsOpen}
+        themeMode={themeMode}
+        leftPanelVisible={leftPanelVisible}
+        inspectorVisible={inspectorVisible}
+        petDockEnabled={petDockEnabled}
+        cwd={cwd}
+        permission={permission}
+        providers={state.providers}
+        activeProviderId={activeProviderId}
+        selectedModel={selectedModel}
+        reasoningEffort={reasoningEffort}
+        reasoningOptions={reasoningOptions}
+        onClose={() => setSettingsOpen(false)}
+        onThemeModeChange={onThemeModeChange}
+        onLeftPanelVisibleChange={setLeftPanelVisible}
+        onInspectorVisibleChange={setInspectorVisible}
+        onPetDockEnabledChange={setPetDockEnabled}
+        onCwdChange={setCwd}
+        onPermissionChange={setPermission}
+        onReasoningEffortChange={setReasoningEffort}
+      />
       <Snackbar
         open={state.errors.length > 0}
         autoHideDuration={6000}
@@ -966,6 +1254,55 @@ export function App() {
       </Snackbar>
     </Box>
   );
+}
+
+function ResizeHandle() {
+  return (
+    <PanelResizeHandle>
+      <Box
+        sx={{
+          width: 8,
+          height: "100%",
+          cursor: "col-resize",
+          display: "flex",
+          alignItems: "stretch",
+          justifyContent: "center",
+          bgcolor: "background.default",
+          "&::before": {
+            content: '""',
+            width: 1,
+            bgcolor: "divider"
+          },
+          "&:hover": {
+            bgcolor: "action.hover"
+          },
+          "&:hover::before": {
+            width: 2,
+            bgcolor: "primary.main"
+          }
+        }}
+      />
+    </PanelResizeHandle>
+  );
+}
+
+function reasoningLabel(value: string): string {
+  switch (value) {
+    case "minimal":
+      return "Minimal";
+    case "low":
+      return "Low";
+    case "medium":
+      return "Medium";
+    case "high":
+      return "High";
+    default:
+      return value
+        .split(/[-_\s]+/)
+        .filter(Boolean)
+        .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+        .join(" ");
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

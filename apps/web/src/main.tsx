@@ -1,56 +1,33 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { CssBaseline, ThemeProvider } from "@mui/material";
 import { App } from "./App";
+import { createCodexTheme, type ThemeMode } from "./theme";
 
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: { main: "#145c72" },
-    secondary: { main: "#705c18" },
-    background: {
-      default: "#f6f7f9",
-      paper: "#ffffff"
-    },
-    success: { main: "#256d3b" },
-    warning: { main: "#a05a00" },
-    error: { main: "#a83232" }
-  },
-  shape: {
-    borderRadius: 6
-  },
-  typography: {
-    fontFamily:
-      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    button: {
-      textTransform: "none",
-      fontWeight: 650
-    }
-  },
-  components: {
-    MuiButton: {
-      styleOverrides: {
-        root: {
-          minHeight: 36
-        }
-      }
-    },
-    MuiCard: {
-      styleOverrides: {
-        root: {
-          borderRadius: 6
-        }
-      }
-    }
-  }
-});
+const THEME_STORAGE_KEY = "codex-react-ui.theme-mode";
+
+function Root() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "black" || stored === "light" ? stored : "light";
+  });
+  const theme = useMemo(() => createCodexTheme(themeMode), [themeMode]);
+
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    document.documentElement.dataset.colorScheme = themeMode;
+  }, [themeMode]);
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <App themeMode={themeMode} onThemeModeChange={setThemeMode} />
+    </ThemeProvider>
+  );
+}
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <App />
-    </ThemeProvider>
+    <Root />
   </React.StrictMode>
 );
-

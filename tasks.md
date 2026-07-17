@@ -2,6 +2,14 @@
 
 ## Now
 
+- [x] Upgrade the workbench shell to a MUI desktop-style layout with Blender/VSCode-like draggable, collapsible panel boundaries.
+- [x] Add a Settings entry point with multiple setting groups for appearance, layout, model behavior, relay providers, plugins, privacy, and pet dock customization.
+- [x] Support official default Light and Black themes, with a reserved theme-plugin install/switch surface for customer customization.
+- [x] Move model switching to the top-left toolbar and add a reasoning-strength popover slider that sends real `turn/start.effort` values.
+- [x] Add a top horizontal task tab bar for switching multiple active/history conversations.
+- [x] Add a Three.js-ready pet dock surface without making the core chat layout depend on decorative art.
+- [x] Render chat content as Markdown and highlight code/diff blocks in a theme-aware way.
+- [ ] Re-run Playwright screenshot steps and save per-step screenshots to `/root/projects/snapshot`.
 - [x] Initialize this project as an independent Git repository.
 - [x] Keep generated build output, dependencies, logs, and local env files out of Git.
 - [x] Build the Codex engine bridge with `codex app-server --stdio`.
