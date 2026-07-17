@@ -29,9 +29,10 @@ By default the server tries these Codex binaries:
 ## Production-Style Local Run
 
 ```bash
-pnpm build
-pnpm start
+pnpm launch
 ```
+
+`pnpm launch` builds missing production assets, then starts the local Node server that serves both the API and the built web UI. Use `pnpm launch -- --build` to force a rebuild, or `pnpm launch -- --skip-build` to start from existing `dist` files.
 
 The server prints a URL like:
 
@@ -55,6 +56,6 @@ Then the bridge restarts `codex app-server` so the selected provider and any in-
 
 ## Current Gaps
 
-- API keys are not persisted in a system keyring yet; restarting this UI process requires re-entering relay keys.
-- MCP, Skills, Plugins, Monaco file editing, PTY terminal, and image attachments have UI placeholders but are not complete management surfaces yet.
-- Provider aliases are stored in metadata; applying alias rewrites in the composer/model picker is the next pass.
+- Import/export for UI profiles is not implemented yet.
+- Stronger audit logging for dangerous permission sessions is not implemented yet.
+- Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.

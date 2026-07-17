@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Continue with later packaging/profile/audit hardening items after confirming priorities.
+Add import/export for UI profiles.

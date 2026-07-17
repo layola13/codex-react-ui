@@ -7,6 +7,7 @@
     "predev": "pnpm --filter @codex-ui/shared build",
     "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @codex-ui/server dev\" \"pnpm --filter @codex-ui/web dev\"",
     "build": "pnpm -r build",
+    "launch": "node scripts/launch.mjs",
     "typecheck": "pnpm -r typecheck",
     "test:e2e": "playwright test",
     "start": "pnpm --filter @codex-ui/server start",

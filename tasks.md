@@ -32,6 +32,6 @@
 
 ## Later
 
-- [ ] Package a one-command launcher.
+- [x] Package a one-command launcher.
 - [ ] Add import/export for UI profiles.
 - [ ] Add stronger audit logging for dangerous permission sessions.

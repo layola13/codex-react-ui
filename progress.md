@@ -56,6 +56,7 @@
 - Added terminal/process controls in the Files tab using PTY-backed `command/exec`, streamed `command/exec/outputDelta`, stdin writes, resize, and terminate RPCs.
 - Added focused Playwright coverage for command execution, streamed terminal output, stdin write, resize, and terminate controls.
 - Added desktop and mobile Playwright screenshot regression checks with committed baseline snapshots.
+- Added `pnpm launch` one-command production-style launcher that builds missing assets and starts the local token-protected Node server serving the web UI.
 
 ## Known Gaps
 
