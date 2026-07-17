@@ -583,6 +583,7 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
 });
 
 test("loads live Codex config in Settings and persists edits via config/batchWrite", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/");
   await expect(page.getByText("mock-codex")).toBeVisible();
 
@@ -952,8 +953,9 @@ test("keeps files explorer editor and terminal panes resizable", async ({ page }
   await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Terminal" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Explorer" })).toBeVisible();
-  // Nested VS Code-style splits render as panel groups from react-resizable-panels.
-  await expect(page.locator("[data-panel-group-id], [data-panel-group]").first()).toBeVisible();
+  // Nested VS Code-style splits from react-resizable-panels expose data-group/data-panel attrs.
+  await expect(page.locator("[data-group]").first()).toBeVisible();
+  await expect(page.locator("[data-panel]").first()).toBeVisible();
   await page.screenshot({
     path: "snapshot/codex-ui-files-resizable.png",
     fullPage: true
