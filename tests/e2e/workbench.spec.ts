@@ -187,15 +187,19 @@ test.beforeEach(async ({ page }) => {
       "/root/projects/README.md": "# Mock Project\n\nEditable from Playwright.\n",
       "/root/projects/src/App.tsx": "export const value = 1;\n"
     };
-    const engineConfig: Record<string, unknown> = {
+        const engineConfig: Record<string, unknown> = {
       model: "gpt-5.6-sol",
+      review_model: "gpt-5.6-sol",
       model_provider: "openai",
       model_reasoning_effort: "medium",
       model_reasoning_summary: "auto",
       model_verbosity: "medium",
       approval_policy: "on-request",
       sandbox_mode: "workspace-write",
-      web_search: "cached"
+      web_search: "cached",
+      service_tier: "default",
+      instructions: "Be precise.",
+      developer_instructions: "Prefer workspace-write tools."
     };
     const installedPlugin = {
       id: "mock-plugin@mock-market",
@@ -550,11 +554,12 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   await page.keyboard.press("Escape");
 
   await page.getByLabel("Open settings").click();
-  await expect(page.getByText("Appearance")).toBeVisible();
+  await expect(page.getByLabel("Open Appearance settings")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Codex Engine Config" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("Medium");
   await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Cached");
-  await expect(page.getByRole("switch", { name: "Enabled" }).first()).toBeVisible();
+  await page.getByLabel("Open Appearance settings").click();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Install" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Install" }).first().click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "dream-rose");
@@ -562,7 +567,7 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   await page.getByRole("option", { name: "Official Black" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
   await page.getByRole("button", { name: "Remove" }).click();
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Close settings" }).click();
 
   await page.getByRole("tab", { name: "Second task" }).click();
   await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "true");
@@ -645,7 +650,37 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
 
   await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Live");
 
+  await page.getByLabel("User instructions").fill("Prefer concise answers.");
+  await page.getByLabel("User instructions").blur();
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { edits?: Array<{ keyPath?: string; value?: unknown }> };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "config/batchWrite" &&
+        message.params?.edits?.some((edit) => edit.keyPath === "instructions" && edit.value === "Prefer concise answers.")
+    );
+  });
+
   // Theme remains independent of config writes.
+  await page.getByLabel("Open Appearance settings").click();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await page.getByLabel("Custom theme name").fill("Aurora Studio");
+  await page.getByLabel("Custom theme primary").fill("#0EA5E9");
+  await page.getByLabel("Custom theme secondary").fill("#F97316");
+  await page.getByLabel("Custom theme background").fill("#0B1220");
+  await page.getByLabel("Custom theme dark mode").check();
+  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-aurora-studio-/);
+
   await page.getByLabel("Skin theme").click();
   await page.getByRole("option", { name: "Official Black" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
@@ -662,6 +697,7 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   });
   expect(themeLeakedIntoConfig).toBe(false);
 
+  await page.getByLabel("Open Codex Engine settings").click();
   await page.getByRole("button", { name: "Reload Codex config" }).click();
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string }> }).__codexUiOutbound ?? [];
@@ -669,10 +705,24 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   });
   await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("High");
   await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Live");
+  await expect(page.getByLabel("User instructions")).toHaveValue("Prefer concise answers.");
 
-  // Visual proof: Settings drawer with live engine config fields (material-kit-style section cards).
+  // Visual proof: Settings page with live engine config fields (material-kit-style section cards).
   await page.screenshot({
     path: "snapshot/codex-ui-settings-open.png",
+    fullPage: true
+  });
+
+  await page.getByLabel("Open Appearance settings").click();
+  await page.screenshot({
+    path: "snapshot/codex-ui-settings-appearance.png",
+    fullPage: true
+  });
+
+  await page.getByLabel("Open Layout settings").click();
+  await expect(page.getByText("Nested pane splits")).toBeVisible();
+  await page.screenshot({
+    path: "snapshot/codex-ui-settings-layout.png",
     fullPage: true
   });
 });
@@ -894,6 +944,18 @@ test("browses and edits files through filesystem RPCs", async ({ page }) => {
   });
 
   await expect(page.getByText("Saved").last()).toBeVisible();
+});
+
+test("keeps files explorer editor and terminal panes resizable", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Files" }).click();
+  await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
+  await expect(page.getByText("Terminal")).toBeVisible();
+  await expect(page.locator('[data-panel-group]').first()).toBeVisible();
+  await page.screenshot({
+    path: "snapshot/codex-ui-files-resizable.png",
+    fullPage: true
+  });
 });
 
 test("runs terminal commands with stdin resize and terminate controls", async ({ page }) => {

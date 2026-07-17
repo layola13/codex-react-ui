@@ -1,11 +1,12 @@
 import type { JsonValue } from "@codex-ui/shared";
 
 /**
- * Curated Codex user-config surface for the Settings drawer.
- * Theme / provider API keys stay out of this module by design.
+ * Curated Codex user-config surface for the Settings page.
+ * Theme plugins and provider API keys stay out of this module by design.
  */
 export type CodexUserConfigView = {
   model: string | null;
+  reviewModel: string | null;
   modelProvider: string | null;
   modelReasoningEffort: string | null;
   modelReasoningSummary: string | null;
@@ -13,6 +14,9 @@ export type CodexUserConfigView = {
   approvalPolicy: string | null;
   sandboxMode: string | null;
   webSearch: string | null;
+  serviceTier: string | null;
+  instructions: string | null;
+  developerInstructions: string | null;
 };
 
 export type CodexConfigFieldKey = keyof CodexUserConfigView;
@@ -25,13 +29,17 @@ export type CodexConfigEdit = {
 
 export const CODEX_CONFIG_KEY_PATHS: Record<CodexConfigFieldKey, string> = {
   model: "model",
+  reviewModel: "review_model",
   modelProvider: "model_provider",
   modelReasoningEffort: "model_reasoning_effort",
   modelReasoningSummary: "model_reasoning_summary",
   modelVerbosity: "model_verbosity",
   approvalPolicy: "approval_policy",
   sandboxMode: "sandbox_mode",
-  webSearch: "web_search"
+  webSearch: "web_search",
+  serviceTier: "service_tier",
+  instructions: "instructions",
+  developerInstructions: "developer_instructions"
 };
 
 export const CODEX_CONFIG_FIELD_META: Array<{
@@ -39,7 +47,7 @@ export const CODEX_CONFIG_FIELD_META: Array<{
   keyPath: string;
   label: string;
   description: string;
-  kind: "text" | "select";
+  kind: "text" | "select" | "textarea";
   options?: Array<{ value: string; label: string }>;
   /** When true, field is shown read-only (managed elsewhere or display-only). */
   readOnly?: boolean;
@@ -49,6 +57,13 @@ export const CODEX_CONFIG_FIELD_META: Array<{
     keyPath: CODEX_CONFIG_KEY_PATHS.model,
     label: "Default model",
     description: "Codex user config model default (provider activation may override for the active session).",
+    kind: "text"
+  },
+  {
+    key: "reviewModel",
+    keyPath: CODEX_CONFIG_KEY_PATHS.reviewModel,
+    label: "Review model",
+    description: "Optional review_model used for review sessions.",
     kind: "text"
   },
   {
@@ -99,6 +114,13 @@ export const CODEX_CONFIG_FIELD_META: Array<{
     ]
   },
   {
+    key: "serviceTier",
+    keyPath: CODEX_CONFIG_KEY_PATHS.serviceTier,
+    label: "Service tier",
+    description: "Optional service_tier for model requests.",
+    kind: "text"
+  },
+  {
     key: "approvalPolicy",
     keyPath: CODEX_CONFIG_KEY_PATHS.approvalPolicy,
     label: "Approval policy",
@@ -134,18 +156,36 @@ export const CODEX_CONFIG_FIELD_META: Array<{
       { value: "indexed", label: "Indexed" },
       { value: "live", label: "Live" }
     ]
+  },
+  {
+    key: "instructions",
+    keyPath: CODEX_CONFIG_KEY_PATHS.instructions,
+    label: "User instructions",
+    description: "Persisted instructions prepended for Codex sessions.",
+    kind: "textarea"
+  },
+  {
+    key: "developerInstructions",
+    keyPath: CODEX_CONFIG_KEY_PATHS.developerInstructions,
+    label: "Developer instructions",
+    description: "Persisted developer_instructions for engine-level guidance.",
+    kind: "textarea"
   }
 ];
 
 export const EMPTY_CODEX_USER_CONFIG: CodexUserConfigView = {
   model: null,
+  reviewModel: null,
   modelProvider: null,
   modelReasoningEffort: null,
   modelReasoningSummary: null,
   modelVerbosity: null,
   approvalPolicy: null,
   sandboxMode: null,
-  webSearch: null
+  webSearch: null,
+  serviceTier: null,
+  instructions: null,
+  developerInstructions: null
 };
 
 export function asRecord(value: unknown): Record<string, unknown> {
@@ -173,13 +213,17 @@ export function configToUserView(config: unknown): CodexUserConfigView {
   const approval = record.approval_policy;
   return {
     model: asNullableString(record.model),
+    reviewModel: asNullableString(record.review_model),
     modelProvider: asNullableString(record.model_provider),
     modelReasoningEffort: asNullableString(record.model_reasoning_effort),
     modelReasoningSummary: asNullableString(record.model_reasoning_summary),
     modelVerbosity: asNullableString(record.model_verbosity),
     approvalPolicy: typeof approval === "string" ? approval : null,
     sandboxMode: asNullableString(record.sandbox_mode),
-    webSearch: asNullableString(record.web_search)
+    webSearch: asNullableString(record.web_search),
+    serviceTier: asNullableString(record.service_tier),
+    instructions: asNullableString(record.instructions),
+    developerInstructions: asNullableString(record.developer_instructions)
   };
 }
 
@@ -204,7 +248,11 @@ export function buildConfigValueWrite(
   if (!meta || meta.readOnly) {
     return null;
   }
-  if (value == null || value === "") {
+  if (value == null) {
+    return null;
+  }
+  // Allow empty string only for free-text instruction fields.
+  if (value === "" && meta.kind !== "textarea") {
     return null;
   }
   return {

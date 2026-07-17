@@ -252,7 +252,7 @@ export function SettingsDrawer({
                       disabled={codexConfigLoading || codexConfigSaving}
                       aria-label="Reload Codex config"
                     >
-                      Reload
+                      Reload Codex config
                     </Button>
                   </Stack>
                 </SettingRow>
@@ -455,7 +455,7 @@ function CodexConfigFieldRow({
   fieldKey: CodexConfigFieldKey;
   label: string;
   description: string;
-  kind: "text" | "select";
+  kind: "text" | "select" | "textarea";
   options?: Array<{ value: string; label: string }>;
   readOnly?: boolean;
   value: string;
@@ -466,6 +466,36 @@ function CodexConfigFieldRow({
   useEffect(() => {
     setDraft(value);
   }, [value, fieldKey]);
+
+  if (kind === "textarea") {
+    return (
+      <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+          {label}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, mb: 1 }}>
+          {description}
+        </Typography>
+        <TextField
+          size="small"
+          fullWidth
+          multiline
+          minRows={3}
+          maxRows={8}
+          label={label}
+          value={draft}
+          disabled={disabled}
+          inputProps={{ "aria-label": label, readOnly: Boolean(readOnly) }}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            if (!readOnly && draft !== value) {
+              onCommit(draft);
+            }
+          }}
+        />
+      </Box>
+    );
+  }
 
   return (
     <SettingRow title={label} description={description}>
