@@ -34,4 +34,4 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Add import/export for UI profiles.
+Add stronger audit logging for dangerous permission sessions.

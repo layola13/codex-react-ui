@@ -31,6 +31,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import SecurityIcon from "@mui/icons-material/Security";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import type { JsonValue, ProviderConfig } from "@codex-ui/shared";
 import type {
   ModelEntry,
@@ -71,6 +72,8 @@ type Props = {
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
+  onExportProfile: () => Promise<void>;
+  onImportProfile: (file: File) => Promise<number>;
   onReloadTooling: () => void;
   onReloadMcp: () => void;
   onStartMcpOauth: (serverName: string) => void;
@@ -116,6 +119,8 @@ export function RightInspector({
   onAnswerRequest,
   onSaveProvider,
   onActivateProvider,
+  onExportProfile,
+  onImportProfile,
   onReloadTooling,
   onReloadMcp,
   onStartMcpOauth,
@@ -164,6 +169,8 @@ export function RightInspector({
             providers={providers}
             onSaveProvider={onSaveProvider}
             onActivateProvider={onActivateProvider}
+            onExportProfile={onExportProfile}
+            onImportProfile={onImportProfile}
           />
         )}
         {tab === 1 && (
@@ -221,13 +228,17 @@ function ConfigTab({
   models,
   providers,
   onSaveProvider,
-  onActivateProvider
+  onActivateProvider,
+  onExportProfile,
+  onImportProfile
 }: {
   account: JsonValue | null;
   models: ModelEntry[];
   providers: ProviderConfig[];
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
+  onExportProfile: () => Promise<void>;
+  onImportProfile: (file: File) => Promise<number>;
 }) {
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
 
@@ -244,6 +255,7 @@ function ConfigTab({
           {JSON.stringify(account, null, 2)}
         </Typography>
       </Paper>
+      <ProfilePanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
       <ProviderForm models={models} onSaveProvider={onSaveProvider} />
       <Paper variant="outlined" sx={{ p: 1.5 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 750, mb: 1 }}>
@@ -301,6 +313,89 @@ function ConfigTab({
         </Stack>
       </Paper>
     </Stack>
+  );
+}
+
+function ProfilePanel({
+  providerCount,
+  onExportProfile,
+  onImportProfile
+}: {
+  providerCount: number;
+  onExportProfile: () => Promise<void>;
+  onImportProfile: (file: File) => Promise<number>;
+}) {
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+        <DownloadIcon fontSize="small" />
+        <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
+          UI profile
+        </Typography>
+        <Chip size="small" label={`${providerCount} providers`} />
+      </Stack>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        Export and import provider metadata without API keys.
+      </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setStatus("");
+            try {
+              await onExportProfile();
+              setStatus("Profile exported.");
+            } catch {
+              setStatus("Profile export failed.");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Export profile
+        </Button>
+        <Button size="small" variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={busy}>
+          Import profile
+          <input
+            aria-label="Import profile file"
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (!file) {
+                return;
+              }
+              void (async () => {
+                setBusy(true);
+                setStatus("");
+                try {
+                  const count = await onImportProfile(file);
+                  setStatus(`Imported ${count} providers.`);
+                } catch {
+                  setStatus("Profile import failed.");
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          />
+        </Button>
+      </Stack>
+      {status && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+          {status}
+        </Typography>
+      )}
+    </Paper>
   );
 }
 

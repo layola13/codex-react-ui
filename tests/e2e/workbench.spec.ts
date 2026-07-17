@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const mockProvider = {
   id: "hubproxy-grok",
@@ -18,7 +19,25 @@ const mockProvider = {
   updatedAt: 2
 };
 
+const importedProvider = {
+  id: "imported-relay",
+  kind: "responsesRelay",
+  name: "Imported Relay",
+  baseUrl: "https://relay.example.test/v1",
+  apiKeyRef: "env:CODEX_UI_PROVIDER_IMPORTED_RELAY_API_KEY",
+  apiKeyStorage: "none",
+  defaultModel: "imported-model",
+  nativeModels: ["imported-model"],
+  modelAliases: [{ alias: "codex-imported", model: "imported-model" }],
+  createdAt: 3,
+  updatedAt: 4
+};
+
+let providerApiList = [mockProvider];
+
 test.beforeEach(async ({ page }) => {
+  providerApiList = [mockProvider];
+
   await page.addInitScript(() => {
     const outbound = ((window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound = []);
 
@@ -407,7 +426,28 @@ test.beforeEach(async ({ page }) => {
   });
 
   await page.route("/api/session", (route) => route.fulfill({ json: { token: "test-token" } }));
-  await page.route("/api/providers", (route) => route.fulfill({ json: { data: [mockProvider] } }));
+  await page.route("/api/providers", (route) => route.fulfill({ json: { data: providerApiList } }));
+  await page.route("/api/profile/export", (route) =>
+    route.fulfill({
+      json: {
+        schema: "codex-react-ui.profile.v1",
+        exportedAt: 123,
+        providers: providerApiList.map(({ apiKeyPreview: _apiKeyPreview, ...provider }) => ({
+          ...provider,
+          apiKeyStorage: "none"
+        }))
+      }
+    })
+  );
+  await page.route("/api/profile/import", async (route) => {
+    const body = route.request().postDataJSON() as { providers?: typeof providerApiList };
+    const imported = body.providers ?? [];
+    providerApiList = [
+      ...providerApiList.filter((provider) => !imported.some((entry) => entry.id === provider.id)),
+      ...imported
+    ];
+    await route.fulfill({ json: { importedProviders: imported.length, providers: providerApiList } });
+  });
 });
 
 test("renders the workbench and tooling panels", async ({ page }) => {
@@ -475,6 +515,38 @@ test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
 
   await expect(page.getByText('"ok": true')).toBeVisible();
   await expect(page.getByText('"message": "from-playwright"')).toBeVisible();
+});
+
+test("exports and imports UI profiles without API keys", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByText("UI profile")).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export profile" }).click()
+  ]);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+  const profileContents = await readFile(downloadPath!, "utf8");
+  expect(profileContents).toContain('"schema": "codex-react-ui.profile.v1"');
+  expect(profileContents).toContain("HubProxy Grok");
+  expect(profileContents).not.toContain("key...ring");
+
+  await page.getByLabel("Import profile file").setInputFiles({
+    name: "profile.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        schema: "codex-react-ui.profile.v1",
+        exportedAt: 456,
+        providers: [importedProvider]
+      })
+    )
+  });
+
+  await expect(page.getByText("Imported 1 providers.")).toBeVisible();
+  await expect(page.getByText("Imported Relay")).toBeVisible();
+  await expect(page.getByText("https://relay.example.test/v1")).toBeVisible();
 });
 
 test("saves skill extra roots and previews local markdown", async ({ page }) => {

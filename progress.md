@@ -57,6 +57,7 @@
 - Added focused Playwright coverage for command execution, streamed terminal output, stdin write, resize, and terminate controls.
 - Added desktop and mobile Playwright screenshot regression checks with committed baseline snapshots.
 - Added `pnpm launch` one-command production-style launcher that builds missing assets and starts the local token-protected Node server serving the web UI.
+- Added UI profile import/export for provider metadata without API keys, with merge import preserving existing local credential state.
 
 ## Known Gaps
 

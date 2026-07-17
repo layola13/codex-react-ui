@@ -180,6 +180,17 @@ export interface ProviderActivation {
   restartedAt: number;
 }
 
+export interface UiProfile {
+  schema: "codex-react-ui.profile.v1";
+  exportedAt: number;
+  providers: ProviderConfig[];
+}
+
+export interface UiProfileImportResult {
+  importedProviders: number;
+  providers: ProviderConfig[];
+}
+
 export interface ThreadSummary {
   id: string;
   preview?: string;

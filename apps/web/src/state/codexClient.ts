@@ -7,7 +7,9 @@ import {
   type JsonValue,
   type ProviderActivation,
   type ProviderConfig,
-  type ServerToClientMessage
+  type ServerToClientMessage,
+  type UiProfile,
+  type UiProfileImportResult
 } from "@codex-ui/shared";
 
 export type PendingServerRequest = {
@@ -391,6 +393,31 @@ export async function fetchProviders(token: string): Promise<ProviderConfig[]> {
   }
   const body = (await response.json()) as { data?: ProviderConfig[] };
   return body.data ?? [];
+}
+
+export async function exportProfile(token: string): Promise<UiProfile> {
+  const response = await fetch("/api/profile/export", {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to export profile: ${response.status}`);
+  }
+  return (await response.json()) as UiProfile;
+}
+
+export async function importProfile(token: string, profile: UiProfile): Promise<UiProfileImportResult> {
+  const response = await fetch("/api/profile/import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(profile)
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to import profile: ${response.status}`);
+  }
+  return (await response.json()) as UiProfileImportResult;
 }
 
 export function applyNotification(state: ClientState, notification: JsonRpcNotification): ClientState {

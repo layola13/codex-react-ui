@@ -54,8 +54,11 @@ Activating a provider writes:
 
 Then the bridge restarts `codex app-server` so the selected provider and any in-memory API key are active.
 
+## UI Profiles
+
+The Config tab can export and import UI profiles as JSON. Profiles include provider metadata and env-key references, but never include API keys or key previews. Importing a profile merges providers by id and preserves any matching local keyring or in-memory credential state already present on this machine.
+
 ## Current Gaps
 
-- Import/export for UI profiles is not implemented yet.
 - Stronger audit logging for dangerous permission sessions is not implemented yet.
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.

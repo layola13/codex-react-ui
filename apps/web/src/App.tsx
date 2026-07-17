@@ -24,8 +24,10 @@ import {
   CodexSocketClient,
   applyNotification,
   composerInputToUserInput,
+  exportProfile,
   fetchProviders,
   fetchSessionToken,
+  importProfile,
   initialClientState,
   parseMcpServers,
   parseMcpResourceContents,
@@ -445,6 +447,47 @@ export function App() {
     [client, loadBasics]
   );
 
+  const downloadProfile = useCallback(async () => {
+    if (!state.token) {
+      dispatch({ type: "error", message: "UI session token is not ready" });
+      return;
+    }
+    try {
+      const profile = await exportProfile(state.token);
+      const blob = new Blob([`${JSON.stringify(profile, null, 2)}\n`], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `codex-react-ui-profile-${new Date(profile.exportedAt).toISOString().slice(0, 10)}.json`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
+  }, [state.token]);
+
+  const uploadProfile = useCallback(
+    async (file: File) => {
+      if (!state.token) {
+        dispatch({ type: "error", message: "UI session token is not ready" });
+        return 0;
+      }
+      try {
+        const profile = JSON.parse(await file.text());
+        const result = await importProfile(state.token, profile);
+        dispatch({ type: "providers", providers: result.providers });
+        return result.importedProviders;
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
+    },
+    [state.token]
+  );
+
   const reloadMcp = useCallback(async () => {
     try {
       await client.rpc("config/mcpServer/reload");
@@ -862,6 +905,8 @@ export function App() {
           onAnswerRequest={answerRequest}
           onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
           onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
+          onExportProfile={() => downloadProfile()}
+          onImportProfile={(file) => uploadProfile(file)}
           onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
           onReloadMcp={() => void reloadMcp()}
           onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}

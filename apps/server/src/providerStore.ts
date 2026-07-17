@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { AsyncEntry } from "@napi-rs/keyring";
-import type { ProviderConfig } from "@codex-ui/shared";
+import type { ProviderConfig, UiProfile, UiProfileImportResult } from "@codex-ui/shared";
 
 type StoreShape = {
   providers: ProviderConfig[];
@@ -106,6 +106,42 @@ export class ProviderStore {
     await this.write({ providers: store.providers.filter((entry) => entry.id !== id) });
   }
 
+  public async exportProfile(): Promise<UiProfile> {
+    const store = await this.read();
+    return {
+      schema: "codex-react-ui.profile.v1",
+      exportedAt: Date.now(),
+      providers: store.providers.map((provider) => profileProvider(provider))
+    };
+  }
+
+  public async importProfile(profile: unknown): Promise<UiProfileImportResult> {
+    const record = asRecord(profile);
+    if (record.schema !== "codex-react-ui.profile.v1") {
+      throw new Error("Unsupported UI profile schema");
+    }
+    if (!Array.isArray(record.providers)) {
+      throw new Error("UI profile is missing providers");
+    }
+
+    const store = await this.read();
+    const providersById = new Map(store.providers.map((provider) => [provider.id, provider]));
+    const imported = record.providers.map((entry) => {
+      const existingId = stringValue(asRecord(entry).id);
+      return normalizeProfileProvider(entry, existingId ? providersById.get(existingId) : undefined);
+    });
+
+    for (const provider of imported) {
+      providersById.set(provider.id, provider);
+    }
+    const providers = Array.from(providersById.values());
+    await this.write({ providers });
+    return {
+      importedProviders: imported.length,
+      providers
+    };
+  }
+
   private async read(): Promise<StoreShape> {
     try {
       const raw = await readFile(this.file, "utf8");
@@ -147,4 +183,86 @@ function previewSecret(secret: string): string {
     return "********";
   }
   return `${secret.slice(0, 4)}...${secret.slice(-4)}`;
+}
+
+function profileProvider(provider: ProviderConfig): ProviderConfig {
+  return {
+    ...provider,
+    apiKeyPreview: undefined,
+    apiKeyStorage: "none"
+  };
+}
+
+function normalizeProfileProvider(value: unknown, existing?: ProviderConfig): ProviderConfig {
+  const record = asRecord(value);
+  const now = Date.now();
+  const name = stringValue(record.name) || "Imported provider";
+  const id = stringValue(record.id) || providerIdFromName(name);
+  const kind = providerKindValue(record.kind);
+  const apiKeyRef = envKeyRefValue(record.apiKeyRef) ?? existing?.apiKeyRef;
+  const preserveExistingKey = existing?.apiKeyRef && apiKeyRef === existing.apiKeyRef;
+
+  return {
+    id,
+    kind,
+    name,
+    baseUrl: stringValue(record.baseUrl),
+    apiKeyRef,
+    apiKeyPreview: preserveExistingKey ? existing.apiKeyPreview : undefined,
+    apiKeyStorage: preserveExistingKey ? existing.apiKeyStorage : "none",
+    defaultModel: stringValue(record.defaultModel),
+    nativeModels: stringArray(record.nativeModels),
+    modelAliases: aliasArray(record.modelAliases),
+    createdAt: numberValue(record.createdAt) ?? existing?.createdAt ?? now,
+    updatedAt: now
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(stringValue).filter((entry): entry is string => Boolean(entry)) : [];
+}
+
+function aliasArray(value: unknown): ProviderConfig["modelAliases"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      const record = asRecord(entry);
+      const alias = stringValue(record.alias);
+      const model = stringValue(record.model);
+      return alias && model ? { alias, model } : null;
+    })
+    .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
+}
+
+function envKeyRefValue(value: unknown): string | undefined {
+  const ref = stringValue(value);
+  return ref?.startsWith("env:") ? ref : undefined;
+}
+
+function providerKindValue(value: unknown): ProviderConfig["kind"] {
+  switch (value) {
+    case "chatgpt":
+    case "openai":
+    case "responsesRelay":
+    case "ollama":
+    case "lmstudio":
+    case "bedrock":
+      return value;
+    default:
+      return "responsesRelay";
+  }
 }

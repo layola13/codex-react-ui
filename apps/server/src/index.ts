@@ -57,6 +57,14 @@ app.get("/api/health", async () => ({ ok: true, status: bridge.getStatus() }));
 app.get("/api/engine/status", async () => bridge.getStatus());
 app.post("/api/engine/start", async () => bridge.start());
 app.get("/api/providers", async () => ({ data: await providerStore.list() }));
+app.get("/api/profile/export", async () => providerStore.exportProfile());
+app.post("/api/profile/import", async (request, reply) => {
+  try {
+    return await providerStore.importProfile(request.body);
+  } catch (error) {
+    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+  }
+});
 
 app.get("/ws", { websocket: true }, (socket) => {
   const ws = socket as WebSocket;
