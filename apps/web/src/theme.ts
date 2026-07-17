@@ -317,8 +317,11 @@ function mix(color: string, target: string, amount: number): string {
 function parseHex(value: string): [number, number, number] | null {
   const raw = value.trim().replace("#", "");
   if (raw.length === 3) {
-    const expanded = raw.split("").map((part) => parseInt(part + part, 16));
-    return expanded.length === 3 ? [expanded[0], expanded[1], expanded[2]] : null;
+    const channels = raw.split("").map((part) => parseInt(part + part, 16));
+    if (channels.length !== 3 || channels.some((channel) => Number.isNaN(channel))) {
+      return null;
+    }
+    return [channels[0]!, channels[1]!, channels[2]!];
   }
   if (raw.length !== 6) {
     return null;
