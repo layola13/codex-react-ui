@@ -1,9 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { alpha } from "@mui/material/styles";
 import {
   Box,
+  ButtonBase,
   Chip,
   IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   Paper,
   Stack,
   TextField,
@@ -11,10 +16,15 @@ import {
   Typography
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import CloseIcon from "@mui/icons-material/Close";
+import OpenInFullIcon from "@mui/icons-material/OpenInFull";
+import PublicIcon from "@mui/icons-material/Public";
 import SendIcon from "@mui/icons-material/Send";
+import TerminalIcon from "@mui/icons-material/Terminal";
 import TuneIcon from "@mui/icons-material/Tune";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import type { ModelEntry, WorkbenchTurn } from "../state/codexClient";
 import { MarkdownMessage } from "./MarkdownMessage";
 
@@ -23,16 +33,18 @@ export type SideChatTab = {
   title: string;
   threadId: string | null;
   draft: string;
+  sending: boolean;
   userMessages: Array<{ id: string; text: string }>;
 };
 
 type Props = {
   tabs: SideChatTab[];
-  activeTabId: string;
+  activeTabId: string | null;
   turns: WorkbenchTurn[];
   models: ModelEntry[];
   selectedModel: string;
   reasoningLabel: string;
+  permissionLabel: string;
   connected: boolean;
   engineReady: boolean;
   error: string | null;
@@ -51,6 +63,7 @@ export function SideChatPanel({
   models,
   selectedModel,
   reasoningLabel,
+  permissionLabel,
   connected,
   engineReady,
   error,
@@ -63,11 +76,12 @@ export function SideChatPanel({
 }: Props) {
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const [launcherAnchor, setLauncherAnchor] = useState<HTMLElement | null>(null);
   const visibleTurns = useMemo(
     () => (activeTab?.threadId ? turns.filter((turn) => turn.threadId === activeTab.threadId) : []),
     [activeTab?.threadId, turns]
   );
-  const busy = visibleTurns.some((turn) => turn.status === "inProgress");
+  const busy = Boolean(activeTab?.sending) || visibleTurns.some((turn) => turn.status === "inProgress");
   const canSend = Boolean(activeTab?.draft.trim()) && connected && engineReady && !busy;
   const modelLabel = models.find((model) => (model.model ?? model.id ?? "") === selectedModel)?.displayName ?? selectedModel;
 
@@ -78,10 +92,6 @@ export function SideChatPanel({
     }
   }, [activeTab?.id, activeTab?.userMessages.length, visibleTurns]);
 
-  if (!activeTab) {
-    return null;
-  }
-
   return (
     <Box
       data-testid="sidechat-panel"
@@ -90,10 +100,10 @@ export function SideChatPanel({
         minWidth: 0,
         minHeight: 0,
         display: "grid",
-        gridTemplateRows: "48px minmax(0, 1fr) auto",
+        gridTemplateRows: activeTab ? "48px minmax(0, 1fr) auto" : "48px minmax(0, 1fr)",
         borderLeft: "1px solid",
         borderColor: "divider",
-        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.82)
+        bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.7 : 0.96)
       }}
     >
       <Box
@@ -103,16 +113,16 @@ export function SideChatPanel({
           display: "flex",
           alignItems: "center",
           gap: 0.5,
-          px: 1,
+          px: 1.25,
           minWidth: 0,
           overflowX: "auto",
           borderBottom: "1px solid",
           borderColor: "divider",
-          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.42 : 0.55)
+          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.48 : 0.72)
         }}
       >
         {tabs.map((tab) => {
-          const active = tab.id === activeTab.id;
+          const active = tab.id === activeTab?.id;
           return (
             <Box
               key={tab.id}
@@ -121,7 +131,7 @@ export function SideChatPanel({
                 alignItems: "center",
                 flex: "0 0 auto",
                 minWidth: 0,
-                borderRadius: 1.5,
+                borderRadius: 999,
                 bgcolor: active ? "action.selected" : "transparent",
                 border: "1px solid",
                 borderColor: active ? "divider" : "transparent"
@@ -131,6 +141,7 @@ export function SideChatPanel({
                 component="button"
                 type="button"
                 role="tab"
+                data-testid={`sidechat-tab-${tab.id}`}
                 aria-selected={active}
                 onClick={() => onTabChange(tab.id)}
                 sx={{
@@ -139,7 +150,8 @@ export function SideChatPanel({
                   gap: 0.75,
                   minWidth: 0,
                   height: 34,
-                  px: 1,
+                  pl: 1,
+                  pr: 0.5,
                   border: 0,
                   bgcolor: "transparent",
                   color: active ? "text.primary" : "text.secondary",
@@ -147,7 +159,7 @@ export function SideChatPanel({
                   cursor: "pointer"
                 }}
               >
-                <ChatBubbleOutlineIcon sx={{ fontSize: 16, flex: "0 0 auto" }} />
+                <AddCircleOutlineIcon sx={{ fontSize: 16, flex: "0 0 auto" }} />
                 <Typography
                   component="span"
                   variant="body2"
@@ -170,17 +182,70 @@ export function SideChatPanel({
           );
         })}
         <Tooltip title="New side chat">
-          <IconButton size="small" aria-label="New side chat" onClick={onAddTab} sx={{ color: "text.secondary" }}>
+          <IconButton
+            size="small"
+            aria-label="New side chat"
+            onClick={(event) => setLauncherAnchor(event.currentTarget)}
+            sx={{ color: "text.secondary", borderRadius: 1.5 }}
+          >
             <AddIcon fontSize="small" />
           </IconButton>
         </Tooltip>
         <Box sx={{ flex: 1, minWidth: 8 }} />
-        <Tooltip title="Close side chat">
-          <IconButton size="small" aria-label="Close side chat" onClick={onClosePanel} sx={{ color: "text.secondary" }}>
-            <CloseIcon fontSize="small" />
+        <Tooltip title="Maximize side chat">
+          <IconButton size="small" aria-label="Maximize side chat" sx={{ color: "text.secondary", display: { xs: "none", sm: "inline-flex" } }}>
+            <OpenInFullIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Hide side chat">
+          <IconButton size="small" aria-label="Hide side chat" onClick={onClosePanel} sx={{ color: "text.secondary", borderRadius: 1.5 }}>
+            <ViewColumnIcon fontSize="small" />
           </IconButton>
         </Tooltip>
       </Box>
+      <Menu
+        anchorEl={launcherAnchor}
+        open={Boolean(launcherAnchor)}
+        onClose={() => setLauncherAnchor(null)}
+        PaperProps={{
+          sx: {
+            mt: 0.75,
+            minWidth: 260,
+            borderRadius: 2,
+            boxShadow: (theme) => theme.customShadows?.dropdown
+          }
+        }}
+      >
+        <MenuItem
+          onClick={() => {
+            setLauncherAnchor(null);
+            onAddTab();
+          }}
+        >
+          <ListItemIcon>
+            <AddCircleOutlineIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Side chat" />
+          <Typography variant="caption" color="text.secondary">
+            Ctrl+Alt+S
+          </Typography>
+        </MenuItem>
+        <MenuItem disabled>
+          <ListItemIcon>
+            <PublicIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Browser" />
+          <Typography variant="caption" color="text.secondary">
+            Ctrl+T
+          </Typography>
+        </MenuItem>
+        <MenuItem disabled>
+          <ListItemIcon>
+            <TerminalIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText primary="Terminal" />
+        </MenuItem>
+      </Menu>
 
       <Box
         ref={transcriptRef}
@@ -188,9 +253,18 @@ export function SideChatPanel({
           minHeight: 0,
           overflow: "auto",
           p: { xs: 1.25, sm: 2 },
-          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.2 : 0.18)
+          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.2 : 0.1)
         }}
       >
+        {!activeTab ? (
+          <Box sx={{ minHeight: "100%", display: "grid", placeItems: "center", px: 2 }}>
+            <Stack spacing={1.25} sx={{ width: "min(520px, 100%)" }}>
+              <LauncherRow icon={<AddCircleOutlineIcon fontSize="small" />} label="Side chat" shortcut="Ctrl+Alt+S" onClick={onAddTab} />
+              <LauncherRow icon={<PublicIcon fontSize="small" />} label="Browser" shortcut="Ctrl+T" disabled />
+              <LauncherRow icon={<TerminalIcon fontSize="small" />} label="Terminal" disabled />
+            </Stack>
+          </Box>
+        ) : (
         <Stack spacing={1.25} sx={{ maxWidth: 880, mx: "auto" }}>
           {activeTab.userMessages.map((message) => (
             <Box key={message.id} sx={{ display: "flex", justifyContent: "flex-end" }}>
@@ -200,9 +274,9 @@ export function SideChatPanel({
                   maxWidth: "82%",
                   px: 1.5,
                   py: 1,
-                  borderRadius: 2,
-                  bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.18 : 0.1),
-                  borderColor: (theme) => alpha(theme.palette.primary.main, 0.32)
+                  borderRadius: 2.5,
+                  bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.1 : 0.06),
+                  borderColor: "transparent"
                 }}
               >
                 <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
@@ -218,7 +292,7 @@ export function SideChatPanel({
               sx={{
                 p: 1.25,
                 borderRadius: 1.5,
-                bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.62 : 0.74)
+                bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.62 : 0.82)
               }}
             >
               <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 0.75 }}>
@@ -262,78 +336,142 @@ export function SideChatPanel({
             </Paper>
           )}
         </Stack>
+        )}
       </Box>
 
-      <Box
-        sx={{
-          p: { xs: 1, sm: 1.25 },
-          borderTop: "1px solid",
-          borderColor: "divider",
-          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.94)
-        }}
-      >
-        <TextField
-          fullWidth
-          multiline
-          minRows={2}
-          maxRows={6}
-          value={activeTab.draft}
-          disabled={!connected || !engineReady}
-          placeholder="Do anything"
-          inputProps={{ "aria-label": "Side chat message" }}
-          onChange={(event) => onDraftChange(activeTab.id, event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canSend) {
-              event.preventDefault();
-              onSend(activeTab.id, activeTab.draft);
-            }
-          }}
+      {activeTab && (
+        <Box
           sx={{
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 2,
-              alignItems: "flex-start",
-              px: 1.25,
-              py: 1
-            },
-            "& textarea": { fontSize: 14, lineHeight: 1.5 }
+            px: { xs: 1, sm: 2 },
+            pb: { xs: 1, sm: 1.75 },
+            pt: 1,
+            bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.24 : 0.1)
+          }}
+        >
+          <Paper
+            variant="outlined"
+            sx={{
+              width: "min(860px, 100%)",
+              mx: "auto",
+              minHeight: 146,
+              display: "grid",
+              gridTemplateRows: "minmax(76px, 1fr) auto",
+              borderRadius: 3,
+              overflow: "hidden",
+              bgcolor: "background.paper",
+              boxShadow: (theme) => theme.customShadows?.z8
+            }}
+          >
+            <TextField
+              fullWidth
+              multiline
+              variant="standard"
+              minRows={2}
+              maxRows={6}
+              value={activeTab.draft}
+              disabled={!connected || !engineReady}
+              placeholder="Do anything"
+              inputProps={{ "aria-label": "Side chat message" }}
+              InputProps={{ disableUnderline: true }}
+              onChange={(event) => onDraftChange(activeTab.id, event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canSend) {
+                  event.preventDefault();
+                  onSend(activeTab.id, activeTab.draft);
+                }
+              }}
+              sx={{
+                px: 2,
+                pt: 1.75,
+                "& textarea": { fontSize: 15, lineHeight: 1.55 }
+              }}
+            />
+            <Stack direction="row" alignItems="center" spacing={0.75} sx={{ px: 1.25, py: 1 }}>
+              <Tooltip title="Add context">
+                <IconButton size="small" aria-label="Add side chat context">
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Approval policy">
+                <Box sx={{ display: "inline-flex", alignItems: "center", color: "text.secondary", minWidth: 0 }}>
+                  <TuneIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                  <Typography variant="caption" noWrap sx={{ maxWidth: { xs: 120, sm: 180 } }}>
+                    {permissionLabel}
+                  </Typography>
+                </Box>
+              </Tooltip>
+              <Box sx={{ flex: 1, minWidth: 8 }} />
+              <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: { xs: 116, sm: 210 } }}>
+                {modelLabel || "Model"} · {reasoningLabel}
+              </Typography>
+              <Tooltip title="Send side chat message">
+                <span>
+                  <IconButton
+                    color="primary"
+                    aria-label="Send side chat message"
+                    disabled={!canSend}
+                    onClick={() => onSend(activeTab.id, activeTab.draft)}
+                    sx={{
+                      bgcolor: "action.selected",
+                      "&:hover": { bgcolor: "action.hover" }
+                    }}
+                  >
+                    <SendIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
+          </Paper>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function LauncherRow({
+  icon,
+  label,
+  shortcut,
+  disabled,
+  onClick
+}: {
+  icon: React.ReactNode;
+  label: string;
+  shortcut?: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <ButtonBase
+      disabled={disabled}
+      onClick={onClick}
+      sx={{
+        width: "100%",
+        minHeight: 48,
+        px: 1.5,
+        py: 1,
+        borderRadius: 1.5,
+        justifyContent: "flex-start",
+        color: disabled ? "text.disabled" : "text.primary",
+        "&:hover": { bgcolor: disabled ? "transparent" : "action.hover" }
+      }}
+    >
+      <Box sx={{ width: 30, display: "inline-flex", color: "text.secondary" }}>{icon}</Box>
+      <Typography variant="body2" sx={{ flex: 1, textAlign: "left" }}>
+        {label}
+      </Typography>
+      {shortcut && (
+        <Chip
+          size="small"
+          label={shortcut}
+          sx={{
+            height: 22,
+            color: "text.secondary",
+            bgcolor: "action.selected",
+            "& .MuiChip-label": { px: 0.75 }
           }}
         />
-        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.75 }}>
-          <Tooltip title="Add context">
-            <IconButton size="small" aria-label="Add side chat context">
-              <AddIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Approval policy">
-            <Box sx={{ display: "inline-flex", alignItems: "center", color: "text.secondary", minWidth: 0 }}>
-              <TuneIcon sx={{ fontSize: 16, mr: 0.5 }} />
-              <Typography variant="caption" noWrap>
-                Ask for approval
-              </Typography>
-            </Box>
-          </Tooltip>
-          <Box sx={{ flex: 1, minWidth: 8 }} />
-          <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: { xs: 110, sm: 170 } }}>
-            {modelLabel || "Model"} · {reasoningLabel}
-          </Typography>
-          <Tooltip title="Send side chat message">
-            <span>
-              <IconButton
-                color="primary"
-                aria-label="Send side chat message"
-                disabled={!canSend}
-                onClick={() => onSend(activeTab.id, activeTab.draft)}
-                sx={{
-                  bgcolor: "action.selected",
-                  "&:hover": { bgcolor: "action.hover" }
-                }}
-              >
-                <SendIcon fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Stack>
-      </Box>
-    </Box>
+      )}
+    </ButtonBase>
   );
 }
