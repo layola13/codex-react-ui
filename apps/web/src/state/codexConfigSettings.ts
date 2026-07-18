@@ -1,10 +1,11 @@
 import type { JsonValue } from "@codex-ui/shared";
+import codexConfigSchema from "./codexConfigSchema.json";
 
 /**
  * Curated Codex user-config surface for the Settings page.
  * Theme plugins and provider API keys stay out of this module by design.
  */
-export type CodexUserConfigView = {
+export type CodexConfigQuickView = {
   model: string | null;
   reviewModel: string | null;
   modelProvider: string | null;
@@ -19,13 +20,49 @@ export type CodexUserConfigView = {
   developerInstructions: string | null;
 };
 
-export type CodexConfigFieldKey = keyof CodexUserConfigView;
+export type CodexUserConfigView = CodexConfigQuickView & {
+  rawConfig: Record<string, unknown>;
+};
+
+export type CodexConfigFieldKey = keyof CodexConfigQuickView;
 
 export type CodexConfigEdit = {
   keyPath: string;
   value: JsonValue;
   mergeStrategy: "replace";
 };
+
+type JsonSchemaLike = JsonSchema | boolean;
+
+type JsonSchema = {
+  $ref?: string;
+  allOf?: JsonSchemaLike[];
+  anyOf?: JsonSchemaLike[];
+  oneOf?: JsonSchemaLike[];
+  type?: string | string[];
+  enum?: unknown[];
+  const?: unknown;
+  default?: unknown;
+  description?: string;
+  title?: string;
+  properties?: Record<string, JsonSchemaLike>;
+  additionalProperties?: boolean | JsonSchemaLike;
+  items?: JsonSchemaLike;
+};
+
+export type DynamicCodexConfigField = {
+  keyPath: string;
+  label: string;
+  description: string;
+  kind: "boolean" | "number" | "text" | "select" | "textarea" | "json";
+  group: string;
+  options?: Array<{ value: string; label: string }>;
+  defaultValue?: unknown;
+  readOnly?: boolean;
+  source: "schema" | "runtime";
+};
+
+const schemaRoot = codexConfigSchema as unknown as JsonSchema & { definitions?: Record<string, JsonSchemaLike> };
 
 export const CODEX_CONFIG_KEY_PATHS: Record<CodexConfigFieldKey, string> = {
   model: "model",
@@ -185,7 +222,8 @@ export const EMPTY_CODEX_USER_CONFIG: CodexUserConfigView = {
   webSearch: null,
   serviceTier: null,
   instructions: null,
-  developerInstructions: null
+  developerInstructions: null,
+  rawConfig: {}
 };
 
 export function asRecord(value: unknown): Record<string, unknown> {
@@ -223,7 +261,8 @@ export function configToUserView(config: unknown): CodexUserConfigView {
     webSearch: asNullableString(record.web_search),
     serviceTier: asNullableString(record.service_tier),
     instructions: asNullableString(record.instructions),
-    developerInstructions: asNullableString(record.developer_instructions)
+    developerInstructions: asNullableString(record.developer_instructions),
+    rawConfig: record
   };
 }
 
@@ -257,6 +296,20 @@ export function buildConfigValueWrite(
   }
   return {
     keyPath: CODEX_CONFIG_KEY_PATHS[field],
+    value,
+    mergeStrategy: "replace"
+  };
+}
+
+export function buildDynamicConfigValueWrite(
+  keyPath: string,
+  value: JsonValue
+): { keyPath: string; value: JsonValue; mergeStrategy: "replace" } | null {
+  if (!keyPath.trim()) {
+    return null;
+  }
+  return {
+    keyPath,
     value,
     mergeStrategy: "replace"
   };
@@ -311,11 +364,246 @@ export function applyConfigWriteToView(
   const field = (Object.entries(CODEX_CONFIG_KEY_PATHS) as Array<[CodexConfigFieldKey, string]>).find(
     ([, path]) => path === keyPath
   )?.[0];
-  if (!field) {
-    return current;
-  }
   return {
     ...current,
-    [field]: asNullableString(value)
+    ...(field ? { [field]: asNullableString(value) } : null),
+    rawConfig: setConfigValueAtPath(current.rawConfig, keyPath, value)
   };
+}
+
+export function getDynamicCodexConfigFields(config?: Record<string, unknown>): DynamicCodexConfigField[] {
+  const fields = flattenSchemaProperties(schemaRoot.properties ?? {}, []);
+  const knownTopLevel = new Set(Object.keys(schemaRoot.properties ?? {}));
+  const runtimeFields = Object.keys(config ?? {})
+    .filter((key) => !knownTopLevel.has(key))
+    .sort((a, b) => a.localeCompare(b))
+    .map<DynamicCodexConfigField>((key) => ({
+      keyPath: key,
+      label: labelFromPath(key),
+      description: "Runtime config key returned by config/read but not present in the bundled Codex schema.",
+      kind: inferRuntimeKind((config ?? {})[key]),
+      group: "runtime",
+      source: "runtime"
+    }));
+
+  return [...fields, ...runtimeFields];
+}
+
+export function getConfigValueAtPath(config: Record<string, unknown>, keyPath: string): unknown {
+  let current: unknown = config;
+  for (const segment of keyPath.split(".")) {
+    if (!segment) {
+      return undefined;
+    }
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+export function setConfigValueAtPath(config: Record<string, unknown>, keyPath: string, value: JsonValue): Record<string, unknown> {
+  const segments = keyPath.split(".").filter(Boolean);
+  if (segments.length === 0) {
+    return config;
+  }
+  const next: Record<string, unknown> = { ...config };
+  let cursor = next;
+  segments.forEach((segment, index) => {
+    if (index === segments.length - 1) {
+      cursor[segment] = value;
+      return;
+    }
+    const existing = cursor[segment];
+    const child = existing && typeof existing === "object" && !Array.isArray(existing) ? { ...(existing as Record<string, unknown>) } : {};
+    cursor[segment] = child;
+    cursor = child;
+  });
+  return next;
+}
+
+export function formatConfigValueForField(field: DynamicCodexConfigField, value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (field.kind === "json") {
+    return JSON.stringify(value, null, 2);
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+export function parseDynamicConfigFieldValue(
+  field: DynamicCodexConfigField,
+  value: string | boolean
+): { value: JsonValue } | { error: string } {
+  if (field.kind === "boolean") {
+    return { value: Boolean(value) };
+  }
+  if (typeof value !== "string") {
+    return { error: "Expected a text value." };
+  }
+  if (field.kind === "number") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { error: "Number fields cannot be empty." };
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      return { error: "Enter a valid number." };
+    }
+    return { value: parsed };
+  }
+  if (field.kind === "json") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { error: "JSON fields cannot be empty." };
+    }
+    try {
+      return { value: JSON.parse(trimmed) as JsonValue };
+    } catch {
+      return { error: "Enter valid JSON." };
+    }
+  }
+  return { value };
+}
+
+function flattenSchemaProperties(properties: Record<string, JsonSchemaLike>, parentPath: string[]): DynamicCodexConfigField[] {
+  const fields: DynamicCodexConfigField[] = [];
+  for (const key of Object.keys(properties).sort((a, b) => a.localeCompare(b))) {
+    const keyPath = [...parentPath, key];
+    const schema = resolveSchema(properties[key]);
+    fields.push(fieldFromSchema(keyPath, schema));
+
+    const childProperties = schema.properties ?? {};
+    for (const child of flattenSchemaProperties(childProperties, keyPath)) {
+      fields.push(child);
+    }
+  }
+  return fields;
+}
+
+function resolveSchema(schema: JsonSchemaLike | undefined, seen = new Set<string>()): JsonSchema {
+  if (!schema) {
+    return {};
+  }
+  if (typeof schema === "boolean") {
+    return {};
+  }
+  let resolved: JsonSchema = schema;
+  if (schema.$ref?.startsWith("#/definitions/")) {
+    const name = schema.$ref.slice("#/definitions/".length);
+    if (!seen.has(name)) {
+      seen.add(name);
+      resolved = mergeSchema(resolveSchema(schemaRoot.definitions?.[name], seen), withoutRef(schema));
+    }
+  }
+  if (resolved.allOf?.length) {
+    return resolved.allOf.reduce<JsonSchema>((acc, entry) => mergeSchema(acc, resolveSchema(entry, seen)), withoutAllOf(resolved));
+  }
+  return resolved;
+}
+
+function withoutRef(schema: JsonSchema): JsonSchema {
+  const { $ref: _ref, ...rest } = schema;
+  return rest;
+}
+
+function withoutAllOf(schema: JsonSchema): JsonSchema {
+  const { allOf: _allOf, ...rest } = schema;
+  return rest;
+}
+
+function mergeSchema(base: JsonSchema, override: JsonSchema): JsonSchema {
+  return {
+    ...base,
+    ...override,
+    properties: {
+      ...(base.properties ?? {}),
+      ...(override.properties ?? {})
+    }
+  };
+}
+
+function fieldFromSchema(path: string[], schema: JsonSchema): DynamicCodexConfigField {
+  const keyPath = path.join(".");
+  const enumValues = extractEnum(schema);
+  return {
+    keyPath,
+    label: labelFromPath(keyPath),
+    description: schema.description || `Codex config setting: ${keyPath}`,
+    kind: inferSchemaKind(schema, enumValues),
+    group: path[0] ?? "config",
+    options: enumValues?.map((value) => ({ value, label: labelFromValue(value) })),
+    defaultValue: schema.default,
+    readOnly: false,
+    source: "schema"
+  };
+}
+
+function inferSchemaKind(schema: JsonSchema, enumValues?: string[]): DynamicCodexConfigField["kind"] {
+  if (enumValues?.length) {
+    return "select";
+  }
+  const type = Array.isArray(schema.type) ? schema.type.find((entry) => entry !== "null") : schema.type;
+  if (type === "boolean") {
+    return "boolean";
+  }
+  if (type === "number" || type === "integer") {
+    return "number";
+  }
+  if (type === "string") {
+    return isLongTextField(schema) ? "textarea" : "text";
+  }
+  if (type === "object" || type === "array" || schema.properties || schema.additionalProperties || schema.items) {
+    return "json";
+  }
+  return "json";
+}
+
+function inferRuntimeKind(value: unknown): DynamicCodexConfigField["kind"] {
+  if (typeof value === "boolean") {
+    return "boolean";
+  }
+  if (typeof value === "number") {
+    return "number";
+  }
+  if (typeof value === "string") {
+    return "text";
+  }
+  return "json";
+}
+
+function extractEnum(schema: JsonSchema): string[] | undefined {
+  const enumValues = schema.enum;
+  if (!enumValues?.length) {
+    return undefined;
+  }
+  const strings = enumValues.filter((value): value is string => typeof value === "string");
+  return strings.length === enumValues.length ? strings : undefined;
+}
+
+function isLongTextField(schema: JsonSchema): boolean {
+  const description = schema.description?.toLowerCase() ?? "";
+  return description.includes("instructions") || description.includes("prompt") || description.includes("template");
+}
+
+function labelFromPath(keyPath: string): string {
+  return keyPath
+    .split(".")
+    .map((segment) => labelFromValue(segment))
+    .join(" / ");
+}
+
+function labelFromValue(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

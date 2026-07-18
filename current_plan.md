@@ -6,17 +6,19 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-1. Complete the Stitch/Material Kit visual alignment:
-   - use all Stitch reference folders for shared visual tokens and `codex_1/screen.png` as the primary layout target
-   - keep the current Codex workbench features while adopting translucent surface containers, compact navigation, MUI theme layering, and reference typography
-   - preserve light/black/Atmospheric/Sakura/local/custom theme switching
+1. Support all Codex user config settings in the Settings UI:
+   - use `/root/projects/codex/codex-rs/core/config.schema.json` as the dynamic field source
+   - preserve compact Quick settings for common engine fields
+   - add searchable All config coverage for schema-derived fields and runtime keys returned by `config/read`
+   - write scalar, nested, and JSON values through `config/batchWrite` with `reloadUserConfig`
 2. Verify with commands and screenshots:
    - `pnpm --filter @codex-ui/web typecheck`
    - `pnpm --filter @codex-ui/web build`
-   - Playwright desktop and mobile screenshots, compared with the Stitch reference style
-   - explicit theme switching screenshot coverage
-3. Update `tasks.md`, `progress.md`, and `current_plan.md` after each completed feature slice.
-4. Commit and push after the full visual/theme slice is verified.
+   - `pnpm exec playwright install chromium`
+   - `pnpm test:e2e`
+   - inspect updated Settings screenshots for layout regressions and theme consistency
+3. Update `tasks.md`, `progress.md`, and `current_plan.md` after the completed feature slice.
+4. Commit and push after verification.
 
 ## Engineering Rules
 
@@ -29,7 +31,7 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Stitch/Material Kit workbench visual alignment is verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
+Dynamic schema-backed Codex config Settings UI is verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
 
 ## Latest Verification
 

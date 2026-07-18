@@ -187,7 +187,7 @@ test.beforeEach(async ({ page }) => {
       "/root/projects/README.md": "# Mock Project\n\nEditable from Playwright.\n",
       "/root/projects/src/App.tsx": "export const value = 1;\n"
     };
-        const engineConfig: Record<string, unknown> = {
+    const engineConfig: Record<string, unknown> = {
       model: "gpt-5.6-sol",
       review_model: "gpt-5.6-sol",
       model_provider: "openai",
@@ -199,7 +199,25 @@ test.beforeEach(async ({ page }) => {
       web_search: "cached",
       service_tier: "default",
       instructions: "Be precise.",
-      developer_instructions: "Prefer workspace-write tools."
+      developer_instructions: "Prefer workspace-write tools.",
+      history: {
+        persistence: "save-all",
+        max_bytes: 1048576
+      },
+      tui: {
+        animations: true,
+        alternate_screen: "auto"
+      },
+      memories: {
+        generate_memories: true,
+        max_rollouts_per_startup: 4
+      },
+      features: {
+        web_search_request: true
+      },
+      runtime_only_config: {
+        enabled: true
+      }
     };
     const installedPlugin = {
       id: "mock-plugin@mock-market",
@@ -289,7 +307,7 @@ test.beforeEach(async ({ page }) => {
         case "config/value/write": {
           const writeParams = params as { keyPath?: string; value?: unknown } | undefined;
           if (writeParams?.keyPath) {
-            engineConfig[writeParams.keyPath] = writeParams.value;
+            setConfigAtPath(engineConfig, writeParams.keyPath, writeParams.value);
           }
           return {};
         }
@@ -300,7 +318,7 @@ test.beforeEach(async ({ page }) => {
           } | undefined;
           for (const edit of batchParams?.edits ?? []) {
             if (edit.keyPath) {
-              engineConfig[edit.keyPath] = edit.value;
+              setConfigAtPath(engineConfig, edit.keyPath, edit.value);
             }
           }
           return { reloaded: Boolean(batchParams?.reloadUserConfig) };
@@ -491,6 +509,22 @@ test.beforeEach(async ({ page }) => {
         default:
           return {};
       }
+    }
+
+    function setConfigAtPath(config: Record<string, unknown>, keyPath: string, value: unknown): void {
+      const segments = keyPath.split(".").filter(Boolean);
+      let cursor = config;
+      segments.forEach((segment, index) => {
+        if (index === segments.length - 1) {
+          cursor[segment] = value;
+          return;
+        }
+        const existing = cursor[segment];
+        if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+          cursor[segment] = {};
+        }
+        cursor = cursor[segment] as Record<string, unknown>;
+      });
     }
 
     Object.defineProperty(window, "WebSocket", { value: MockWebSocket });
@@ -707,6 +741,63 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   await expect(page.getByRole("combobox", { name: "Default reasoning effort" })).toContainText("High");
   await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Live");
   await expect(page.getByLabel("User instructions")).toHaveValue("Prefer concise answers.");
+
+  await page.getByRole("button", { name: "All config" }).click();
+  await expect(page.getByLabel("Search all Codex config")).toBeVisible();
+  await expect(page.getByText("Codex JSON schema", { exact: true })).toBeVisible();
+  await page.getByLabel("Search all Codex config").fill("history");
+  await expect(page.getByText("history", { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel("History", { exact: true })).toHaveValue(/"max_bytes": 1048576/);
+  await page
+    .getByLabel("History", { exact: true })
+    .fill('{\n  "persistence": "save-all",\n  "max_bytes": 1572864\n}');
+  await page.getByLabel("History", { exact: true }).blur();
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { edits?: Array<{ keyPath?: string; value?: unknown }> };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "config/batchWrite" &&
+        message.params?.edits?.some((edit) => {
+          const value = edit.value as { max_bytes?: unknown } | undefined;
+          return edit.keyPath === "history" && value?.max_bytes === 1572864;
+        })
+    );
+  });
+
+  await page.getByLabel("Search all Codex config").fill("history.max_bytes");
+  await page.getByLabel("History / Max Bytes").fill("2097152");
+  await page.getByLabel("History / Max Bytes").blur();
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { edits?: Array<{ keyPath?: string; value?: unknown }> };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "config/batchWrite" &&
+        message.params?.edits?.some((edit) => edit.keyPath === "history.max_bytes" && edit.value === 2097152)
+    );
+  });
+  await expect(page.getByLabel("History / Max Bytes")).toHaveValue("2097152");
+
+  await page.getByLabel("Search all Codex config").fill("runtime_only_config");
+  await expect(page.getByRole("heading", { name: "runtime" })).toBeVisible();
+  await expect(page.getByLabel("Runtime Only Config", { exact: true })).toBeVisible();
 
   // Visual proof: Settings page with live engine config fields (material-kit-style section cards).
   await page.screenshot({

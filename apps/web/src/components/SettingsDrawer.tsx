@@ -21,6 +21,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import type { JsonValue } from "@codex-ui/shared";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import ColorLensIcon from "@mui/icons-material/ColorLens";
@@ -38,8 +39,13 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { permissionPresets, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
 import {
   CODEX_CONFIG_FIELD_META,
+  formatConfigValueForField,
+  getConfigValueAtPath,
+  getDynamicCodexConfigFields,
+  parseDynamicConfigFieldValue,
   type CodexConfigFieldKey,
-  type CodexUserConfigView
+  type CodexUserConfigView,
+  type DynamicCodexConfigField
 } from "../state/codexConfigSettings";
 import { themePlugins, type ThemeId, type ThemeMode, type ThemePlugin } from "../theme";
 import { PetDock } from "./PetDock";
@@ -93,6 +99,7 @@ type Props = {
   onReasoningEffortChange: (effort: string) => void;
   onReloadCodexConfig: () => void;
   onCodexConfigFieldChange: (field: CodexConfigFieldKey, value: string) => void;
+  onCodexConfigValueChange: (keyPath: string, value: JsonValue) => void;
 };
 
 const NAV_ITEMS: Array<{ id: SettingsSectionId; label: string; icon: ReactNode }> = [
@@ -138,19 +145,47 @@ export function SettingsDrawer({
   onPermissionChange,
   onReasoningEffortChange,
   onReloadCodexConfig,
-  onCodexConfigFieldChange
+  onCodexConfigFieldChange,
+  onCodexConfigValueChange
 }: Props) {
   const [section, setSection] = useState<SettingsSectionId>("codex");
+  const [codexConfigMode, setCodexConfigMode] = useState<"quick" | "all">("quick");
+  const [codexConfigSearch, setCodexConfigSearch] = useState("");
   const activeProvider = providers.find((provider) => provider.id === activeProviderId);
   const selectedReasoning = reasoningOptions.find((option) => option.value === reasoningEffort);
   const allThemePlugins = useMemo(
     () => [...themePlugins, ...customThemePlugins.filter((plugin) => !themePlugins.some((entry) => entry.id === plugin.id))],
     [customThemePlugins]
   );
+  const dynamicCodexConfigFields = useMemo(() => getDynamicCodexConfigFields(codexConfig?.rawConfig), [codexConfig?.rawConfig]);
+  const groupedDynamicCodexConfigFields = useMemo(() => {
+    const needle = codexConfigSearch.trim().toLowerCase();
+    const filtered = dynamicCodexConfigFields.filter((field) => {
+      if (!needle) {
+        return true;
+      }
+      return (
+        field.keyPath.toLowerCase().includes(needle) ||
+        field.label.toLowerCase().includes(needle) ||
+        field.description.toLowerCase().includes(needle)
+      );
+    });
+    return filtered.reduce<Array<{ group: string; fields: DynamicCodexConfigField[] }>>((groups, field) => {
+      const existing = groups.find((entry) => entry.group === field.group);
+      if (existing) {
+        existing.fields.push(field);
+      } else {
+        groups.push({ group: field.group, fields: [field] });
+      }
+      return groups;
+    }, []);
+  }, [codexConfigSearch, dynamicCodexConfigFields]);
 
   useEffect(() => {
     if (open) {
       setSection("codex");
+      setCodexConfigMode("quick");
+      setCodexConfigSearch("");
     }
   }, [open]);
 
@@ -270,22 +305,85 @@ export function SettingsDrawer({
                     </Alert>
                   </Box>
                 ) : null}
-                {CODEX_CONFIG_FIELD_META.map((field) => (
-                  <CodexConfigFieldRow
-                    key={field.key}
-                    fieldKey={field.key}
-                    label={field.label}
-                    description={field.description}
-                    kind={field.kind}
-                    options={field.options}
-                    readOnly={field.readOnly}
-                    value={codexConfig?.[field.key] ?? ""}
-                    disabled={!codexConfig || Boolean(field.readOnly) || codexConfigSaving}
-                    onCommit={(next) => onCodexConfigFieldChange(field.key, next)}
-                  />
-                ))}
+                <SettingRow
+                  title="Config coverage"
+                  description="Quick settings keep the common controls compact. All config is generated from Codex's bundled JSON schema and includes runtime keys from config/read."
+                >
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button
+                      size="small"
+                      variant={codexConfigMode === "quick" ? "contained" : "outlined"}
+                      onClick={() => setCodexConfigMode("quick")}
+                    >
+                      Quick settings
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={codexConfigMode === "all" ? "contained" : "outlined"}
+                      onClick={() => setCodexConfigMode("all")}
+                    >
+                      All config
+                    </Button>
+                  </Stack>
+                </SettingRow>
+                {codexConfigMode === "quick" ? (
+                  <>
+                    {CODEX_CONFIG_FIELD_META.map((field) => (
+                      <CodexConfigFieldRow
+                        key={field.key}
+                        fieldKey={field.key}
+                        label={field.label}
+                        description={field.description}
+                        kind={field.kind}
+                        options={field.options}
+                        readOnly={field.readOnly}
+                        value={codexConfig?.[field.key] ?? ""}
+                        disabled={!codexConfig || Boolean(field.readOnly) || codexConfigSaving}
+                        onCommit={(next) => onCodexConfigFieldChange(field.key, next)}
+                      />
+                    ))}
+                  </>
+                ) : (
+                  <Box>
+                    <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.default" }}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="Search all Codex config"
+                        value={codexConfigSearch}
+                        onChange={(event) => setCodexConfigSearch(event.target.value)}
+                        inputProps={{ "aria-label": "Search all Codex config" }}
+                      />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+                        {groupedDynamicCodexConfigFields.reduce((count, group) => count + group.fields.length, 0)} schema/runtime settings
+                      </Typography>
+                    </Box>
+                    {groupedDynamicCodexConfigFields.map((group) => (
+                      <Box key={group.group} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 1.5, py: 1, bgcolor: "background.default" }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                            {group.group}
+                          </Typography>
+                          <Chip size="small" label={group.fields.length} variant="outlined" />
+                        </Stack>
+                        {group.fields.map((field) => (
+                          <DynamicCodexConfigFieldRow
+                            key={field.keyPath}
+                            field={field}
+                            value={getConfigValueAtPath(codexConfig?.rawConfig ?? {}, field.keyPath)}
+                            disabled={!codexConfig || codexConfigSaving}
+                            onCommit={(next) => onCodexConfigValueChange(field.keyPath, next)}
+                          />
+                        ))}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
                 <SettingRow title="Config source" description="Engine-owned keys only. Provider secrets use keyring; skins use local theme plugins.">
-                  <Chip size="small" label="config/read" color="primary" variant="outlined" />
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" label="config/read" color="primary" variant="outlined" />
+                    <Chip size="small" label="Codex JSON schema" color="primary" variant="outlined" />
+                  </Stack>
                 </SettingRow>
               </SettingsSection>
             )}
@@ -546,6 +644,165 @@ function CodexConfigFieldRow({
   );
 }
 
+function DynamicCodexConfigFieldRow({
+  field,
+  value,
+  disabled,
+  onCommit
+}: {
+  field: DynamicCodexConfigField;
+  value: unknown;
+  disabled: boolean;
+  onCommit: (value: JsonValue) => void;
+}) {
+  const formattedValue = useMemo(() => formatConfigValueForField(field, value), [field, value]);
+  const [draft, setDraft] = useState(formattedValue);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraft(formattedValue);
+    setError(null);
+  }, [formattedValue, field.keyPath]);
+
+  const commitTextValue = () => {
+    if (draft === formattedValue) {
+      return;
+    }
+    const parsed = parseDynamicConfigFieldValue(field, draft);
+    if ("error" in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    onCommit(parsed.value);
+  };
+
+  const fieldCaption = (
+    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+          {field.label}
+        </Typography>
+        <Chip size="small" label={field.keyPath} variant="outlined" />
+        {field.source === "runtime" ? <Chip size="small" label="runtime" color="warning" variant="outlined" /> : null}
+      </Stack>
+      <Typography variant="caption" color="text.secondary">
+        {field.description}
+      </Typography>
+      {field.defaultValue !== undefined ? (
+        <Typography variant="caption" color="text.secondary">
+          Default: {formatDefaultValue(field.defaultValue)}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+
+  if (field.kind === "boolean") {
+    return (
+      <SettingRow title={fieldCaption} description={null}>
+        <Switch
+          checked={Boolean(value)}
+          disabled={disabled}
+          onChange={(event) => {
+            const parsed = parseDynamicConfigFieldValue(field, event.target.checked);
+            if (!("error" in parsed)) {
+              onCommit(parsed.value);
+            }
+          }}
+          inputProps={{ "aria-label": field.label }}
+        />
+      </SettingRow>
+    );
+  }
+
+  if (field.kind === "select") {
+    return (
+      <SettingRow title={fieldCaption} description={null}>
+        <FormControl size="small" sx={{ minWidth: 220 }} disabled={disabled}>
+          <InputLabel id={`dynamic-codex-config-${field.keyPath}-label`}>{field.label}</InputLabel>
+          <Select
+            labelId={`dynamic-codex-config-${field.keyPath}-label`}
+            label={field.label}
+            value={formattedValue}
+            inputProps={{ "aria-label": field.label }}
+            onChange={(event) => {
+              const parsed = parseDynamicConfigFieldValue(field, event.target.value);
+              if (!("error" in parsed)) {
+                onCommit(parsed.value);
+              }
+            }}
+          >
+            {!formattedValue ? (
+              <MenuItem value="">
+                <em>Unset</em>
+              </MenuItem>
+            ) : null}
+            {(field.options ?? []).map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </SettingRow>
+    );
+  }
+
+  if (field.kind === "textarea" || field.kind === "json") {
+    return (
+      <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+        {fieldCaption}
+        <TextField
+          size="small"
+          fullWidth
+          multiline
+          minRows={field.kind === "json" ? 4 : 3}
+          maxRows={10}
+          label={field.kind === "json" ? `${field.label} JSON` : field.label}
+          value={draft}
+          disabled={disabled}
+          error={Boolean(error)}
+          helperText={error ?? (field.kind === "json" ? "Edit as JSON and blur to save." : "Blur to save.")}
+          inputProps={{ "aria-label": field.label }}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commitTextValue}
+          sx={{ mt: 1 }}
+        />
+      </Box>
+    );
+  }
+
+  return (
+    <SettingRow title={fieldCaption} description={null}>
+      <TextField
+        size="small"
+        label={field.label}
+        type={field.kind === "number" ? "number" : "text"}
+        value={draft}
+        disabled={disabled}
+        error={Boolean(error)}
+        helperText={error}
+        inputProps={{ "aria-label": field.label }}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commitTextValue}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commitTextValue();
+          }
+        }}
+        sx={{ minWidth: 220 }}
+      />
+    </SettingRow>
+  );
+}
+
+function formatDefaultValue(value: unknown): string {
+  if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
 function SettingsSection({
   icon,
   title,
@@ -785,8 +1042,8 @@ function SettingRow({
   description,
   children
 }: {
-  title: string;
-  description: string;
+  title: ReactNode;
+  description: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -798,12 +1055,18 @@ function SettingRow({
         sx={{ p: 1.5, bgcolor: "background.paper" }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            {title}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
-            {description}
-          </Typography>
+          {typeof title === "string" ? (
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {title}
+            </Typography>
+          ) : (
+            title
+          )}
+          {description ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
+              {description}
+            </Typography>
+          ) : null}
         </Box>
         <Box sx={{ flex: "0 0 auto" }}>{children}</Box>
       </Stack>

@@ -2,6 +2,19 @@
 
 ## 2026-07-18
 
+- Added full Codex config coverage in Settings by vendoring `/root/projects/codex/codex-rs/core/config.schema.json` into the web app as the dynamic field source.
+- Preserved the existing Quick settings section for common engine fields while adding a searchable All config mode generated from the Codex JSON schema.
+- Added dynamic controls for booleans, numbers, strings, enums, text areas, object/array JSON editors, nested schema properties, and runtime keys returned by `config/read` but absent from the bundled schema.
+- Extended config state to retain the raw `config/read` object and apply optimistic writes to arbitrary nested key paths.
+- Extended Codex config writes so schema/runtime fields persist through `config/batchWrite` with `reloadUserConfig`, including nested paths such as `history.max_bytes`.
+- Expanded Playwright coverage to verify All config rendering, schema source labeling, top-level JSON object edits, nested numeric edits, and runtime key display.
+- Re-ran and passed verification:
+  - `pnpm --filter @codex-ui/web typecheck`
+  - `pnpm --filter @codex-ui/web build`
+  - `pnpm exec playwright install chromium`
+  - `pnpm test:e2e` (13/13 Chromium tests)
+- Inspected the updated Settings screenshot `snapshot/codex-ui-settings-open.png`; the dynamic All config panel fits the existing dark theme layout without visible overlap.
+
 - Started the Stitch/Material Kit visual alignment slice.
 - Reviewed the referenced Stitch HTML/screenshots under `snapshot/参考/stitch_react_mui_interface_design`, with `codex_1` as the primary layout reference and the rest used for shared tokens.
 - Confirmed recurring reference traits: `surface-container` color layering, translucent panels, compact left navigation, rounded-lg/xl/full controls, Plus Jakarta Sans/Manrope/JetBrains Mono typography, and low-contrast outlines.
@@ -93,4 +106,3 @@
 ## Known Gaps
 
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
-- Full nested Codex config.toml editor remains out of scope; Settings exposes a curated writable subset.

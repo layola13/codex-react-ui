@@ -78,6 +78,7 @@ import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawe
 import { ResizeHandle } from "./components/ResizeHandle";
 import {
   applyConfigWriteToView,
+  buildDynamicConfigValueWrite,
   buildConfigValueWrite,
   parseConfigReadResponse,
   type CodexConfigFieldKey,
@@ -376,6 +377,37 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
     },
     [client, codexConfig]
+  );
+
+  const writeCodexConfigValue = useCallback(
+    async (keyPath: string, value: JsonValue) => {
+      const write = buildDynamicConfigValueWrite(keyPath, value);
+      if (!write) {
+        return;
+      }
+      setCodexConfigSaving(true);
+      setCodexConfigError(null);
+      setCodexConfig((current) => (current ? applyConfigWriteToView(current, write.keyPath, write.value) : current));
+      try {
+        await client.rpc("config/batchWrite", {
+          edits: [write],
+          reloadUserConfig: true
+        });
+        const reloaded = await client.rpc("config/read", { includeLayers: false });
+        setCodexConfig(parseConfigReadResponse(reloaded));
+      } catch (error) {
+        setCodexConfigError(errorMessage("Codex config write", error));
+        try {
+          const reloaded = await client.rpc("config/read", { includeLayers: false });
+          setCodexConfig(parseConfigReadResponse(reloaded));
+        } catch {
+          /* keep optimistic state if re-read also fails */
+        }
+      } finally {
+        setCodexConfigSaving(false);
+      }
+    },
+    [client]
   );
 
   useEffect(() => {
@@ -1496,6 +1528,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onReasoningEffortChange={setReasoningEffort}
         onReloadCodexConfig={() => void loadCodexConfig()}
         onCodexConfigFieldChange={(field, value) => void writeCodexConfigField(field, value)}
+        onCodexConfigValueChange={(keyPath, value) => void writeCodexConfigValue(keyPath, value)}
       />
       <Snackbar
         open={state.errors.length > 0}
