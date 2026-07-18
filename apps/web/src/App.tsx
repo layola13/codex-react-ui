@@ -113,6 +113,7 @@ type Action =
   | { type: "providers"; providers: ProviderConfig[] }
   | { type: "activeThread"; threadId: string | null }
   | { type: "threadLoaded"; thread: ClientState["threads"][number] | null; turns: ClientState["turns"] }
+  | { type: "threadMerged"; thread: ClientState["threads"][number] | null; turns: ClientState["turns"] }
   | { type: "toolingLoading"; loading: boolean }
   | { type: "tooling"; tooling: ClientState["tooling"] }
   | { type: "notification"; message: Extract<ServerToClientMessage, { type: "codex.notification" }>["message"] }
@@ -143,6 +144,12 @@ function reducer(state: ClientState, action: Action): ClientState {
       return {
         ...state,
         activeThreadId: action.thread?.id ?? state.activeThreadId,
+        threads: action.thread ? upsertThread(state.threads, action.thread) : state.threads,
+        turns: mergeTurns(state.turns, action.turns)
+      };
+    case "threadMerged":
+      return {
+        ...state,
         threads: action.thread ? upsertThread(state.threads, action.thread) : state.threads,
         turns: mergeTurns(state.turns, action.turns)
       };
@@ -654,6 +661,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const result = await client.rpc("thread/read", { threadId, includeTurns: true });
         const loaded = threadReadToTurns(result);
         dispatch({ type: "threadLoaded", thread: loaded.thread, turns: loaded.turns });
+      } catch (error) {
+        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      }
+    },
+    [client]
+  );
+
+  const loadThreadIntoCache = useCallback(
+    async (threadId: string) => {
+      try {
+        const result = await client.rpc("thread/read", { threadId, includeTurns: true });
+        const loaded = threadReadToTurns(result);
+        dispatch({ type: "threadMerged", thread: loaded.thread, turns: loaded.turns });
       } catch (error) {
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
@@ -1298,7 +1318,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             <Typography variant="body2">Starting Codex engine...</Typography>
           </Box>
         )}
-        <ChatPanel turns={mainTurns} activeThreadId={state.activeThreadId} errors={state.errors} />
+        <ChatPanel
+          turns={mainTurns}
+          threads={nonSideChatThreads}
+          activeThreadId={state.activeThreadId}
+          errors={state.errors}
+          onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
+        />
         <Box
           sx={{
             borderTop: "1px solid",
@@ -1364,7 +1390,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const statusColor =
     state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
   const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((threadId): threadId is string => Boolean(threadId)));
-  const mainThreads = state.threads.filter((thread) => !sideChatThreadIds.has(thread.id));
+  const nonSideChatThreads = state.threads.filter((thread) => !sideChatThreadIds.has(thread.id));
+  const mainThreads = nonSideChatThreads.filter((thread) => !thread.parentThreadId);
   const mainTurns = state.turns.filter((turn) => !sideChatThreadIds.has(turn.threadId));
   const taskTabs = mainThreads.slice(0, 12);
   const reasoningIndex = Math.max(0, reasoningOptions.findIndex((option) => option.value === reasoningEffort));
@@ -1882,6 +1909,9 @@ function normalizeThreads(value: unknown[]): ClientState["threads"] {
       preview: typeof entry.preview === "string" ? entry.preview : undefined,
       model: typeof entry.model === "string" ? entry.model : undefined,
       modelProvider: typeof entry.modelProvider === "string" ? entry.modelProvider : undefined,
+      parentThreadId: typeof entry.parentThreadId === "string" ? entry.parentThreadId : undefined,
+      agentNickname: typeof entry.agentNickname === "string" ? entry.agentNickname : undefined,
+      agentRole: typeof entry.agentRole === "string" ? entry.agentRole : undefined,
       createdAt: typeof entry.createdAt === "number" ? entry.createdAt : undefined,
       updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : undefined,
       status: typeof entry.status === "string" ? entry.status : undefined

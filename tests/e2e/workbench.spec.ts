@@ -255,6 +255,7 @@ test.beforeEach(async ({ page }) => {
           const turnId = `turn-${turnIndex}`;
           const itemId = `item-${turnIndex}`;
           const inputText = params?.input?.find((entry) => entry.type === "text")?.text ?? "";
+          const parallelAgentsPrompt = inputText.toLowerCase().includes("parallel agents");
           setTimeout(() => {
             this.emit({ type: "rpc.result", id: message.id, result });
             this.emit({
@@ -267,6 +268,162 @@ test.beforeEach(async ({ page }) => {
                 }
               }
             });
+            if (parallelAgentsPrompt) {
+              const reviewThreadId = "agent-review-thread";
+              const testsThreadId = "agent-tests-thread";
+              this.emit({
+                type: "codex.notification",
+                message: {
+                  method: "item/started",
+                  params: {
+                    threadId,
+                    turnId,
+                    startedAtMs: Date.now(),
+                    item: {
+                      type: "collabAgentToolCall",
+                      id: `${itemId}-spawn`,
+                      tool: "spawnAgent",
+                      status: "inProgress",
+                      senderThreadId: threadId,
+                      receiverThreadIds: [reviewThreadId, testsThreadId],
+                      prompt: "Split the implementation into review and test agents",
+                      model: "gpt-5.6-sol",
+                      reasoningEffort: "medium",
+                      agentsStates: {
+                        [reviewThreadId]: { status: "running", message: "reviewing UI state" },
+                        [testsThreadId]: { status: "running", message: "building Playwright proof" }
+                      }
+                    }
+                  }
+                }
+              });
+              [
+                {
+                  id: reviewThreadId,
+                  turnId: "turn-agent-review",
+                  itemId: "item-agent-review",
+                  nickname: "Review",
+                  role: "Reviewer",
+                  text: "Review agent found missing tests for completion badges."
+                },
+                {
+                  id: testsThreadId,
+                  turnId: "turn-agent-tests",
+                  itemId: "item-agent-tests",
+                  nickname: "Tests",
+                  role: "Playwright",
+                  text: "Test agent reproduced the parallel rail switching path."
+                }
+              ].forEach((agent, index) => {
+                setTimeout(() => {
+                  this.emit({
+                    type: "codex.notification",
+                    message: {
+                      method: "thread/started",
+                      params: {
+                        thread: {
+                          id: agent.id,
+                          parentThreadId: threadId,
+                          preview: `${agent.nickname} agent`,
+                          agentNickname: agent.nickname,
+                          agentRole: agent.role,
+                          status: "running"
+                        }
+                      }
+                    }
+                  });
+                  this.emit({
+                    type: "codex.notification",
+                    message: {
+                      method: "turn/started",
+                      params: {
+                        threadId: agent.id,
+                        turn: { id: agent.turnId, threadId: agent.id, status: "inProgress" }
+                      }
+                    }
+                  });
+                  this.emit({
+                    type: "codex.notification",
+                    message: {
+                      method: "item/agentMessage/delta",
+                      params: {
+                        threadId: agent.id,
+                        turnId: agent.turnId,
+                        itemId: agent.itemId,
+                        delta: agent.text
+                      }
+                    }
+                  });
+                  this.emit({
+                    type: "codex.notification",
+                    message: {
+                      method: "item/completed",
+                      params: {
+                        threadId: agent.id,
+                        turnId: agent.turnId,
+                        completedAtMs: Date.now(),
+                        item: {
+                          type: "agentMessage",
+                          id: agent.itemId,
+                          text: agent.text,
+                          phase: null,
+                          memoryCitation: null
+                        }
+                      }
+                    }
+                  });
+                  this.emit({
+                    type: "codex.notification",
+                    message: {
+                      method: "turn/completed",
+                      params: {
+                        threadId: agent.id,
+                        turn: { id: agent.turnId, threadId: agent.id, status: "completed" }
+                      }
+                    }
+                  });
+                }, 40 + index * 40);
+              });
+              setTimeout(() => {
+                this.emit({
+                  type: "codex.notification",
+                  message: {
+                    method: "item/completed",
+                    params: {
+                      threadId,
+                      turnId,
+                      completedAtMs: Date.now(),
+                      item: {
+                        type: "collabAgentToolCall",
+                        id: `${itemId}-spawn`,
+                        tool: "spawnAgent",
+                        status: "completed",
+                        senderThreadId: threadId,
+                        receiverThreadIds: [reviewThreadId, testsThreadId],
+                        prompt: "Split the implementation into review and test agents",
+                        model: "gpt-5.6-sol",
+                        reasoningEffort: "medium",
+                        agentsStates: {
+                          [reviewThreadId]: { status: "completed", message: "review complete" },
+                          [testsThreadId]: { status: "completed", message: "tests complete" }
+                        }
+                      }
+                    }
+                  }
+                });
+                this.emit({
+                  type: "codex.notification",
+                  message: {
+                    method: "turn/completed",
+                    params: {
+                      threadId,
+                      turn: { id: turnId, threadId, status: "completed" }
+                    }
+                  }
+                });
+              }, 160);
+              return;
+            }
             this.emit({
               type: "codex.notification",
               message: {
@@ -943,6 +1100,44 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
     path: "snapshot/sidechat-workbench.png",
     fullPage: false
   });
+});
+
+test("shows parallel agents rail with switchable transcripts and completion controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Mock thread" }).click();
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Launch parallel agents");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await expect(page.getByTestId("parallel-agent-rail")).toBeVisible();
+  await expect(page.getByTestId("parallel-agent-button-agent-review-thread")).toBeVisible();
+  await expect(page.getByTestId("parallel-agent-button-agent-tests-thread")).toBeVisible();
+  await expect(page.getByText("Tool: spawnAgent")).toBeVisible();
+  await expect(page.getByTestId("parallel-agent-badge-agent-review-thread")).toBeVisible();
+  await expect(page.getByTestId("parallel-agent-badge-agent-tests-thread")).toBeVisible();
+
+  await page.screenshot({
+    path: "snapshot/parallel-agents-workbench.png",
+    fullPage: false
+  });
+
+  await page.getByTestId("parallel-agent-button-agent-review-thread").click({ position: { x: 12, y: 30 } });
+  await expect(page.getByTestId("parallel-agent-header")).toContainText("Review");
+  await expect(page.getByText("Review agent found missing tests for completion badges.")).toBeVisible();
+  await expect(page.getByText("Test agent reproduced the parallel rail switching path.")).toHaveCount(0);
+
+  await page.getByTestId("parallel-agent-button-agent-tests-thread").click({ position: { x: 12, y: 30 } });
+  await expect(page.getByTestId("parallel-agent-header")).toContainText("Tests");
+  await expect(page.getByText("Test agent reproduced the parallel rail switching path.")).toBeVisible();
+  await expect(page.getByText("Review agent found missing tests for completion badges.")).toHaveCount(0);
+
+  await page.getByTestId("parallel-agent-main").click();
+  await expect(page.getByText("Tool: spawnAgent")).toBeVisible();
+  await page.getByTestId("parallel-agent-close-agent-review-thread").click();
+  await expect(page.getByTestId("parallel-agent-button-agent-review-thread")).toHaveCount(0);
+  await expect(page.getByTestId("parallel-agent-button-agent-tests-thread")).toBeVisible();
 });
 
 test("loads live Codex config in Settings and persists edits via config/batchWrite", async ({ page }) => {

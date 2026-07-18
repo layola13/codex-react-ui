@@ -220,6 +220,9 @@ export type ThreadEntry = {
   preview?: string;
   model?: string;
   modelProvider?: string;
+  parentThreadId?: string;
+  agentNickname?: string;
+  agentRole?: string;
   createdAt?: number;
   updatedAt?: number;
   status?: string;
@@ -232,6 +235,11 @@ export type WorkbenchItem = {
   text: string;
   images?: WorkbenchImage[];
   status?: string;
+  agentId?: string;
+  agentThreadId?: string;
+  agentName?: string;
+  agentRole?: string;
+  agentStatus?: string;
   payload?: JsonValue;
 };
 
@@ -473,6 +481,9 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       preview: stringValue(thread.preview),
       model: stringValue(thread.model),
       modelProvider: stringValue(thread.modelProvider),
+      parentThreadId: stringValue(thread.parentThreadId),
+      agentNickname: stringValue(thread.agentNickname),
+      agentRole: stringValue(thread.agentRole),
       status: stringValue(thread.status)
     };
     return {
@@ -512,7 +523,8 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       title: itemTitle(item),
       text: itemText(item),
       images: itemImages(item),
-      status: stringValue(item.status),
+      status: stringValue(item.status) ?? (method === "item/completed" ? "completed" : undefined),
+      ...agentItemMetadata(item, params, method === "item/completed"),
       payload: item as JsonValue
     };
     return {
@@ -526,6 +538,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
     const itemId = stringValue(params.itemId);
     const turnId = stringValue(params.turnId);
     const delta = stringValue(params.delta) ?? "";
+    const metadata = agentItemMetadata(params);
     if (!itemId || !turnId) {
       return state;
     }
@@ -544,7 +557,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
         };
         return {
           ...turn,
-          items: upsertById(turn.items, { ...item, text: `${item.text}${delta}` })
+          items: upsertById(turn.items, { ...item, ...mergeAgentItemMetadata(item, metadata), text: `${item.text}${delta}` })
         };
       })
     };
@@ -993,6 +1006,9 @@ function threadToEntry(thread: Record<string, unknown>): ThreadEntry {
     preview: stringValue(thread.preview) ?? stringValue(thread.name),
     model: stringValue(thread.model),
     modelProvider: stringValue(thread.modelProvider),
+    parentThreadId: stringValue(thread.parentThreadId),
+    agentNickname: stringValue(thread.agentNickname),
+    agentRole: stringValue(thread.agentRole),
     createdAt: numberValue(thread.createdAt),
     updatedAt: numberValue(thread.updatedAt),
     status: stringValue(thread.status)
@@ -1028,6 +1044,7 @@ function threadItemToWorkbenchItem(item: Record<string, unknown>): WorkbenchItem
     text: itemText(item),
     images: itemImages(item),
     status: stringValue(item.status),
+    ...agentItemMetadata(item),
     payload: item as JsonValue
   };
 }
@@ -1057,6 +1074,10 @@ function itemTitle(item: Record<string, unknown>): string {
       return [`MCP`, stringValue(item.server), stringValue(item.tool)].filter(Boolean).join(" / ");
     case "dynamicToolCall":
       return [`Tool`, stringValue(item.namespace), stringValue(item.tool)].filter(Boolean).join(" / ");
+    case "collabAgentToolCall":
+      return "Parallel agent";
+    case "subAgentActivity":
+      return "Agent activity";
     default:
       return type;
   }
@@ -1082,6 +1103,22 @@ function itemText(item: Record<string, unknown>): string {
   }
   if (typeof item.text === "string") {
     return item.text;
+  }
+  if (stringValue(item.type) === "collabAgentToolCall") {
+    const tool = stringValue(item.tool);
+    const prompt = stringValue(item.prompt);
+    const receivers = asArray(item.receiverThreadIds).map(String).filter(Boolean);
+    return [
+      tool ? `Tool: ${tool}` : "",
+      prompt ? `Prompt: ${prompt}` : "",
+      receivers.length > 0 ? `Agents: ${receivers.join(", ")}` : ""
+    ].filter(Boolean).join("\n");
+  }
+  if (stringValue(item.type) === "subAgentActivity") {
+    return [
+      stringValue(item.kind) ? `Status: ${stringValue(item.kind)}` : "",
+      stringValue(item.agentPath) ? `Agent: ${stringValue(item.agentPath)}` : ""
+    ].filter(Boolean).join("\n");
   }
   if (Array.isArray(item.command)) {
     return item.command.map(String).join(" ");
@@ -1132,6 +1169,76 @@ function itemImages(item: Record<string, unknown>): WorkbenchImage[] | undefined
     })
     .filter(isPresent);
   return images.length > 0 ? images : undefined;
+}
+
+function agentItemMetadata(...recordsOrFlags: Array<Record<string, unknown> | boolean | undefined>): Partial<WorkbenchItem> {
+  const markCompleted = recordsOrFlags.some((entry) => entry === true);
+  const records = recordsOrFlags.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry));
+  const nestedRecords = records.flatMap((record) => [asRecord(record.agent), asRecord(record.subagent), asRecord(record.subAgent)]);
+  const sources = [...records, ...nestedRecords];
+  const agentThreadId =
+    firstString(sources, ["agentThreadId", "subagentThreadId", "subAgentThreadId", "receiverThreadId"]) ??
+    firstString(nestedRecords, ["threadId"]);
+  const agentId = firstString(sources, ["agentId", "subagentId", "subAgentId", "agentPath"]) ?? firstString(nestedRecords, ["id"]) ?? agentThreadId;
+  const agentName =
+    firstString(sources, ["agentName", "agentNickname", "subagentName", "subAgentName", "name", "displayName"]) ??
+    firstString(sources, ["agentPath"]);
+  const agentRole = firstString(sources, ["agentRole", "role"]);
+  const rawStatus = firstString(sources, ["agentStatus", "subagentStatus", "subAgentStatus", "status", "kind"]);
+  const agentStatus = markCompleted && agentId ? "completed" : rawStatus ? normalizeAgentItemStatus(rawStatus) : undefined;
+  const metadata: Partial<WorkbenchItem> = {};
+  if (agentId) {
+    metadata.agentId = agentId;
+  }
+  if (agentThreadId) {
+    metadata.agentThreadId = agentThreadId;
+  }
+  if (agentName) {
+    metadata.agentName = agentName;
+  }
+  if (agentRole) {
+    metadata.agentRole = agentRole;
+  }
+  if (agentStatus) {
+    metadata.agentStatus = agentStatus;
+  }
+  return metadata;
+}
+
+function mergeAgentItemMetadata(existing: WorkbenchItem, next: Partial<WorkbenchItem>): Partial<WorkbenchItem> {
+  return {
+    agentId: next.agentId ?? existing.agentId,
+    agentThreadId: next.agentThreadId ?? existing.agentThreadId,
+    agentName: next.agentName ?? existing.agentName,
+    agentRole: next.agentRole ?? existing.agentRole,
+    agentStatus: next.agentStatus ?? existing.agentStatus
+  };
+}
+
+function firstString(records: Array<Record<string, unknown>>, keys: string[]): string | undefined {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = stringValue(record[key]);
+      if (value) {
+        return value;
+      }
+    }
+  }
+  return undefined;
+}
+
+function normalizeAgentItemStatus(value: string): string {
+  switch (value) {
+    case "started":
+    case "interacted":
+    case "inProgress":
+    case "pendingInit":
+      return "running";
+    case "errored":
+      return "failed";
+    default:
+      return value;
+  }
 }
 
 function isPresent<T>(value: T | null | undefined): value is T {
