@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Avatar, Badge, Box, Chip, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import { Alert, Avatar, Badge, Box, Button, Chip, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import BugReportIcon from "@mui/icons-material/BugReport";
+import BuildIcon from "@mui/icons-material/Build";
 import CloseIcon from "@mui/icons-material/Close";
 import ForumIcon from "@mui/icons-material/Forum";
+import RateReviewIcon from "@mui/icons-material/RateReview";
+import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PersonIcon from "@mui/icons-material/Person";
 import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
+import type { ThemePlugin } from "../theme";
 import { MarkdownMessage } from "./MarkdownMessage";
 
 type AgentSession = {
@@ -26,10 +32,43 @@ type Props = {
   threads?: ThreadEntry[];
   activeThreadId: string | null;
   errors: string[];
+  activeThemePlugin?: ThemePlugin | null;
+  onPromptSelect?: (text: string) => void;
   onAgentThreadSelect?: (threadId: string) => void;
 };
 
-export function ChatPanel({ turns, threads = [], activeThreadId, errors, onAgentThreadSelect }: Props) {
+const emptyPromptCards = [
+  {
+    id: "explore",
+    label: "Explore code",
+    detail: "Map the architecture and important files.",
+    prompt: "Explore this repository and summarize the architecture, key entry points, and likely places to modify.",
+    icon: <TravelExploreIcon fontSize="small" />
+  },
+  {
+    id: "build",
+    label: "Build feature",
+    detail: "Plan, implement, and verify a focused change.",
+    prompt: "Build a new feature in this project. Start by inspecting the relevant files, then implement and verify the change.",
+    icon: <BuildIcon fontSize="small" />
+  },
+  {
+    id: "review",
+    label: "Review changes",
+    detail: "Find risks, regressions, and missing tests.",
+    prompt: "/review",
+    icon: <RateReviewIcon fontSize="small" />
+  },
+  {
+    id: "fix",
+    label: "Fix failures",
+    detail: "Reproduce the issue and land a tested fix.",
+    prompt: "Find and fix the current failure. Reproduce it first, make the smallest safe change, and run the relevant tests.",
+    icon: <BugReportIcon fontSize="small" />
+  }
+] as const;
+
+export function ChatPanel({ turns, threads = [], activeThreadId, errors, activeThemePlugin, onPromptSelect, onAgentThreadSelect }: Props) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [closedAgentIds, setClosedAgentIds] = useState<string[]>([]);
   const [acknowledgedAgentIds, setAcknowledgedAgentIds] = useState<string[]>([]);
@@ -97,7 +136,9 @@ export function ChatPanel({ turns, threads = [], activeThreadId, errors, onAgent
             error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null
           ))}
           {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
-          {displayTurns.length === 0 && <EmptyConversation selectedAgent={selectedAgent} />}
+          {displayTurns.length === 0 && (
+            <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} onPromptSelect={onPromptSelect} />
+          )}
           {displayTurns.map((turn) => (
             <Paper
               key={turn.id}
@@ -286,7 +327,18 @@ function AgentConversationHeader({ agent, onClose }: { agent: AgentSession; onCl
   );
 }
 
-function EmptyConversation({ selectedAgent }: { selectedAgent: AgentSession | null }) {
+function EmptyConversation({
+  selectedAgent,
+  activeThemePlugin,
+  onPromptSelect
+}: {
+  selectedAgent: AgentSession | null;
+  activeThemePlugin?: ThemePlugin | null;
+  onPromptSelect?: (text: string) => void;
+}) {
+  if (!selectedAgent) {
+    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} onPromptSelect={onPromptSelect} />;
+  }
   return (
     <Paper
       variant="outlined"
@@ -298,14 +350,145 @@ function EmptyConversation({ selectedAgent }: { selectedAgent: AgentSession | nu
       }}
     >
       <Typography variant="h6" sx={{ fontSize: 18, fontWeight: 750 }}>
-        {selectedAgent ? `${selectedAgent.name} has no visible messages yet` : "Ready for a Codex task"}
+        {`${selectedAgent.name} has no visible messages yet`}
       </Typography>
       <Typography color="text.secondary" sx={{ mt: 1 }}>
-        {selectedAgent
-          ? "The agent thread is available, and messages will appear here as Codex streams them."
-          : "Select a model, choose permissions, then send a coding task. Tool calls, diffs, command output, and approvals will appear inline."}
+        The agent thread is available, and messages will appear here as Codex streams them.
       </Typography>
     </Paper>
+  );
+}
+
+function DefaultWorkbenchEmpty({
+  activeThemePlugin,
+  onPromptSelect
+}: {
+  activeThemePlugin?: ThemePlugin | null;
+  onPromptSelect?: (text: string) => void;
+}) {
+  const heroImage = activeThemePlugin?.layout?.heroEnabled === false ? undefined : safeThemeAssetUrl(activeThemePlugin?.assets?.heroImage);
+  const cornerImage = safeThemeAssetUrl(activeThemePlugin?.assets?.cornerImage);
+  const richDecorations = activeThemePlugin?.layout?.decorationIntensity === "rich";
+  return (
+    <Box data-testid="default-workbench-empty" sx={{ minHeight: { xs: 440, md: 560 }, display: "grid", alignItems: "center" }}>
+      <Box
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 2,
+          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.78),
+          boxShadow: (theme) => theme.customShadows?.card,
+          px: { xs: 2, sm: 3, md: 4 },
+          py: { xs: 3, md: 4 },
+          backgroundImage: heroImage
+            ? (theme) =>
+                [
+                  `linear-gradient(90deg, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.88 : 0.82)} 0%, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.64)} 56%, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.5 : 0.42)} 100%)`,
+                  `url("${heroImage}")`
+                ].join(", ")
+            : (theme) =>
+                [
+                  `radial-gradient(circle at 18% 12%, ${alpha(theme.palette.primary.main, 0.16)}, transparent 34%)`,
+                  `radial-gradient(circle at 82% 18%, ${alpha(theme.palette.secondary.main, 0.12)}, transparent 28%)`,
+                  `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.84)}, ${alpha(theme.palette.background.default, 0.66)})`
+                ].join(", "),
+          backgroundSize: heroImage ? "cover" : "auto",
+          backgroundPosition: "center"
+        }}
+      >
+        {richDecorations && (
+          <Box
+            aria-hidden
+            sx={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              backgroundImage:
+                "radial-gradient(circle at 12% 32%, rgba(255,255,255,0.52) 0 2px, transparent 3px), radial-gradient(circle at 72% 18%, rgba(255,255,255,0.46) 0 2px, transparent 3px)",
+              opacity: 0.72
+            }}
+          />
+        )}
+        <Stack spacing={2.75} sx={{ position: "relative", zIndex: 1 }}>
+          <Stack spacing={1.25} sx={{ maxWidth: 620 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <AutoAwesomeIcon color="primary" />
+              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 800 }}>
+                Codex Workbench
+              </Typography>
+            </Stack>
+            <Typography component="h2" sx={{ fontSize: { xs: 34, md: 48 }, lineHeight: 1.08, fontWeight: 850 }}>
+              What should we build?
+            </Typography>
+            <Typography color="text.secondary" sx={{ maxWidth: 540, fontSize: 16 }}>
+              Start from a focused coding workflow, or type your own request in the composer below.
+            </Typography>
+          </Stack>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" },
+              gap: 1.25
+            }}
+          >
+            {emptyPromptCards.map((card) => (
+              <Button
+                key={card.id}
+                data-testid={`default-prompt-card-${card.id}`}
+                variant="outlined"
+                color="inherit"
+                onClick={() => onPromptSelect?.(card.prompt)}
+                sx={{
+                  minHeight: 112,
+                  justifyContent: "flex-start",
+                  alignItems: "stretch",
+                  textAlign: "left",
+                  p: 1.5,
+                  borderRadius: 1,
+                  bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.68 : 0.82),
+                  borderColor: "divider",
+                  "&:hover": {
+                    borderColor: "primary.main",
+                    bgcolor: "action.hover"
+                  }
+                }}
+              >
+                <Stack spacing={1.25} sx={{ minWidth: 0 }}>
+                  <Box sx={{ color: "primary.main" }}>{card.icon}</Box>
+                  <Typography sx={{ fontWeight: 800, lineHeight: 1.28 }}>{card.label}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+                    {card.detail}
+                  </Typography>
+                </Stack>
+              </Button>
+            ))}
+          </Box>
+        </Stack>
+        {cornerImage && (
+          <Box
+            component="img"
+            src={cornerImage}
+            alt=""
+            sx={{
+              position: "absolute",
+              right: { xs: 12, md: 24 },
+              bottom: { xs: 12, md: 18 },
+              width: { xs: 72, md: 118 },
+              aspectRatio: "1 / 1",
+              objectFit: "cover",
+              borderRadius: 1.5,
+              border: "1px solid",
+              borderColor: "divider",
+              boxShadow: (theme) => theme.customShadows?.z8,
+              display: { xs: "none", md: "block" },
+              transform: "rotate(3deg)"
+            }}
+          />
+        )}
+      </Box>
+    </Box>
   );
 }
 
@@ -656,4 +839,15 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function safeThemeAssetUrl(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || /["'()\\]/.test(trimmed)) {
+    return undefined;
+  }
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/")) {
+    return trimmed;
+  }
+  return undefined;
 }

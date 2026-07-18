@@ -23,6 +23,17 @@ export type ThemePlugin = {
     background: string;
   };
   dark?: boolean;
+  assets?: {
+    appBackgroundImage?: string;
+    heroImage?: string;
+    cornerImage?: string;
+    petImage?: string;
+  };
+  layout?: {
+    heroEnabled?: boolean;
+    petEnabled?: boolean;
+    decorationIntensity?: "none" | "subtle" | "rich";
+  };
 };
 
 export type ThemePalette = {

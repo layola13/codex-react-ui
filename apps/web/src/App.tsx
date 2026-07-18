@@ -86,7 +86,7 @@ import {
   type CodexConfigFieldKey,
   type CodexUserConfigView
 } from "./state/codexConfigSettings";
-import { installedThemePluginDefaults, isThemeId, type ThemeId, type ThemeMode, type ThemePlugin } from "./theme";
+import { installedThemePluginDefaults, isThemeId, themePlugins, type ThemeId, type ThemeMode, type ThemePlugin } from "./theme";
 
 const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
@@ -229,6 +229,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [codexConfigError, setCodexConfigError] = useState<string | null>(null);
   const [reasoningAnchor, setReasoningAnchor] = useState<HTMLElement | null>(null);
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
+  const [composerSuggestion, setComposerSuggestion] = useState<{ id: string; text: string } | null>(null);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
   const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
   const [pluginAuthNotices, setPluginAuthNotices] = useState<Record<string, PluginInstallAuthNotice>>({});
@@ -1296,6 +1297,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [client, state.activeThreadId]
   );
 
+  const allThemePlugins = useMemo(
+    () => [...themePlugins, ...customThemePlugins.filter((plugin) => !themePlugins.some((entry) => entry.id === plugin.id))],
+    [customThemePlugins]
+  );
+  const activeThemePlugin = allThemePlugins.find((plugin) => plugin.id === themeMode) ?? null;
+  const shellBackgroundImage = safeThemeAssetUrl(activeThemePlugin?.assets?.appBackgroundImage);
+  const petImage = safeThemeAssetUrl(activeThemePlugin?.assets?.petImage);
+  const showThemePet = Boolean(petImage && activeThemePlugin?.layout?.petEnabled !== false);
+
+  const usePromptSuggestion = useCallback((text: string) => {
+    setComposerSuggestion({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text });
+  }, []);
+
   function renderCenterPanel() {
     return (
       <Box
@@ -1309,7 +1323,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           borderColor: "divider",
           bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.72 : 0.56),
           backdropFilter: "blur(20px)",
-          zIndex: 1
+          zIndex: 1,
+          position: "relative"
         }}
       >
         {state.engine.phase === "starting" && (
@@ -1323,8 +1338,33 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           threads={nonSideChatThreads}
           activeThreadId={state.activeThreadId}
           errors={state.errors}
+          activeThemePlugin={activeThemePlugin}
+          onPromptSelect={usePromptSuggestion}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
         />
+        {showThemePet && (
+          <Box
+            data-testid="theme-pet-dock"
+            sx={{
+              position: "absolute",
+              right: { xs: 14, sm: 22 },
+              bottom: { xs: 220, sm: 246 },
+              width: { xs: 74, sm: 104 },
+              aspectRatio: "1 / 1",
+              borderRadius: 2,
+              overflow: "hidden",
+              border: "1px solid",
+              borderColor: "divider",
+              bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.88),
+              boxShadow: (theme) => theme.customShadows?.z8,
+              pointerEvents: "none",
+              display: { xs: "none", sm: "block" },
+              zIndex: 2
+            }}
+          >
+            <Box component="img" src={petImage ?? ""} alt="" sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          </Box>
+        )}
         <Box
           sx={{
             borderTop: "1px solid",
@@ -1337,9 +1377,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             permission={permission}
             disabled={!state.connected || state.engine.phase !== "ready"}
             pendingMention={pendingMention}
+            suggestedPrompt={composerSuggestion}
+            activeThemePlugin={activeThemePlugin}
             onCwdChange={setCwd}
             onPermissionChange={setPermission}
             onMentionConsumed={() => setPendingMention(null)}
+            onSuggestedPromptConsumed={() => setComposerSuggestion(null)}
             onSend={(text, images, mentions) => void sendPrompt(text, images, mentions)}
           />
         </Box>
@@ -1410,6 +1453,15 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         p: { xs: 1, sm: 1.5, lg: 2.5 },
         position: "relative",
         bgcolor: "background.default",
+        backgroundImage: shellBackgroundImage
+          ? (theme) =>
+              [
+                `linear-gradient(135deg, ${alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.86 : 0.72)}, ${alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.72 : 0.78)})`,
+                `url("${shellBackgroundImage}")`
+              ].join(", ")
+          : undefined,
+        backgroundSize: shellBackgroundImage ? "cover" : undefined,
+        backgroundPosition: shellBackgroundImage ? "center" : undefined,
         overflow: "hidden"
       }}
     >
@@ -1480,6 +1532,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               size="small"
               variant={showReasoningGlow ? "contained" : "outlined"}
               startIcon={<TuneIcon />}
+              aria-label="Reasoning strength"
               onClick={(event) => setReasoningAnchor(event.currentTarget)}
               sx={{
                 flex: "0 0 auto",
@@ -1958,6 +2011,17 @@ function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: str
     model = next;
   }
   return model;
+}
+
+function safeThemeAssetUrl(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || /["'()\\]/.test(trimmed)) {
+    return undefined;
+  }
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/")) {
+    return trimmed;
+  }
+  return undefined;
 }
 
 function sideChatTitle(text: string, fallbackIndex: number): string {

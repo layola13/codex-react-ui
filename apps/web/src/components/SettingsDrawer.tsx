@@ -1905,6 +1905,8 @@ function ThemePluginManager({
                     }
                   />
                   {active && <Chip size="small" label="active" color="primary" />}
+                  {plugin.assets && <Chip size="small" label="media" variant="outlined" />}
+                  {plugin.assets?.petImage && <Chip size="small" label="avatar" variant="outlined" />}
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
                   {plugin.description}
@@ -1945,6 +1947,12 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
   const [primary, setPrimary] = useState("#0F766E");
   const [secondary, setSecondary] = useState("#F59E0B");
   const [background, setBackground] = useState("#F8FAFC");
+  const [appBackgroundImage, setAppBackgroundImage] = useState("");
+  const [heroImage, setHeroImage] = useState("");
+  const [cornerImage, setCornerImage] = useState("");
+  const [petImage, setPetImage] = useState("");
+  const [petEnabled, setPetEnabled] = useState(true);
+  const [decorationIntensity, setDecorationIntensity] = useState<"none" | "subtle" | "rich">("subtle");
   const [dark, setDark] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1974,6 +1982,66 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
           <TextField size="small" label="Background" value={background} onChange={(event) => setBackground(event.target.value)} inputProps={{ "aria-label": "Custom theme background" }} />
           <FormControlLabel control={<Switch checked={dark} onChange={(event) => setDark(event.target.checked)} inputProps={{ "aria-label": "Custom theme dark mode" }} />} label="Dark" />
         </Stack>
+        <Stack spacing={1}>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+            Theme media assets
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <TextField
+              size="small"
+              label="Workbench background image"
+              value={appBackgroundImage}
+              onChange={(event) => setAppBackgroundImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme app background image" }}
+            />
+            <TextField
+              size="small"
+              label="Hero image"
+              value={heroImage}
+              onChange={(event) => setHeroImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme hero image" }}
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+            <TextField
+              size="small"
+              label="Corner image"
+              value={cornerImage}
+              onChange={(event) => setCornerImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme corner image" }}
+            />
+            <TextField
+              size="small"
+              label="Pet/avatar image"
+              value={petImage}
+              onChange={(event) => setPetImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme pet image" }}
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+            <FormControl size="small" sx={{ minWidth: 190 }}>
+              <InputLabel>Decorations</InputLabel>
+              <Select
+                value={decorationIntensity}
+                label="Decorations"
+                inputProps={{ "aria-label": "Custom theme decorations" }}
+                onChange={(event) => setDecorationIntensity(event.target.value as "none" | "subtle" | "rich")}
+              >
+                <MenuItem value="none">None</MenuItem>
+                <MenuItem value="subtle">Subtle</MenuItem>
+                <MenuItem value="rich">Rich</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControlLabel
+              control={<Switch checked={petEnabled} onChange={(event) => setPetEnabled(event.target.checked)} inputProps={{ "aria-label": "Custom theme pet enabled" }} />}
+              label="Show pet/avatar"
+            />
+          </Stack>
+        </Stack>
         {error ? (
           <Alert severity="error" variant="outlined">
             {error}
@@ -1999,12 +2067,23 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
                 setError("Primary, secondary, and background must be hex colors.");
                 return;
               }
+              const mediaFields = [appBackgroundImage, heroImage, cornerImage, petImage].map((value) => value.trim()).filter(Boolean);
+              if (!mediaFields.every(isSafeThemeAssetUrl)) {
+                setError("Theme media must be http(s), blob, or data:image URLs.");
+                return;
+              }
               const slug = trimmed
                 .toLowerCase()
                 .replace(/[^a-z0-9]+/g, "-")
                 .replace(/^-+|-+$/g, "")
                 .slice(0, 28);
               const id = `user-${slug || "theme"}-${Math.random().toString(36).slice(2, 7)}` as ThemeId;
+              const assets = removeEmptyThemeAssets({
+                appBackgroundImage: appBackgroundImage.trim(),
+                heroImage: heroImage.trim(),
+                cornerImage: cornerImage.trim(),
+                petImage: petImage.trim()
+              });
               onSave({
                 id,
                 name: trimmed,
@@ -2016,7 +2095,13 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
                   secondary: secondary.trim(),
                   background: background.trim()
                 },
-                dark
+                dark,
+                assets,
+                layout: {
+                  heroEnabled: Boolean(heroImage.trim()),
+                  petEnabled,
+                  decorationIntensity
+                }
               });
               setError(null);
             }}
@@ -2028,6 +2113,19 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
       </Stack>
     </Box>
   );
+}
+
+function isSafeThemeAssetUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /["'()\\]/.test(trimmed)) {
+    return false;
+  }
+  return trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/");
+}
+
+function removeEmptyThemeAssets(assets: NonNullable<ThemePlugin["assets"]>): ThemePlugin["assets"] | undefined {
+  const entries = Object.entries(assets).filter(([, value]) => typeof value === "string" && value.length > 0);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function SettingRow({

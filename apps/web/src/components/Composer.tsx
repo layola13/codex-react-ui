@@ -19,15 +19,19 @@ import CloseIcon from "@mui/icons-material/Close";
 import { alpha } from "@mui/material/styles";
 import { DANGER_CONFIRMATION, permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
 import { dangerousConfirmationMatches, type ComposerImageAttachment, type ComposerMention } from "../state/codexClient";
+import type { ThemePlugin } from "../theme";
 
 type Props = {
   cwd: string;
   permission: PermissionPresetId;
   disabled: boolean;
   pendingMention: ComposerMention | null;
+  suggestedPrompt?: { id: string; text: string } | null;
+  activeThemePlugin?: ThemePlugin | null;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
   onMentionConsumed: () => void;
+  onSuggestedPromptConsumed?: () => void;
   onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
 };
 
@@ -40,9 +44,12 @@ export function Composer({
   permission,
   disabled,
   pendingMention,
+  suggestedPrompt,
+  activeThemePlugin,
   onCwdChange,
   onPermissionChange,
   onMentionConsumed,
+  onSuggestedPromptConsumed,
   onSend
 }: Props) {
   const [text, setText] = useState("");
@@ -69,6 +76,16 @@ export function Composer({
     });
     onMentionConsumed();
   }, [onMentionConsumed, pendingMention]);
+
+  useEffect(() => {
+    if (!suggestedPrompt) {
+      return;
+    }
+    setText(suggestedPrompt.text);
+    onSuggestedPromptConsumed?.();
+  }, [onSuggestedPromptConsumed, suggestedPrompt]);
+
+  const composerBackdrop = safeThemeAssetUrl(activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage);
 
   return (
     <Box
@@ -109,6 +126,15 @@ export function Composer({
       sx={{
         p: { xs: 1.25, sm: 1.5 },
         bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.64 : 0.72),
+        backgroundImage: composerBackdrop
+          ? (theme) =>
+              [
+                `linear-gradient(135deg, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.88)}, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.92)})`,
+                `url("${composerBackdrop}")`
+              ].join(", ")
+          : undefined,
+        backgroundSize: composerBackdrop ? "cover" : undefined,
+        backgroundPosition: composerBackdrop ? "center" : undefined,
         backdropFilter: "blur(18px)",
         outline: dragActive ? "2px solid" : "0 solid",
         outlineColor: "primary.main",
@@ -380,4 +406,15 @@ function formatBytes(bytes: number): string {
     unit = units[index]!;
   }
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
+}
+
+function safeThemeAssetUrl(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || /["'()\\]/.test(trimmed)) {
+    return undefined;
+  }
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/")) {
+    return trimmed;
+  }
+  return undefined;
 }

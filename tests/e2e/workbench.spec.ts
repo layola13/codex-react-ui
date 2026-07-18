@@ -960,6 +960,43 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   });
 });
 
+test("applies user theme media plugins to the default workbench", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  const heroImage =
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iNDIwIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB4Mj0iMSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZiY2ZlOCIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2JhZTZmZCIvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPSI5MDAiIGhlaWdodD0iNDIwIiBmaWxsPSJ1cmwoI2cpIi8+PGNpcmNsZSBjeD0iNzIwIiBjeT0iMTQwIiByPSIxMTAiIGZpbGw9IiNmZmZmZmYiIG9wYWNpdHk9IjAuNDUiLz48cGF0aCBkPSJNMTIwIDI1MCBDMjYwIDEyMCA0MjAgMzQwIDYyMCAxOTAiIHN0cm9rZT0iI2RiMjc3NyIgc3Ryb2tlLXdpZHRoPSIxOCIgZmlsbD0ibm9uZSIgb3BhY2l0eT0iMC40NSIvPjwvc3ZnPg==";
+  const avatarImage =
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQwIj48cmVjdCB3aWR0aD0iMjQwIiBoZWlnaHQ9IjI0MCIgcng9IjI4IiBmaWxsPSIjZjlhOGQ0Ii8+PGNpcmNsZSBjeD0iMTIwIiBjeT0iOTIiIHI9IjQ4IiBmaWxsPSIjZmZmN2VkIi8+PHBhdGggZD0iTTcwIDE2OCBRMTIwIDIwNSAxNzAgMTY4IiBzdHJva2U9IiNiZTE4NWQiIHN0cm9rZS13aWR0aD0iMTYiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==";
+
+  await page.goto("/");
+  await expect(page.getByTestId("default-workbench-empty")).toBeVisible();
+  await page.getByTestId("default-prompt-card-explore").click();
+  await expect(page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...")).toHaveValue(/Explore this repository/);
+
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Appearance settings").click();
+  await page.getByLabel("Custom theme name").fill("Sakura Builder");
+  await page.getByLabel("Custom theme primary").fill("#DB2777");
+  await page.getByLabel("Custom theme secondary").fill("#2563EB");
+  await page.getByLabel("Custom theme background").fill("#FFF7FB");
+  await page.getByLabel("Custom theme app background image").fill(heroImage);
+  await page.getByLabel("Custom theme hero image").fill(heroImage);
+  await page.getByLabel("Custom theme corner image").fill(avatarImage);
+  await page.getByLabel("Custom theme pet image").fill(avatarImage);
+  await page.getByLabel("Custom theme decorations").click();
+  await page.getByRole("option", { name: "Rich" }).click();
+  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-sakura-builder-/);
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
+
+  await expect(page.getByTestId("default-workbench-empty")).toBeVisible();
+  await expect(page.getByTestId("theme-pet-dock")).toBeVisible();
+  await page.screenshot({
+    path: "snapshot/theme-plugin-applied.png",
+    fullPage: false
+  });
+});
+
 test("supports drag and drop image attachments in the composer", async ({ page }) => {
   await page.goto("/");
 
