@@ -917,6 +917,87 @@ test("renders the workbench and tooling panels", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
 });
 
+test("creates a Full Auto chat through the New Chat danger dialog", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "New task" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reasoning strength" })).toContainText("Medium");
+
+  await page.getByRole("button", { name: "Choose New Chat mode" }).first().click();
+  await page.getByRole("menuitem", { name: /Full Access \/ Danger Bypass/ }).click();
+
+  const dialog = page.getByTestId("danger-new-chat-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Create Full Auto chat");
+  await expect(dialog).toContainText("Current cwd");
+  await expect(dialog).toContainText("/root/projects");
+  await expect(dialog).toContainText("Model");
+  await expect(dialog).toContainText("gpt-5.6-sol");
+  await expect(dialog).toContainText("Reasoning");
+  await expect(dialog).toContainText("Medium");
+  await expect(dialog).toContainText("No sandbox boundary");
+  await expect(dialog).toContainText("No approval prompts");
+
+  const backendParams = page.getByTestId("danger-backend-params");
+  await expect(backendParams).toContainText('"sandbox": "danger-full-access"');
+  await expect(backendParams).toContainText('"approvalPolicy": "never"');
+  await expect(backendParams).toContainText('"type": "dangerFullAccess"');
+  await expect(dialog).toContainText("codex --dangerously-bypass-approvals-and-sandbox");
+
+  const createButton = page.getByRole("button", { name: "Create Full Auto Chat" });
+  await expect(createButton).toBeDisabled();
+  await page.screenshot({
+    path: "snapshot/new-chat-danger-bypass-dialog.png",
+    fullPage: false
+  });
+
+  await page.getByLabel("Confirm Danger Bypass").check();
+  await expect(createButton).toBeEnabled();
+  await createButton.click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("danger-session-badge")).toContainText("Full Auto");
+
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Run this in full auto");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: {
+            sandbox?: string;
+            sandboxPolicy?: { type?: string };
+            approvalPolicy?: string;
+            effort?: string;
+            model?: string;
+          };
+        }>;
+      }
+    ).__codexUiOutbound;
+    const threadStart = messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "thread/start" &&
+        message.params?.sandbox === "danger-full-access" &&
+        message.params?.approvalPolicy === "never" &&
+        message.params?.model === "gpt-5.6-sol"
+    );
+    const turnStart = messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.sandboxPolicy?.type === "dangerFullAccess" &&
+        message.params?.approvalPolicy === "never" &&
+        message.params?.effort === "medium" &&
+        message.params?.model === "gpt-5.6-sol"
+    );
+    return threadStart && turnStart;
+  });
+});
+
 test("supports settings, black theme, task tabs, and reasoning effort", async ({ page }) => {
   await page.goto("/");
 

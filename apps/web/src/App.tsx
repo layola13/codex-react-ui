@@ -4,9 +4,15 @@ import {
   AppBar,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
+  FormControlLabel,
   IconButton,
   MenuItem,
   Popover,
@@ -28,8 +34,10 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import TuneIcon from "@mui/icons-material/Tune";
 import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { Group as PanelGroup, Panel } from "react-resizable-panels";
 import {
+  permissionPresets,
   permissionToTurnOverrides,
   type DangerousPermissionAuditEvent,
   type JsonValue,
@@ -73,6 +81,7 @@ import {
 import { HistorySidebar } from "./components/HistorySidebar";
 import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
+import { NewChatButton } from "./components/NewChatButton";
 import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
 import { RightWorkspacePanel, type RightWorkspaceTab } from "./components/RightWorkspacePanel";
 import { SettingsDrawer, type ReasoningOption, type SettingsSectionId } from "./components/SettingsDrawer";
@@ -101,6 +110,11 @@ type AppProps = {
   customThemePlugins: ThemePlugin[];
   onThemeModeChange: (mode: ThemeMode) => void;
   onCustomThemePluginsChange: (plugins: ThemePlugin[]) => void;
+};
+
+type DangerDialogIntent = {
+  source: "new-chat" | "permission";
+  nextPermission: PermissionPresetId;
 };
 
 type Action =
@@ -191,6 +205,9 @@ function reducer(state: ClientState, action: Action): ClientState {
 export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustomThemePluginsChange }: AppProps) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const [permission, setPermission] = useState<PermissionPresetId>("workspaceAsk");
+  const [dangerBypassConfirmed, setDangerBypassConfirmed] = useState(false);
+  const [dangerDialogIntent, setDangerDialogIntent] = useState<DangerDialogIntent | null>(null);
+  const [dangerDialogAcknowledged, setDangerDialogAcknowledged] = useState(false);
   const [selectedModel, setSelectedModel] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("medium");
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
@@ -693,6 +710,66 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [loadThread]
   );
 
+  const beginNewSession = useCallback((nextPermission: PermissionPresetId) => {
+    setPermission(nextPermission);
+    setDangerBypassConfirmed(nextPermission === "dangerBypass");
+    dispatch({ type: "activeThread", threadId: null });
+  }, []);
+
+  const requestNewSession = useCallback(
+    (nextPermission: PermissionPresetId) => {
+      if (nextPermission === "dangerBypass") {
+        setDangerDialogIntent({ source: "new-chat", nextPermission });
+        setDangerDialogAcknowledged(false);
+        return;
+      }
+      beginNewSession(nextPermission);
+    },
+    [beginNewSession]
+  );
+
+  const requestPermissionChange = useCallback(
+    (nextPermission: PermissionPresetId) => {
+      if (nextPermission === "dangerBypass" && !dangerBypassConfirmed) {
+        setDangerDialogIntent({ source: "permission", nextPermission });
+        setDangerDialogAcknowledged(false);
+        return;
+      }
+      setPermission(nextPermission);
+      if (nextPermission !== "dangerBypass") {
+        setDangerBypassConfirmed(false);
+      }
+    },
+    [dangerBypassConfirmed]
+  );
+
+  const closeDangerDialog = useCallback(() => {
+    setDangerDialogIntent(null);
+    setDangerDialogAcknowledged(false);
+  }, []);
+
+  const confirmDangerDialog = useCallback(() => {
+    if (!dangerDialogIntent) {
+      return;
+    }
+    setPermission(dangerDialogIntent.nextPermission);
+    setDangerBypassConfirmed(true);
+    if (dangerDialogIntent.source === "new-chat") {
+      dispatch({ type: "activeThread", threadId: null });
+    }
+    closeDangerDialog();
+  }, [closeDangerDialog, dangerDialogIntent]);
+
+  const useSaferModeFromDangerDialog = useCallback(() => {
+    if (dangerDialogIntent?.source === "new-chat") {
+      beginNewSession("workspaceAsk");
+    } else {
+      setPermission("workspaceAsk");
+      setDangerBypassConfirmed(false);
+    }
+    closeDangerDialog();
+  }, [beginNewSession, closeDangerDialog, dangerDialogIntent?.source]);
+
   const loadAuditEvents = useCallback(async () => {
     if (!state.token) {
       return;
@@ -715,6 +792,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       const uiCommand = composerUiSlashCommand(text, images, mentions);
       if (uiCommand) {
         openSettings("plugins", uiCommand);
+        return;
+      }
+      if (permission === "dangerBypass" && !dangerBypassConfirmed) {
+        setDangerDialogIntent({ source: "permission", nextPermission: "dangerBypass" });
+        setDangerDialogAcknowledged(false);
         return;
       }
       const input = composerInputToUserInput(text, images, mentions);
@@ -762,7 +844,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [activeProviderId, client, cwd, loadAuditEvents, openSettings, permission, reasoningEffort, selectedModel, state.activeThreadId, state.providers]
+    [
+      activeProviderId,
+      client,
+      cwd,
+      dangerBypassConfirmed,
+      loadAuditEvents,
+      openSettings,
+      permission,
+      reasoningEffort,
+      selectedModel,
+      state.activeThreadId,
+      state.providers
+    ]
   );
 
   const addSideChatTab = useCallback(() => {
@@ -808,6 +902,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
       const tab = sideChatTabs.find((entry) => entry.id === tabId);
       if (!tab || tab.sending) {
+        return;
+      }
+      if (permission === "dangerBypass" && !dangerBypassConfirmed) {
+        setDangerDialogIntent({ source: "permission", nextPermission: "dangerBypass" });
+        setDangerDialogAcknowledged(false);
         return;
       }
       const localMessage = {
@@ -885,6 +984,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       activeProviderId,
       client,
       cwd,
+      dangerBypassConfirmed,
       loadAuditEvents,
       permission,
       reasoningEffort,
@@ -1379,8 +1479,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             pendingMention={pendingMention}
             suggestedPrompt={composerSuggestion}
             activeThemePlugin={activeThemePlugin}
+            dangerBypassConfirmed={dangerBypassConfirmed}
             onCwdChange={setCwd}
-            onPermissionChange={setPermission}
+            onPermissionChange={requestPermissionChange}
             onMentionConsumed={() => setPendingMention(null)}
             onSuggestedPromptConsumed={() => setComposerSuggestion(null)}
             onSend={(text, images, mentions) => void sendPrompt(text, images, mentions)}
@@ -1442,6 +1543,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const reasoningMax = Math.max(0, reasoningOptions.length - 1);
   const showReasoningGlow = reasoningIndex === reasoningMax && reasoningMax > 0;
   const sideChatPermissionLabel = permission === "dangerBypass" ? "Bypass approvals" : "Ask for approval";
+  const effectiveSelectedModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+  const dangerBackendPreview = buildDangerBackendPreview(cwd, effectiveSelectedModel, reasoningEffort);
+  const dangerDialogPreset = permissionPresets.find((preset) => preset.id === dangerDialogIntent?.nextPermission);
 
   return (
     <Box
@@ -1545,6 +1649,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               {selectedReasoning?.label ?? reasoningEffort}
             </Button>
           </Tooltip>
+          <Box sx={{ display: { xs: "none", lg: "block" }, flex: "0 0 auto" }}>
+            <NewChatButton currentPermission={permission} onNew={requestNewSession} />
+          </Box>
           <Box sx={{ flex: 1, minWidth: 0 }} />
           <Box sx={{ display: { xs: "none", md: "contents" } }}>
             <Tooltip title={leftPanelVisible ? "Hide history panel" : "Show history panel"}>
@@ -1566,6 +1673,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               <ViewColumnIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          {permission === "dangerBypass" && dangerBypassConfirmed && (
+            <Tooltip title="sandbox: danger-full-access · approvalPolicy: never">
+              <Chip
+                data-testid="danger-session-badge"
+                size="small"
+                color="error"
+                icon={<WarningAmberIcon />}
+                label="Full Auto"
+                sx={{ display: { xs: "none", sm: "inline-flex" }, fontWeight: 800 }}
+              />
+            </Tooltip>
+          )}
           <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
           <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
             {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
@@ -1615,7 +1734,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             aria-selected={state.activeThreadId === null}
             size="small"
             startIcon={<AddIcon />}
-            onClick={() => selectTaskTab(null)}
+            onClick={() => requestNewSession(permission)}
             sx={{
               my: 0.625,
               px: 1.25,
@@ -1682,8 +1801,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                     <HistorySidebar
                       threads={mainThreads}
                       activeThreadId={state.activeThreadId}
+                      currentPermission={permission}
                       onSelect={(threadId) => selectTaskTab(threadId)}
-                      onNew={() => selectTaskTab(null)}
+                      onNew={requestNewSession}
                     />
                   </Box>
                 </Panel>
@@ -1713,8 +1833,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               <HistorySidebar
                 threads={mainThreads}
                 activeThreadId={state.activeThreadId}
+                currentPermission={permission}
                 onSelect={(threadId) => selectTaskTab(threadId)}
-                onNew={() => selectTaskTab(null)}
+                onNew={requestNewSession}
               />
             )}
             {renderCenterPanel()}
@@ -1773,6 +1894,127 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           </Typography>
         </Stack>
       </Popover>
+      <Dialog
+        data-testid="danger-new-chat-dialog"
+        open={Boolean(dangerDialogIntent)}
+        onClose={closeDangerDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <WarningAmberIcon color="error" />
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography component="span" variant="h6" sx={{ fontWeight: 850 }}>
+                Create Full Auto chat
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                Full Access / Danger Bypass
+              </Typography>
+            </Box>
+            <Chip size="small" color="error" label="Danger" />
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Alert severity="error">
+              This chat will run without sandbox boundaries and without approval prompts. Use it only for trusted workspaces.
+            </Alert>
+            <Box
+              data-testid="danger-new-chat-details"
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "150px minmax(0, 1fr)" },
+                gap: 1.25,
+                alignItems: "center"
+              }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                Current cwd
+              </Typography>
+              <Typography sx={{ overflowWrap: "anywhere", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
+                {cwd}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Model
+              </Typography>
+              <Typography sx={{ overflowWrap: "anywhere" }}>{effectiveSelectedModel || "Engine default"}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Reasoning
+              </Typography>
+              <Typography>{selectedReasoning?.label ?? reasoningEffort}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Actual permissions
+              </Typography>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                <Chip size="small" color="error" label="No sandbox boundary" />
+                <Chip size="small" color="error" label="No approval prompts" />
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                Selected preset
+              </Typography>
+              <Typography>{dangerDialogPreset?.label ?? dangerDialogIntent?.nextPermission ?? "Danger Bypass"}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.75 }}>
+                Backend parameters
+              </Typography>
+              <Typography
+                component="pre"
+                data-testid="danger-backend-params"
+                sx={{
+                  m: 0,
+                  p: 1.25,
+                  borderRadius: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "background.default",
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 12
+                }}
+              >
+                {JSON.stringify(dangerBackendPreview, null, 2)}
+              </Typography>
+              <Typography
+                component="code"
+                sx={{
+                  display: "block",
+                  mt: 1,
+                  p: 1,
+                  borderRadius: 1,
+                  bgcolor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === "dark" ? 0.16 : 0.08),
+                  color: "error.main",
+                  overflowWrap: "anywhere"
+                }}
+              >
+                codex --dangerously-bypass-approvals-and-sandbox
+              </Typography>
+            </Box>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={dangerDialogAcknowledged}
+                  onChange={(event) => setDangerDialogAcknowledged(event.target.checked)}
+                  inputProps={{ "aria-label": "Confirm Danger Bypass" }}
+                />
+              }
+              label="I trust this workspace and allow this chat to run in Full Auto mode."
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDangerDialog}>Cancel</Button>
+          <Button color="inherit" onClick={useSaferModeFromDangerDialog}>
+            Use Safer Mode
+          </Button>
+          <Button variant="contained" color="error" disabled={!dangerDialogAcknowledged} onClick={confirmDangerDialog}>
+            Create Full Auto Chat
+          </Button>
+        </DialogActions>
+      </Dialog>
       <SettingsDrawer
         open={settingsOpen}
         initialSection={settingsSection}
@@ -1816,7 +2058,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onLeftPanelVisibleChange={setLeftPanelVisible}
         onPetDockEnabledChange={setPetDockEnabled}
         onCwdChange={setCwd}
-        onPermissionChange={setPermission}
+        onPermissionChange={requestPermissionChange}
         onReasoningEffortChange={setReasoningEffort}
         onReloadCodexConfig={() => void loadCodexConfig()}
         onCodexConfigFieldChange={(field, value) => void writeCodexConfigField(field, value)}
@@ -1990,6 +2232,30 @@ function errorMessage(scope: string, error: unknown): string {
     return `${scope}: ${(error as { message: string }).message}`;
   }
   return `${scope}: ${String(error)}`;
+}
+
+function buildDangerBackendPreview(cwd: string, model: string, effort: string): JsonValue {
+  const threadStart: Record<string, JsonValue> = {
+    cwd,
+    sandbox: "danger-full-access",
+    approvalPolicy: "never",
+    sessionStartSource: "startup"
+  };
+  const turnStart: Record<string, JsonValue> = {
+    cwd,
+    sandboxPolicy: { type: "dangerFullAccess" },
+    approvalPolicy: "never",
+    effort
+  };
+  if (model) {
+    threadStart.model = model;
+    turnStart.model = model;
+  }
+  return {
+    "thread/start": threadStart,
+    "turn/start": turnStart,
+    cli: "codex --dangerously-bypass-approvals-and-sandbox"
+  };
 }
 
 function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: string | null, selectedModel: string): string {

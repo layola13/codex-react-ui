@@ -17,8 +17,8 @@ import SendIcon from "@mui/icons-material/Send";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
 import { alpha } from "@mui/material/styles";
-import { DANGER_CONFIRMATION, permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
-import { dangerousConfirmationMatches, type ComposerImageAttachment, type ComposerMention } from "../state/codexClient";
+import { permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
+import type { ComposerImageAttachment, ComposerMention } from "../state/codexClient";
 import type { ThemePlugin } from "../theme";
 
 type Props = {
@@ -28,6 +28,7 @@ type Props = {
   pendingMention: ComposerMention | null;
   suggestedPrompt?: { id: string; text: string } | null;
   activeThemePlugin?: ThemePlugin | null;
+  dangerBypassConfirmed: boolean;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
   onMentionConsumed: () => void;
@@ -46,6 +47,7 @@ export function Composer({
   pendingMention,
   suggestedPrompt,
   activeThemePlugin,
+  dangerBypassConfirmed,
   onCwdChange,
   onPermissionChange,
   onMentionConsumed,
@@ -55,13 +57,12 @@ export function Composer({
   const [text, setText] = useState("");
   const [images, setImages] = useState<ComposerImageAttachment[]>([]);
   const [mentions, setMentions] = useState<ComposerMention[]>([]);
-  const [dangerConfirm, setDangerConfirm] = useState("");
   const [imageError, setImageError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
   const selectedPreset = useMemo(() => permissionPresets.find((preset) => preset.id === permission), [permission]);
-  const dangerBlocked = permission === "dangerBypass" && !dangerousConfirmationMatches(dangerConfirm);
+  const dangerBlocked = permission === "dangerBypass" && !dangerBypassConfirmed;
   const hasContent = text.trim().length > 0 || images.length > 0;
   const imageTotalBytes = images.reduce((total, image) => total + image.size, 0);
 
@@ -158,17 +159,8 @@ export function Composer({
         </Stack>
         {selectedPreset?.severity === "critical" && (
           <Alert severity="error">
-            Highest-risk mode disables approvals and sandboxing. Type <strong>{DANGER_CONFIRMATION}</strong> before sending this conversation.
+            Full Auto is active for this conversation. No sandbox boundary and no approval prompts will be used for Codex actions.
           </Alert>
-        )}
-        {permission === "dangerBypass" && (
-          <TextField
-            size="small"
-            label="Danger confirmation"
-            value={dangerConfirm}
-            onChange={(event) => setDangerConfirm(event.target.value)}
-            placeholder={DANGER_CONFIRMATION}
-          />
         )}
         {imageError && (
           <Alert severity="warning" onClose={() => setImageError("")}>

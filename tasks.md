@@ -2,14 +2,18 @@
 
 ## Now
 
+- [x] Add `New Chat` dropdown support for Full Access / Danger Bypass.
+- [x] Add a danger confirmation dialog that shows cwd, model, reasoning effort, actual sandbox/approval behavior, and backend launch parameters before enabling Danger Bypass.
+- [x] Verify the new chat danger flow with Playwright interaction checks and a screenshot.
+- [x] Commit and push the new chat danger flow slice to `origin/main`.
 - [x] Improve the default workbench first screen to match the new reference direction while keeping the right workspace hidden by default and Settings-owned.
 - [x] Add user theme customization as a UI theme plugin system, separate from Codex plugins and without hook/MCP/code execution capability.
 - [x] Extend `ThemePlugin` metadata for background images, hero media, corner images, pet/avatar images, decoration intensity, and per-plugin layout hints.
 - [x] Build Settings -> Appearance controls for custom theme name, colors, background image URL, corner image URL, pet/avatar image URL, and enable/disable switches.
 - [x] Apply user theme plugin assets to the default workbench shell, empty-state hero, composer surface, and optional pet/avatar dock without sending assets to Codex prompts.
 - [x] Add Playwright coverage and screenshots for the redesigned default workbench and applied user theme plugin.
-- [ ] Run typecheck, focused Playwright screenshots, full workbench e2e, build, and diff checks before committing.
-- [ ] Commit and push the user theme customization slice to `origin/main`.
+- [x] Run typecheck, focused Playwright screenshots, full workbench e2e, build, and diff checks before committing.
+- [x] Commit and push the user theme customization slice to `origin/main`.
 - [x] Support all Codex config settings dynamically in Settings by deriving the All config editor from `/root/projects/codex/codex-rs/core/config.schema.json`.
 - [x] Add Playwright coverage proving every bundled Codex schema setting keyPath is searchable and visible in Settings -> All config.
 - [x] Add a repeatable `pnpm check:codex-config-schema` gate so bundled UI settings stay in sync with the local Codex schema.
