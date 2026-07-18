@@ -114,6 +114,23 @@ export function themePalette(mode: ThemeMode, customPlugins: ThemePlugin[] = [])
         dividerBase: "#c1c9bf",
         contrastText: "#ffffff"
       };
+    case "developer-leaf":
+      return {
+        dark: true,
+        primary: "#d97736",
+        primaryLight: "#f09e6c",
+        primaryDark: "#ab5118",
+        secondary: "#5a605d",
+        secondaryLight: "#dfe4e1",
+        secondaryDark: "#171d1b",
+        defaultBg: "#12100e",
+        paper: "#1a1715",
+        panel: "#24201c",
+        textPrimary: "#e4e4e4",
+        textSecondary: "#9ca3af",
+        dividerBase: "#4b5563",
+        contrastText: "#ffffff"
+      };
     case "dream-rose":
       return {
         dark: false,

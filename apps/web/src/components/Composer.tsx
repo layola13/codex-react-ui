@@ -31,6 +31,10 @@ type Props = {
   onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
 };
 
+const MAX_COMPOSER_IMAGE_BYTES = 64 * 1024 * 1024;
+const MAX_COMPOSER_IMAGE_TOTAL_BYTES = 128 * 1024 * 1024;
+const SUPPORTED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+
 export function Composer({
   cwd,
   permission,
@@ -45,10 +49,14 @@ export function Composer({
   const [images, setImages] = useState<ComposerImageAttachment[]>([]);
   const [mentions, setMentions] = useState<ComposerMention[]>([]);
   const [dangerConfirm, setDangerConfirm] = useState("");
+  const [imageError, setImageError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragDepthRef = useRef(0);
   const selectedPreset = useMemo(() => permissionPresets.find((preset) => preset.id === permission), [permission]);
   const dangerBlocked = permission === "dangerBypass" && !dangerousConfirmationMatches(dangerConfirm);
   const hasContent = text.trim().length > 0 || images.length > 0;
+  const imageTotalBytes = images.reduce((total, image) => total + image.size, 0);
 
   useEffect(() => {
     if (!pendingMention) {
@@ -64,10 +72,48 @@ export function Composer({
 
   return (
     <Box
+      onDragEnter={(event) => {
+        if (disabled || !hasImageFiles(event.dataTransfer)) {
+          return;
+        }
+        event.preventDefault();
+        dragDepthRef.current += 1;
+        setDragActive(true);
+      }}
+      onDragOver={(event) => {
+        if (disabled || !hasImageFiles(event.dataTransfer)) {
+          return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (disabled || !hasImageFiles(event.dataTransfer)) {
+          return;
+        }
+        event.preventDefault();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) {
+          setDragActive(false);
+        }
+      }}
+      onDrop={(event) => {
+        if (disabled || !hasImageFiles(event.dataTransfer)) {
+          return;
+        }
+        event.preventDefault();
+        dragDepthRef.current = 0;
+        setDragActive(false);
+        void addImages(event.dataTransfer.files);
+      }}
       sx={{
         p: { xs: 1.25, sm: 1.5 },
         bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.64 : 0.72),
-        backdropFilter: "blur(18px)"
+        backdropFilter: "blur(18px)",
+        outline: dragActive ? "2px solid" : "0 solid",
+        outlineColor: "primary.main",
+        outlineOffset: dragActive ? -4 : 0,
+        transition: "outline-color 120ms ease, outline-width 120ms ease"
       }}
     >
       <Stack spacing={1.25}>
@@ -97,6 +143,11 @@ export function Composer({
             onChange={(event) => setDangerConfirm(event.target.value)}
             placeholder={DANGER_CONFIRMATION}
           />
+        )}
+        {imageError && (
+          <Alert severity="warning" onClose={() => setImageError("")}>
+            {imageError}
+          </Alert>
         )}
         <TextField
           multiline
@@ -169,7 +220,7 @@ export function Composer({
         )}
         <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} spacing={1}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: { sm: "0 0 auto" } }}>
-            <Tooltip title="Attach images to this turn.">
+            <Tooltip title="Attach images to this turn. Drag and drop is also supported.">
               <span>
                 <Button size="small" startIcon={<ImageIcon />} disabled={disabled} onClick={() => fileInputRef.current?.click()}>
                   Image
@@ -204,6 +255,7 @@ export function Composer({
             </Button>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+            {images.length > 0 ? `${images.length} image${images.length === 1 ? "" : "s"} · ${formatBytes(imageTotalBytes)} selected. ` : ""}
             {selectedPreset?.description}
           </Typography>
           <Button
@@ -225,20 +277,55 @@ export function Composer({
     </Box>
   );
 
-  async function addImages(fileList: FileList | null): Promise<void> {
+  async function addImages(fileList: FileList | File[] | null): Promise<void> {
     if (!fileList) {
       return;
     }
-    const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
-    const next = await Promise.all(files.map(readImageFile));
+    const files = Array.from(fileList);
+    const rejected: string[] = [];
+    const accepted: File[] = [];
+    let nextTotalBytes = imageTotalBytes;
+
+    for (const file of files) {
+      if (!isSupportedImageFile(file)) {
+        rejected.push(`${file.name || "file"}: unsupported image type`);
+        continue;
+      }
+      if (file.size > MAX_COMPOSER_IMAGE_BYTES) {
+        rejected.push(`${file.name || "image"}: ${formatBytes(file.size)} exceeds ${formatBytes(MAX_COMPOSER_IMAGE_BYTES)}`);
+        continue;
+      }
+      if (nextTotalBytes + file.size > MAX_COMPOSER_IMAGE_TOTAL_BYTES) {
+        rejected.push(`${file.name || "image"}: selected images would exceed ${formatBytes(MAX_COMPOSER_IMAGE_TOTAL_BYTES)}`);
+        continue;
+      }
+      nextTotalBytes += file.size;
+      accepted.push(file);
+    }
+
+    if (rejected.length > 0) {
+      setImageError(rejected.slice(0, 3).join("; ") + (rejected.length > 3 ? `; +${rejected.length - 3} more` : ""));
+    } else {
+      setImageError("");
+    }
+    const next = await Promise.all(accepted.map(readImageFile));
     setImages((current) => [...current, ...next]);
   }
 }
 
 async function readImageFile(file: File): Promise<ComposerImageAttachment> {
+  const mediaType = imageMediaType(file);
   const url = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
+    reader.onload = () => {
+      const result = String(reader.result);
+      if (file.type || !mediaType.startsWith("image/")) {
+        resolve(result);
+        return;
+      }
+      const [, payload] = result.split(",", 2);
+      resolve(payload ? `data:${mediaType};base64,${payload}` : result);
+    };
     reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name}`));
     reader.readAsDataURL(file);
   });
@@ -247,6 +334,50 @@ async function readImageFile(file: File): Promise<ComposerImageAttachment> {
     name: file.name,
     url,
     size: file.size,
-    mediaType: file.type || "image/*"
+    mediaType
   };
+}
+
+function hasImageFiles(dataTransfer: DataTransfer): boolean {
+  if (dataTransfer.items.length > 0) {
+    return Array.from(dataTransfer.items).some((item) => item.kind === "file" && (item.type.startsWith("image/") || item.type === ""));
+  }
+  return Array.from(dataTransfer.files).some(isSupportedImageFile);
+}
+
+function isSupportedImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || SUPPORTED_IMAGE_EXTENSIONS.has(fileExtension(file.name));
+}
+
+function imageMediaType(file: File): string {
+  if (file.type.startsWith("image/")) {
+    return file.type;
+  }
+  const extension = fileExtension(file.name);
+  if (extension === "jpg") {
+    return "image/jpeg";
+  }
+  if (SUPPORTED_IMAGE_EXTENSIONS.has(extension)) {
+    return `image/${extension}`;
+  }
+  return "image/*";
+}
+
+function fileExtension(name: string): string {
+  const index = name.lastIndexOf(".");
+  return index >= 0 ? name.slice(index + 1).toLowerCase() : "";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KiB", "MiB", "GiB"];
+  let value = bytes / 1024;
+  let unit = units[0]!;
+  for (let index = 1; index < units.length && value >= 1024; index += 1) {
+    value /= 1024;
+    unit = units[index]!;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
 }

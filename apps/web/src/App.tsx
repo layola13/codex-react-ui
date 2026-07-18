@@ -72,6 +72,7 @@ import {
 import { HistorySidebar } from "./components/HistorySidebar";
 import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
+import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
 import { RightInspector } from "./components/RightInspector";
 import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawer";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -148,8 +149,13 @@ function reducer(state: ClientState, action: Action): ClientState {
       return { ...state, toolingLoading: action.loading };
     case "tooling":
       return { ...state, tooling: action.tooling, toolingLoading: false };
-    case "notification":
-      return applyNotification(state, action.message);
+    case "notification": {
+      // Notifications from sidechat threads share the socket with the main chat.
+      // Keep the user's main-chat focus stable while still merging their turns.
+      const activeThreadId = state.activeThreadId;
+      const next = applyNotification(state, action.message);
+      return { ...next, activeThreadId };
+    }
     case "serverRequest":
       return {
         ...state,
@@ -185,6 +191,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
   const [inspectorVisible, setInspectorVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.inspectorVisible, true));
+  const [sideChatVisible, setSideChatVisible] = useState(false);
+  const [sideChatTabs, setSideChatTabs] = useState<SideChatTab[]>(() => [
+    {
+      id: "sidechat-1",
+      title: "Side chat",
+      threadId: null,
+      draft: "",
+      userMessages: []
+    }
+  ]);
+  const [activeSideChatId, setActiveSideChatId] = useState("sidechat-1");
+  const [sideChatError, setSideChatError] = useState<string | null>(null);
+  const sideChatSequenceRef = useRef(2);
   const [petDockEnabled, setPetDockEnabled] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.petDockEnabled, true));
   const [panelLayout, setPanelLayout] = useState<Record<string, number> | undefined>(() =>
     readPanelLayout(UI_STORAGE_KEYS.panelLayout)
@@ -229,6 +248,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.inspectorVisible, JSON.stringify(inspectorVisible));
   }, [inspectorVisible]);
+
+  useEffect(() => {
+    if (!sideChatVisible) {
+      return;
+    }
+    const hasActive = sideChatTabs.some((tab) => tab.id === activeSideChatId);
+    if (!hasActive && sideChatTabs[0]) {
+      setActiveSideChatId(sideChatTabs[0].id);
+    }
+  }, [activeSideChatId, sideChatTabs, sideChatVisible]);
 
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.petDockEnabled, JSON.stringify(petDockEnabled));
@@ -685,6 +714,132 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
     },
     [activeProviderId, client, cwd, loadAuditEvents, permission, reasoningEffort, selectedModel, state.activeThreadId, state.providers]
+  );
+
+  const addSideChatTab = useCallback(() => {
+    const nextIndex = sideChatSequenceRef.current;
+    sideChatSequenceRef.current += 1;
+    const nextTab: SideChatTab = {
+      id: `sidechat-${nextIndex}`,
+      title: `Side chat ${nextIndex}`,
+      threadId: null,
+      draft: "",
+      userMessages: []
+    };
+    setSideChatTabs((current) => [...current, nextTab]);
+    setActiveSideChatId(nextTab.id);
+    setSideChatVisible(true);
+  }, []);
+
+  const closeSideChatTab = useCallback((tabId: string) => {
+    setSideChatTabs((current) => {
+      if (current.length <= 1) {
+        return current.map((tab) => (tab.id === tabId ? { ...tab, threadId: null, draft: "", userMessages: [] } : tab));
+      }
+      const next = current.filter((tab) => tab.id !== tabId);
+      setActiveSideChatId((active) => (active === tabId ? next[Math.max(0, current.findIndex((tab) => tab.id === tabId) - 1)]?.id ?? next[0]?.id ?? active : active));
+      return next;
+    });
+  }, []);
+
+  const changeSideChatDraft = useCallback((tabId: string, draft: string) => {
+    setSideChatTabs((current) => current.map((tab) => (tab.id === tabId ? { ...tab, draft } : tab)));
+  }, []);
+
+  const sendSideChatPrompt = useCallback(
+    async (tabId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        return;
+      }
+      const tab = sideChatTabs.find((entry) => entry.id === tabId);
+      if (!tab) {
+        return;
+      }
+      const previousActiveThreadId = state.activeThreadId;
+      const localMessage = {
+        id: `sidechat-message-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        text: trimmed
+      };
+      setSideChatError(null);
+      setSideChatTabs((current) =>
+        current.map((entry) =>
+          entry.id === tabId
+            ? {
+                ...entry,
+                title: entry.userMessages.length === 0 ? sideChatTitle(trimmed, current.filter((candidate) => candidate.id !== entry.id).length + 1) : entry.title,
+                draft: "",
+                userMessages: [...entry.userMessages, localMessage]
+              }
+            : entry
+        )
+      );
+      try {
+        let threadId = tab.threadId;
+        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        if (!threadId) {
+          const startParams: Record<string, JsonValue> = {
+            cwd,
+            sandbox: permissionOverrides.sandbox,
+            approvalPolicy: permissionOverrides.approvalPolicy,
+            sessionStartSource: "startup"
+          };
+          if (effectiveModel) {
+            startParams.model = effectiveModel;
+          }
+          const threadResult = await client.rpc("thread/start", startParams);
+          const thread = asRecord(asRecord(threadResult).thread);
+          threadId = typeof thread.id === "string" ? thread.id : null;
+          if (!threadId) {
+            throw new Error("Codex did not return a sidechat thread id");
+          }
+          const nextThreadId = threadId;
+          setSideChatTabs((current) => current.map((entry) => (entry.id === tabId ? { ...entry, threadId: nextThreadId } : entry)));
+          if (previousActiveThreadId !== state.activeThreadId) {
+            dispatch({ type: "activeThread", threadId: previousActiveThreadId });
+          }
+        }
+        const turnParams: Record<string, JsonValue> = {
+          threadId,
+          input: composerInputToUserInput(trimmed, [], []),
+          cwd,
+          sandboxPolicy: permissionOverrides.sandboxPolicy,
+          approvalPolicy: permissionOverrides.approvalPolicy,
+          effort: reasoningEffort
+        };
+        if (effectiveModel) {
+          turnParams.model = effectiveModel;
+        }
+        await client.rpc("turn/start", turnParams);
+        if (permission === "dangerBypass") {
+          await loadAuditEvents();
+        }
+        dispatch({ type: "activeThread", threadId: previousActiveThreadId });
+      } catch (error) {
+        setSideChatError(error instanceof Error ? error.message : String(error));
+        setSideChatTabs((current) =>
+          current.map((entry) =>
+            entry.id === tabId
+              ? { ...entry, draft: trimmed, userMessages: entry.userMessages.filter((message) => message.id !== localMessage.id) }
+              : entry
+          )
+        );
+        dispatch({ type: "activeThread", threadId: previousActiveThreadId });
+      }
+    },
+    [
+      activeProviderId,
+      client,
+      cwd,
+      loadAuditEvents,
+      permission,
+      reasoningEffort,
+      selectedModel,
+      sideChatTabs,
+      state.activeThreadId,
+      state.providers
+    ]
   );
 
   const answerRequest = useCallback(

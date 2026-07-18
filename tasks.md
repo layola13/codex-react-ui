@@ -3,11 +3,13 @@
 ## Now
 
 - [x] Support all Codex config settings dynamically in Settings by deriving the All config editor from `/root/projects/codex/codex-rs/core/config.schema.json`.
-- [x] Add Playwright coverage proving every bundled Codex schema top-level setting is searchable and visible in Settings -> All config.
+- [x] Add Playwright coverage proving every bundled Codex schema setting keyPath is searchable and visible in Settings -> All config.
 - [x] Add a repeatable `pnpm check:codex-config-schema` gate so bundled UI settings stay in sync with the local Codex schema.
 - [x] Preserve Quick settings while adding searchable schema/runtime config coverage for nested objects, scalar fields, booleans, enums, and JSON map sections.
 - [x] Persist dynamic Codex config edits through `config/batchWrite` with `reloadUserConfig`, including nested key paths such as `history.max_bytes`.
 - [x] Verify the dynamic config UI with Playwright screenshot coverage and full e2e tests.
+- [x] Rebuild `/root/projects/codex` code-index for faster Codex source lookup.
+- [x] Support drag-and-drop image attachments in the main composer, matching Codex's data URL image input path without imposing a 5-image count cap.
 - [x] Move third-party relay/channel configuration from the right inspector into Settings -> Relay, matching the Add Channel and saved-channel references.
 - [x] Add VS Code-like System/Light/Dark theme mode cards in Settings -> Appearance while preserving theme plugin switching.
 - [x] Replace the right inspector relay setup surface with a QQ-style Codex buddy/contacts/status sidebar.

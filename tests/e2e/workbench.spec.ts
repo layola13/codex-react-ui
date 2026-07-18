@@ -33,6 +33,71 @@ const importedProvider = {
   updatedAt: 4
 };
 
+type TestJsonSchemaLike = TestJsonSchema | boolean;
+
+type TestJsonSchema = {
+  $ref?: string;
+  allOf?: TestJsonSchemaLike[];
+  properties?: Record<string, TestJsonSchemaLike>;
+};
+
+type TestCodexSchema = TestJsonSchema & {
+  definitions?: Record<string, TestJsonSchemaLike>;
+};
+
+function flattenTestSchemaProperties(
+  root: TestCodexSchema,
+  properties: Record<string, TestJsonSchemaLike>,
+  parentPath: string[] = []
+): string[] {
+  return Object.keys(properties)
+    .sort((a, b) => a.localeCompare(b))
+    .flatMap((key) => {
+      const keyPath = [...parentPath, key];
+      const schema = resolveTestSchema(root, properties[key]);
+      return [keyPath.join("."), ...flattenTestSchemaProperties(root, schema.properties ?? {}, keyPath)];
+    });
+}
+
+function resolveTestSchema(root: TestCodexSchema, schema: TestJsonSchemaLike | undefined, seen = new Set<string>()): TestJsonSchema {
+  if (!schema || typeof schema === "boolean") {
+    return {};
+  }
+  let resolved: TestJsonSchema = schema;
+  if (schema.$ref?.startsWith("#/definitions/")) {
+    const name = schema.$ref.slice("#/definitions/".length);
+    if (!seen.has(name)) {
+      seen.add(name);
+      resolved = mergeTestSchema(resolveTestSchema(root, root.definitions?.[name], seen), withoutTestRef(schema));
+    }
+  }
+  if (resolved.allOf?.length) {
+    return resolved.allOf.reduce<TestJsonSchema>((acc, entry) => mergeTestSchema(acc, resolveTestSchema(root, entry, seen)), withoutTestAllOf(resolved));
+  }
+  return resolved;
+}
+
+function mergeTestSchema(base: TestJsonSchema, override: TestJsonSchema): TestJsonSchema {
+  return {
+    ...base,
+    ...override,
+    properties: {
+      ...(base.properties ?? {}),
+      ...(override.properties ?? {})
+    }
+  };
+}
+
+function withoutTestRef(schema: TestJsonSchema): TestJsonSchema {
+  const { $ref: _ref, ...rest } = schema;
+  return rest;
+}
+
+function withoutTestAllOf(schema: TestJsonSchema): TestJsonSchema {
+  const { allOf: _allOf, ...rest } = schema;
+  return rest;
+}
+
 let providerApiList = [mockProvider];
 let auditApiEvents: Array<{
   id: string;
@@ -619,6 +684,47 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   });
 });
 
+test("supports drag and drop image attachments in the composer", async ({ page }) => {
+  await page.goto("/");
+
+  const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
+  const dataTransfer = await page.evaluateHandle(() => {
+    const tinyPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
+    const bytes = Uint8Array.from(atob(tinyPngBase64), (char) => char.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], "drop.png", { type: "image/png" }));
+    return data;
+  });
+
+  await composer.dispatchEvent("dragenter", { dataTransfer });
+  await composer.dispatchEvent("dragover", { dataTransfer });
+  await composer.dispatchEvent("drop", { dataTransfer });
+  await expect(page.getByText("drop.png")).toBeVisible();
+  await expect(page.getByText(/1 image/)).toBeVisible();
+
+  await composer.fill("Describe the dropped image");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { input?: Array<{ type?: string; text?: string; url?: string; detail?: string }> };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.input?.some((input) => input.type === "text" && input.text === "Describe the dropped image") &&
+        message.params?.input?.some((input) => input.type === "image" && input.detail === "auto" && input.url?.startsWith("data:image/png;base64,"))
+    );
+  });
+});
+
 test("loads live Codex config in Settings and persists edits via config/batchWrite", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/");
@@ -822,22 +928,22 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   });
 });
 
-test("exposes every bundled Codex schema top-level setting in All config", async ({ page }) => {
-  test.setTimeout(120_000);
-  const schema = JSON.parse(await readFile("apps/web/src/state/codexConfigSchema.json", "utf8")) as {
-    properties?: Record<string, unknown>;
-  };
-  const schemaKeys = Object.keys(schema.properties ?? {}).sort((a, b) => a.localeCompare(b));
-  expect(schemaKeys).toHaveLength(93);
+test("exposes every bundled Codex schema setting in All config", async ({ page }) => {
+  test.setTimeout(180_000);
+  const schema = JSON.parse(await readFile("apps/web/src/state/codexConfigSchema.json", "utf8")) as TestCodexSchema;
+  const topLevelKeys = Object.keys(schema.properties ?? {}).sort((a, b) => a.localeCompare(b));
+  const schemaKeyPaths = flattenTestSchemaProperties(schema, schema.properties ?? {});
+  expect(topLevelKeys).toHaveLength(93);
+  expect(schemaKeyPaths.length).toBeGreaterThan(topLevelKeys.length);
 
   await page.goto("/");
   await page.getByLabel("Open settings").click();
   await page.getByRole("button", { name: "All config" }).click();
   await expect(page.getByLabel("Search all Codex config")).toBeVisible();
 
-  for (const key of schemaKeys) {
-    await page.getByLabel("Search all Codex config").fill(key);
-    await expect(page.getByText(key, { exact: true }).first(), `Settings All config should expose ${key}`).toBeVisible();
+  for (const keyPath of schemaKeyPaths) {
+    await page.getByLabel("Search all Codex config").fill(keyPath);
+    await expect(page.getByText(keyPath, { exact: true }).first(), `Settings All config should expose ${keyPath}`).toBeVisible();
   }
 });
 

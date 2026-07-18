@@ -5,7 +5,8 @@ export type BuiltinThemeId =
   | "studio-black-gold"
   | "glass-blue"
   | "atmospheric-codex"
-  | "sakura-pink";
+  | "sakura-pink"
+  | "developer-leaf";
 
 export type ThemeId = BuiltinThemeId | (string & {});
 export type ThemeMode = ThemeId | "system";

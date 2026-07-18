@@ -8,14 +8,16 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 1. Prove the "complete all settings" state:
    - keep Settings -> Codex Engine backed by the bundled Codex JSON schema
-   - verify every bundled top-level Codex setting is searchable and visible in All config
+   - verify every bundled Codex schema setting keyPath is searchable and visible in All config
    - keep relay providers in Settings -> Relay and secrets out of Codex config writes
    - keep Appearance theme mode/plugin settings, Layout settings, Session settings, Plugins, Pet Dock, and Privacy groups available from the Settings drawer
+   - keep main composer image input aligned with Codex image handling, including drag-and-drop attachments and size-based browser guards rather than a 5-image count cap
 2. Verify with commands and screenshots:
    - `pnpm --filter @codex-ui/web typecheck`
    - `pnpm --filter @codex-ui/web build`
    - `pnpm check:codex-config-schema`
-   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema top-level setting"`
+   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting"`
+   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "supports drag and drop image attachments"`
    - `pnpm test:e2e`
    - inspect `/root/projects/snapshot/07-right-companion-sidebar.png`
    - inspect `/root/projects/snapshot/08-settings-appearance-theme-cards.png`
@@ -42,5 +44,6 @@ All Settings coverage audit and regression test are verified, committed locally,
 - `pnpm check:codex-config-schema`
 - `pnpm --filter @codex-ui/web typecheck`
 - `pnpm --filter @codex-ui/web build`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema top-level setting"`
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting"`
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "supports drag and drop image attachments"`
 - `pnpm test:e2e` (14/14 Chromium tests)

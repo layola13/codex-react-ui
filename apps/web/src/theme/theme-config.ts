@@ -20,7 +20,7 @@ export const themePlugins: ThemePlugin[] = [
   {
     id: "atmospheric-codex",
     name: "Atmospheric Codex",
-    description: "Mint and forest green brand direction with glassmorphic layers.",
+    description: "Mint green Soccer Stadium brand direction with glassmorphic layers.",
     source: "official",
     installedByDefault: true,
     preview: { primary: "#00361a", secondary: "#5a605d", background: "#f8faf5" }
@@ -32,6 +32,15 @@ export const themePlugins: ThemePlugin[] = [
     source: "official",
     installedByDefault: true,
     preview: { primary: "#d46b7a", secondary: "#8e5e6e", background: "#fbf2f4" }
+  },
+  {
+    id: "developer-leaf",
+    name: "Developer (Hidden Leaf)",
+    description: "Charcoal workspace with vibrant Fox Spirit orange accents.",
+    source: "official",
+    installedByDefault: true,
+    preview: { primary: "#d97736", secondary: "#5a605d", background: "#12100e" },
+    dark: true
   },
   {
     id: "dream-rose",

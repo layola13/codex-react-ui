@@ -3,9 +3,16 @@
 ## 2026-07-18
 
 - Audited the "complete all settings" goal against the current Settings implementation.
-- Added Playwright coverage that reads `apps/web/src/state/codexConfigSchema.json`, asserts the bundled Codex schema still has 93 top-level settings, opens Settings -> All config, and searches each key to prove every top-level setting is visible in the UI.
+- Added Playwright coverage that reads `apps/web/src/state/codexConfigSchema.json`, asserts the bundled Codex schema still has 93 top-level settings, recursively expands schema properties, opens Settings -> All config, and searches every generated keyPath to prove each setting is visible in the UI.
 - Verified the new coverage directly:
-  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema top-level setting"`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting"`
+- Rebuilt the Codex source index at `/root/projects/codex/.code_index` with the Rust engine: 3448 modules, 23596 functions, and 336100 edges.
+- Audited Codex image input handling:
+  - app-server `turn/start` supports `image` data URLs and `localImage` paths; remote HTTP(S) image URLs are rejected.
+  - Codex does not enforce a 5-image count cap in the input model.
+  - data URL image processing uses per-image sanity and resize limits, including a 1GiB prompt-image input guard, default `auto/high` resize to 2048px and 2500 patches, and `original` resize limits of 6000px and 10000 patches.
+- Added composer drag-and-drop image attachment support while preserving click-to-attach; the browser UI now guards by practical per-image/selected-total byte limits rather than a small count cap.
+- Added Playwright coverage for dropping a PNG into the composer and verifying `turn/start.input` carries an `image` data URL with `detail: "auto"`.
 - Re-ran the full Settings verification gate after adding the coverage:
   - `pnpm check:codex-config-schema`
   - `pnpm --filter @codex-ui/web typecheck`

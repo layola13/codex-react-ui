@@ -1388,8 +1388,8 @@ function ThemeModeCards({
       {cards.map((card) => {
         const active =
           themeMode === card.mode ||
-          (card.mode === "official-light" && themeMode === "atmospheric-codex") ||
-          (card.mode === "official-black" && themeMode === "studio-black-gold");
+          (card.mode === "official-light" && (themeMode === "atmospheric-codex" || themeMode === "sakura-pink")) ||
+          (card.mode === "official-black" && (themeMode === "studio-black-gold" || themeMode === "developer-leaf"));
         return (
           <Button
             key={card.mode}
