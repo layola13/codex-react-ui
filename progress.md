@@ -2,6 +2,25 @@
 
 ## 2026-07-18
 
+- Slash Command parity implementation:
+  - Added composer-adjacent shortcut buttons for `/fast`, `/status`, `/goal`, `/plan`, `/review`, and `/rename`; command buttons route through the same parser as typed slash commands.
+  - Added a sticky slash command result panel in the chat top status surface for Web-native command outcomes.
+  - Implemented `/review` through `review/start`, with support for uncommitted changes, detached reviews, `branch <name>`, `commit <sha>`, and custom review instructions.
+  - Implemented `/rename <name>` through `thread/name/set`, including local task-tab/history updates and `thread/name/updated` notification handling.
+  - Implemented `/diff` through `gitDiffToRemote`, showing a bounded in-workbench diff preview instead of forwarding `/diff` as prompt text.
+  - Implemented `/compact` through `thread/compact/start`.
+  - Implemented `/resume <thread-id>` through `thread/resume`, reloading the selected thread after resume.
+  - Implemented `/new` permission presets for fresh chats; `/new danger` still uses the existing Danger Bypass confirmation flow.
+  - Kept sidechat slash-shaped text unparsed and isolated from browser-owned main-composer commands.
+  - Extended Playwright mock app-server responses and coverage for shortcut buttons plus `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new`.
+  - Verification passed:
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "routes main slash commands"`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts` (22/22 Chromium tests)
+    - `pnpm --filter @codex-ui/web build`
+  - Refreshed screenshot evidence:
+    - `snapshot/slash-command-status-goal-plan.png`
+
 - User theme background tuning implementation:
   - Added explicit theme visual tuning defaults so user-supplied background media uses a vivid low-mask presentation instead of a washed-out overlay.
   - Added a transparent-by-default effects/glass layer between background media and the UI shell for future glass effects without dimming the current background.

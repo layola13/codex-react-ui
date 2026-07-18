@@ -492,6 +492,17 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       threads: upsertById(state.threads, entry)
     };
   }
+  if (method === "thread/name/updated") {
+    const threadId = stringValue(params.threadId);
+    const name = stringValue(params.name);
+    if (!threadId || !name) {
+      return state;
+    }
+    return {
+      ...state,
+      threads: state.threads.map((thread) => (thread.id === threadId ? { ...thread, preview: name } : thread))
+    };
+  }
   if (method === "turn/started") {
     const turn = asRecord(params.turn);
     const id = stringValue(turn.id);

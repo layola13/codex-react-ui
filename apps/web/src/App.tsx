@@ -134,7 +134,20 @@ type ComposerSlashCommand =
   | { type: "fast"; enabled?: boolean }
   | { type: "stats"; scope: "status" | "stats" }
   | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string }
-  | { type: "plan"; enabled?: boolean; prompt?: string };
+  | { type: "plan"; enabled?: boolean; prompt?: string }
+  | { type: "new"; permission?: PermissionPresetId }
+  | { type: "rename"; name: string }
+  | { type: "review"; target: JsonValue; delivery: "inline" | "detached" }
+  | { type: "diff" }
+  | { type: "compact" }
+  | { type: "resume"; threadId?: string };
+
+type SlashCommandNotice = {
+  id: string;
+  title: string;
+  message: string;
+  severity: "info" | "success" | "warning";
+};
 
 type Action =
   | { type: "connected"; connected: boolean }
@@ -234,6 +247,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [fastModeEnabled, setFastModeEnabled] = useState(false);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [statsPanelScope, setStatsPanelScope] = useState<"status" | "stats" | null>(null);
+  const [slashNotice, setSlashNotice] = useState<SlashCommandNotice | null>(null);
   const [threadGoals, setThreadGoals] = useState<Record<string, GoalBannerState>>({});
   const [threadTokenUsage, setThreadTokenUsage] = useState<Record<string, ThreadTokenUsageState>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1006,6 +1020,132 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
   }, [client, state.activeThreadId]);
 
+  const renameActiveThread = useCallback(
+    async (name: string) => {
+      const threadId = state.activeThreadId;
+      if (!threadId) {
+        dispatch({ type: "error", message: "Select or start a conversation before renaming it" });
+        return;
+      }
+      const normalized = name.trim();
+      if (!normalized) {
+        setComposerSuggestion({ id: `rename-${Date.now()}`, text: "/rename " });
+        return;
+      }
+      try {
+        await client.rpc("thread/name/set", { threadId, name: normalized });
+        dispatch({ type: "threads", threads: renameThreadEntry(state.threads, threadId, normalized) });
+        setSlashNotice({
+          id: `rename-${Date.now()}`,
+          title: "Thread renamed",
+          message: normalized,
+          severity: "success"
+        });
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Rename thread", error) });
+      }
+    },
+    [client, state.activeThreadId, state.threads]
+  );
+
+  const startReview = useCallback(
+    async (target: JsonValue, delivery: "inline" | "detached") => {
+      if (permission === "dangerBypass" && !dangerBypassConfirmed) {
+        setDangerDialogIntent({ source: "permission", nextPermission: "dangerBypass" });
+        setDangerDialogAcknowledged(false);
+        return;
+      }
+      try {
+        const threadId = await ensureActiveThread();
+        const result = await client.rpc("review/start", { threadId, target, delivery });
+        const reviewThreadId = stringValue(asRecord(result).reviewThreadId) ?? threadId;
+        if (delivery === "detached" && reviewThreadId !== threadId) {
+          void loadThreadIntoCache(reviewThreadId);
+        }
+        setSlashNotice({
+          id: `review-${Date.now()}`,
+          title: delivery === "detached" ? "Detached review started" : "Review started",
+          message: reviewTargetLabel(target),
+          severity: "success"
+        });
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Review start", error) });
+      }
+    },
+    [client, dangerBypassConfirmed, ensureActiveThread, loadThreadIntoCache, permission]
+  );
+
+  const showDiffToRemote = useCallback(async () => {
+    try {
+      const result = asRecord(await client.rpc("gitDiffToRemote", { cwd }));
+      const sha = stringValue(result.sha);
+      const diff = stringValue(result.diff) ?? "";
+      setSlashNotice({
+        id: `diff-${Date.now()}`,
+        title: "Diff to remote",
+        message: formatDiffNotice(sha, diff),
+        severity: diff.trim() ? "info" : "success"
+      });
+    } catch (error) {
+      dispatch({ type: "error", message: errorMessage("Diff to remote", error) });
+    }
+  }, [client, cwd]);
+
+  const compactActiveThread = useCallback(async () => {
+    const threadId = state.activeThreadId;
+    if (!threadId) {
+      dispatch({ type: "error", message: "Select or start a conversation before compacting context" });
+      return;
+    }
+    try {
+      await client.rpc("thread/compact/start", { threadId });
+      setSlashNotice({
+        id: `compact-${Date.now()}`,
+        title: "Context compaction started",
+        message: `Compacting ${threadId}`,
+        severity: "success"
+      });
+    } catch (error) {
+      dispatch({ type: "error", message: errorMessage("Compact context", error) });
+    }
+  }, [client, state.activeThreadId]);
+
+  const resumeThreadFromSlash = useCallback(
+    async (threadId?: string) => {
+      const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((value): value is string => Boolean(value)));
+      const fallbackThreadId = state.threads.find((thread) => !sideChatThreadIds.has(thread.id))?.id;
+      const targetThreadId = threadId?.trim() || state.activeThreadId || fallbackThreadId;
+      if (!targetThreadId) {
+        dispatch({ type: "error", message: "Usage: /resume <thread-id>" });
+        return;
+      }
+      try {
+        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        const resumeParams: Record<string, JsonValue> = {
+          threadId: targetThreadId,
+          cwd,
+          approvalPolicy: permissionOverrides.approvalPolicy,
+          sandbox: permissionOverrides.sandbox
+        };
+        if (effectiveModel) {
+          resumeParams.model = effectiveModel;
+        }
+        await client.rpc("thread/resume", resumeParams);
+        await loadThread(targetThreadId);
+        setSlashNotice({
+          id: `resume-${Date.now()}`,
+          title: "Thread resumed",
+          message: targetThreadId,
+          severity: "success"
+        });
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Resume thread", error) });
+      }
+    },
+    [activeProviderId, client, cwd, loadThread, permission, selectedModel, sideChatTabs, state.activeThreadId, state.providers, state.threads]
+  );
+
   const handleComposerSlashCommand = useCallback(
     async (command: ComposerSlashCommand) => {
       switch (command.type) {
@@ -1017,6 +1157,36 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           return;
         case "stats":
           setStatsPanelScope(command.scope);
+          return;
+        case "new":
+          {
+            const nextPermission = command.permission ?? permission;
+            requestNewSession(nextPermission);
+            if (nextPermission === "dangerBypass") {
+              return;
+            }
+          }
+          setSlashNotice({
+            id: `new-${Date.now()}`,
+            title: "New chat ready",
+            message: "The next prompt will start a fresh Codex thread.",
+            severity: "success"
+          });
+          return;
+        case "rename":
+          await renameActiveThread(command.name);
+          return;
+        case "review":
+          await startReview(command.target, command.delivery);
+          return;
+        case "diff":
+          await showDiffToRemote();
+          return;
+        case "compact":
+          await compactActiveThread();
+          return;
+        case "resume":
+          await resumeThreadFromSlash(command.threadId);
           return;
         case "goal":
           if (command.action === "set") {
@@ -1054,7 +1224,22 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           return;
       }
     },
-    [clearActiveGoal, openSettings, setActiveGoalStatus, setGoalForActiveThread, startCodexTurn, state.activeThreadId, threadGoals]
+    [
+      clearActiveGoal,
+      compactActiveThread,
+      openSettings,
+      permission,
+      renameActiveThread,
+      requestNewSession,
+      resumeThreadFromSlash,
+      setActiveGoalStatus,
+      setGoalForActiveThread,
+      showDiffToRemote,
+      startCodexTurn,
+      startReview,
+      state.activeThreadId,
+      threadGoals
+    ]
   );
 
   const sendPrompt = useCallback(
@@ -1652,6 +1837,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           activeThreadId={state.activeThreadId}
           errors={state.errors}
           goal={activeGoal}
+          slashNotice={slashNotice}
           stats={statsState}
           statsOpen={Boolean(statsPanelScope)}
           modes={modeState}
@@ -1659,6 +1845,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           onPromptSelect={usePromptSuggestion}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
           onStatsClose={() => setStatsPanelScope(null)}
+          onSlashNoticeClose={() => setSlashNotice(null)}
           onGoalEdit={() => setComposerSuggestion({ id: `goal-edit-${Date.now()}`, text: activeGoal ? `/goal ${activeGoal.objective}` : "/goal " })}
           onGoalStatusChange={(status) => void setActiveGoalStatus(status)}
           onGoalClear={() => void clearActiveGoal()}
@@ -2395,6 +2582,20 @@ function parseComposerSlashCommand(
   const name = match[1]?.toLowerCase() ?? "";
   const rest = match[2]?.trim() ?? "";
   switch (name) {
+    case "new":
+      return { type: "new", permission: parseNewChatPermission(rest) };
+    case "resume":
+      return { type: "resume", threadId: rest || undefined };
+    case "rename":
+      return { type: "rename", name: rest };
+    case "review": {
+      const review = parseReviewCommand(rest);
+      return { type: "review", target: review.target, delivery: review.delivery };
+    }
+    case "diff":
+      return { type: "diff" };
+    case "compact":
+      return { type: "compact" };
     case "plugins":
       return { type: "settings", section: "plugins", pluginTab: "marketplace" };
     case "mcp":
@@ -2473,6 +2674,78 @@ function parseOptionalBoolean(value: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function parseNewChatPermission(value: string): PermissionPresetId | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (["read", "readonly", "read-only", "safe"].includes(normalized)) {
+    return "readonlyAsk";
+  }
+  if (["workspace", "default", "ask"].includes(normalized)) {
+    return "workspaceAsk";
+  }
+  if (["full", "full-access", "fullask"].includes(normalized)) {
+    return "fullAsk";
+  }
+  if (["danger", "bypass", "full-auto", "danger-bypass"].includes(normalized)) {
+    return "dangerBypass";
+  }
+  return undefined;
+}
+
+function parseReviewCommand(value: string): { target: JsonValue; delivery: "inline" | "detached" } {
+  let rest = value.trim();
+  let delivery: "inline" | "detached" = "inline";
+  const detachedPrefix = /^(--detached|-d|detached)\b/i.exec(rest);
+  if (detachedPrefix) {
+    delivery = "detached";
+    rest = rest.slice(detachedPrefix[0].length).trim();
+  }
+  const normalized = rest.toLowerCase();
+  if (!rest || ["changes", "uncommitted", "uncommitted changes"].includes(normalized)) {
+    return { target: { type: "uncommittedChanges" }, delivery };
+  }
+  const branch = /^(?:branch|base|base-branch)\s+(.+)$/i.exec(rest);
+  if (branch?.[1]?.trim()) {
+    return { target: { type: "baseBranch", branch: branch[1].trim() }, delivery };
+  }
+  const commit = /^commit\s+([0-9a-fA-F]{6,64})(?:\s+(.+))?$/i.exec(rest);
+  if (commit?.[1]) {
+    return { target: { type: "commit", sha: commit[1], title: commit[2]?.trim() || null }, delivery };
+  }
+  return { target: { type: "custom", instructions: rest }, delivery };
+}
+
+function reviewTargetLabel(target: JsonValue): string {
+  const record = asRecord(target);
+  switch (record.type) {
+    case "baseBranch":
+      return `Review against ${stringValue(record.branch) ?? "base branch"}`;
+    case "commit":
+      return `Review commit ${stringValue(record.sha) ?? ""}`.trim();
+    case "custom":
+      return stringValue(record.instructions) ?? "Custom review";
+    default:
+      return "Review uncommitted changes";
+  }
+}
+
+function formatDiffNotice(sha: string | undefined, diff: string): string {
+  const header = sha ? `Remote base: ${sha}` : "Remote base unavailable";
+  const trimmed = diff.trim();
+  if (!trimmed) {
+    return `${header}\nNo diff returned.`;
+  }
+  const maxLength = 1800;
+  const preview = trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}\n...diff truncated in UI...` : trimmed;
+  return `${header}\n${preview}`;
+}
+
+function renameThreadEntry(threads: ClientState["threads"], threadId: string, name: string): ClientState["threads"] {
+  return threads.map((thread) => (thread.id === threadId ? { ...thread, preview: name, updatedAt: Math.floor(Date.now() / 1000) } : thread));
 }
 
 function readStoredBoolean(key: string, fallback: boolean): boolean {

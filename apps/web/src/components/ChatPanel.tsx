@@ -84,12 +84,19 @@ export type WorkbenchModeState = {
   goalActive: boolean;
 };
 
+export type SlashCommandNoticeState = {
+  title: string;
+  message: string;
+  severity: "info" | "success" | "warning";
+};
+
 type Props = {
   turns: WorkbenchTurn[];
   threads?: ThreadEntry[];
   activeThreadId: string | null;
   errors: string[];
   goal?: GoalBannerState | null;
+  slashNotice?: SlashCommandNoticeState | null;
   stats?: WorkbenchStatsState | null;
   statsOpen?: boolean;
   modes?: WorkbenchModeState;
@@ -97,6 +104,7 @@ type Props = {
   onPromptSelect?: (text: string) => void;
   onAgentThreadSelect?: (threadId: string) => void;
   onStatsClose?: () => void;
+  onSlashNoticeClose?: () => void;
   onGoalEdit?: () => void;
   onGoalStatusChange?: (status: GoalStatus) => void;
   onGoalClear?: () => void;
@@ -139,6 +147,7 @@ export function ChatPanel({
   activeThreadId,
   errors,
   goal,
+  slashNotice,
   stats,
   statsOpen = false,
   modes = { fast: false, plan: false, goalActive: false },
@@ -146,6 +155,7 @@ export function ChatPanel({
   onPromptSelect,
   onAgentThreadSelect,
   onStatsClose,
+  onSlashNoticeClose,
   onGoalEdit,
   onGoalStatusChange,
   onGoalClear
@@ -174,7 +184,7 @@ export function ChatPanel({
     ? agentConversationTurns(turns, activeThreadId, selectedAgent)
     : mainConversationTurns(turns, activeThreadId);
   const hasParallelAgents = visibleAgents.length > 0;
-  const showTopStatus = Boolean(goal || statsOpen || modes.fast || modes.plan);
+  const showTopStatus = Boolean(goal || slashNotice || statsOpen || modes.fast || modes.plan);
 
   function selectAgent(agent: AgentSession) {
     setSelectedAgentId(agent.id);
@@ -216,10 +226,12 @@ export function ChatPanel({
         {showTopStatus && (
           <ChatTopStatusSurface
             goal={goal}
+            slashNotice={slashNotice}
             stats={stats}
             statsOpen={statsOpen}
             modes={modes}
             onStatsClose={onStatsClose}
+            onSlashNoticeClose={onSlashNoticeClose}
             onGoalEdit={onGoalEdit}
             onGoalStatusChange={onGoalStatusChange}
             onGoalClear={onGoalClear}
@@ -265,19 +277,23 @@ export function ChatPanel({
 
 function ChatTopStatusSurface({
   goal,
+  slashNotice,
   stats,
   statsOpen,
   modes,
   onStatsClose,
+  onSlashNoticeClose,
   onGoalEdit,
   onGoalStatusChange,
   onGoalClear
 }: {
   goal?: GoalBannerState | null;
+  slashNotice?: SlashCommandNoticeState | null;
   stats?: WorkbenchStatsState | null;
   statsOpen: boolean;
   modes: WorkbenchModeState;
   onStatsClose?: () => void;
+  onSlashNoticeClose?: () => void;
   onGoalEdit?: () => void;
   onGoalStatusChange?: (status: GoalStatus) => void;
   onGoalClear?: () => void;
@@ -302,6 +318,28 @@ function ChatTopStatusSurface({
             onStatusChange={onGoalStatusChange}
             onClear={onGoalClear}
           />
+        )}
+        {slashNotice && (
+          <Alert
+            data-testid="slash-command-result"
+            severity={slashNotice.severity}
+            onClose={onSlashNoticeClose}
+            sx={{
+              alignItems: "flex-start",
+              "& .MuiAlert-message": {
+                minWidth: 0,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere"
+              }
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+              {slashNotice.title}
+            </Typography>
+            <Typography variant="body2" component="div">
+              {slashNotice.message}
+            </Typography>
+          </Alert>
         )}
         {(modes.fast || modes.plan) && (
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">

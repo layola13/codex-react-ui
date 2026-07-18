@@ -677,6 +677,37 @@ test.beforeEach(async ({ page }) => {
           const id = `thread-new-${++threadStartCount}`;
           return { thread: { id, preview: `New mock thread ${threadStartCount}`, status: "idle" } };
         }
+        case "thread/name/set":
+          return {};
+        case "review/start": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
+          return {
+            turn: { id: `review-turn-${Date.now()}`, threadId, status: "inProgress" },
+            reviewThreadId: threadId
+          };
+        }
+        case "gitDiffToRemote":
+          return {
+            sha: "abc123def456",
+            diff: "diff --git a/README.md b/README.md\n+Slash command diff preview"
+          };
+        case "thread/compact/start":
+          return {};
+        case "thread/resume": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
+          return {
+            thread: { id: threadId, preview: threadId === "thread-2" ? "Second task" : "Mock thread", status: "idle" },
+            model: "gpt-5.6-sol",
+            modelProvider: "openai",
+            serviceTier: null,
+            cwd: "/root/projects",
+            instructionSources: [],
+            approvalPolicy: "on-request",
+            approvalsReviewer: "appServer",
+            sandbox: { type: "workspaceWrite", writableRoots: ["/root/projects"], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+            reasoningEffort: "medium"
+          };
+        }
         case "thread/goal/set": {
           const goalParams = params as { threadId?: string; objective?: string | null; status?: "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete" | null; tokenBudget?: number | null } | undefined;
           const threadId = goalParams?.threadId ?? "thread-missing";
@@ -1413,6 +1444,9 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
   const send = page.getByRole("button", { name: "Send" });
   await expect(page.getByText("mock-codex")).toBeVisible();
   await expect(composer).toBeEnabled();
+  await expect(page.getByTestId("composer-slash-shortcuts")).toContainText("/fast");
+  await page.getByRole("button", { name: "/status" }).click();
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Session Status");
 
   await page.evaluate(() => {
     ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
@@ -1474,6 +1508,57 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Fast on");
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Plan on");
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Goal Active");
+
+  await composer.fill("/rename Focused slash work");
+  await send.click();
+  await expect(page.getByTestId("slash-command-result")).toContainText("Thread renamed");
+  await expect(page.getByRole("tab", { name: "Focused slash work" })).toHaveAttribute("aria-selected", "true");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { name?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/name/set" && message.params?.name === "Focused slash work");
+  });
+
+  await composer.fill("/review detached branch main");
+  await send.click();
+  await expect(page.getByTestId("slash-command-result")).toContainText("Detached review started");
+  await expect(page.getByTestId("slash-command-result")).toContainText("Review against main");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { delivery?: string; target?: { type?: string; branch?: string } } }> }).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) => message.method === "review/start" && message.params?.delivery === "detached" && message.params?.target?.type === "baseBranch" && message.params?.target?.branch === "main"
+    );
+  });
+
+  await composer.fill("/diff");
+  await send.click();
+  await expect(page.getByTestId("slash-command-result")).toContainText("Diff to remote");
+  await expect(page.getByTestId("slash-command-result")).toContainText("Slash command diff preview");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "gitDiffToRemote");
+  });
+
+  await composer.fill("/compact");
+  await send.click();
+  await expect(page.getByTestId("slash-command-result")).toContainText("Context compaction started");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/compact/start");
+  });
+
+  await composer.fill("/resume thread-2");
+  await send.click();
+  await expect(page.getByTestId("slash-command-result")).toContainText("Thread resumed");
+  await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "true");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/resume" && message.params?.threadId === "thread-2");
+  });
+
+  await composer.fill("/new full");
+  await send.click();
+  await expect(page.getByTestId("slash-command-result")).toContainText("New chat ready");
+  await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "false");
 
   await page.screenshot({
     path: "snapshot/slash-command-status-goal-plan.png",

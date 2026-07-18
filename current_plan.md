@@ -6,24 +6,26 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
-Implemented the user theme background tuning slice so shared user themes can carry images, video, tuning, and dynamic background declarations without moving Settings into the right runtime workspace.
+Implemented the Slash Command parity slice for the main Web composer while keeping sidechat slash-shaped text isolated and unparsed.
 
-1. Keep user media vivid by default:
-   - image/GIF and video themes default to full-strength background media
-   - background overlay, tone overlay, and the future effects/glass layer default to transparent
-   - workspace, hero, panel, and composer surfaces use tunable opacity/blur values instead of hard-coded heavy masks
-2. Expand theme plugin portability:
-   - `assets.appBackgroundVideo` stores MP4/WebM theme backgrounds
-   - `layout.backgroundScene` stores declaration-based Canvas or Three.js loops
-   - exported/imported JSON preserves media assets, opacity tuning, tone settings, and dynamic background declarations
-3. Add Settings controls:
-   - background image/GIF upload
-   - MP4/WebM background video upload
-   - background media strength, background overlay, effects layer, workspace surface, hero overlay, panel surface, glass blur, tone color, and tone opacity
-   - Canvas/Three.js renderer, preset, color, speed, density, and opacity controls
+1. Keep the existing browser-owned commands:
+   - `/fast` toggles fast mode and shows lightning badges near the top bar and composer
+   - `/status`, `/stats`, and `/usage` show session/project token usage, model/provider, reasoning effort, permission mode, active goal, and mode flags
+   - `/goal` owns the sticky top-of-chat goal bar with set/edit/pause/resume/complete/clear behavior
+   - `/plan` toggles plan mode or sends `/plan <prompt>` as a plan-mode prompt without forwarding the slash prefix
+2. Add app-server-backed Web-native commands:
+   - `/review` calls `review/start` for uncommitted changes, branches, commits, custom instructions, inline reviews, and detached reviews
+   - `/rename <name>` calls `thread/name/set` and keeps task tabs/history synchronized
+   - `/diff` calls `gitDiffToRemote` and shows an in-workbench diff preview
+   - `/compact` calls `thread/compact/start`
+   - `/resume <thread-id>` calls `thread/resume` and reloads the selected thread
+   - `/new`, `/new full`, and `/new danger` reuse the New Chat permission flow, with Danger Bypass still gated by confirmation
+3. Add composer shortcuts and feedback:
+   - command buttons for `/fast`, `/status`, `/goal`, `/plan`, `/review`, and `/rename` live next to the composer
+   - a sticky slash command result panel reports review, rename, diff, compact, resume, and new-chat command outcomes
 4. Add verification:
-   - Playwright covers user background switching, video persistence, import/export tuning, and dynamic scene rendering
-   - screenshot evidence is refreshed for the applied theme and user background switching flows
+   - Playwright covers shortcut buttons and all Web-native slash RPC routes
+   - screenshot evidence is refreshed at `snapshot/slash-command-status-goal-plan.png`
 
 ## Engineering Rules
 
@@ -46,17 +48,16 @@ The verified baseline for this landing target is:
 
 ## Latest Verification
 
-- User theme background tuning verification:
+- Slash command parity verification:
   - `pnpm --filter @codex-ui/web typecheck`
-  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "uploaded background images and user theme switching"`
-  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "user theme|uploaded background"`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "routes main slash commands"`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts` (22/22 Chromium tests)
   - `pnpm --filter @codex-ui/web build`
-  - screenshot evidence: `snapshot/theme-plugin-applied.png`, `snapshot/user-theme-background-switching.png`
+  - screenshot evidence: `snapshot/slash-command-status-goal-plan.png`
 
-The user theme background tuning slice is implemented and verified.
+The Slash Command parity slice is implemented and verified.
 
 ## Remaining Slash Command Work
 
-1. Decide which remaining TUI-only commands should get Web-native equivalents.
-2. Add app-server-backed behavior before claiming full parity for commands such as `/rename`, `/review`, `/diff`, `/compact`, `/resume`, and `/new`.
-3. Keep sidechat slash-shaped input unparsed so sidechat remains an isolated Codex thread surface.
+1. Keep sidechat slash-shaped input unparsed so sidechat remains an isolated Codex thread surface.
+2. Treat commands without app-server support as normal Codex prompt text until a real backend capability exists.

@@ -2,6 +2,15 @@
 
 ## Now
 
+- [x] Add composer-adjacent slash command shortcut buttons for `/fast`, `/status`, `/goal`, `/plan`, `/review`, and `/rename`.
+- [x] Add a sticky slash command result surface for Web-native commands that need immediate feedback.
+- [x] Implement `/review` through app-server `review/start`, including inline/detached review targets for uncommitted changes, base branches, commits, and custom instructions.
+- [x] Implement `/rename` through `thread/name/set` and keep task tabs/history in sync with local and pushed name updates.
+- [x] Implement `/diff` through `gitDiffToRemote` with an in-workbench diff preview instead of sending `/diff` as prompt text.
+- [x] Implement `/compact` through `thread/compact/start` and show compaction feedback.
+- [x] Implement `/resume <thread-id>` through `thread/resume` and reload the selected thread.
+- [x] Implement `/new` permission presets for fresh chats, including `/new full` and `/new danger` using the existing danger confirmation flow.
+- [x] Extend Playwright coverage and screenshot evidence for slash shortcuts plus `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new`.
 - [x] Make user background themes default to a vivid, low-mask presentation matching the provided reference instead of washing the image out.
 - [x] Add a future-proof background effects/glass layer between background media and UI, defaulting to transparent so it does not dim user media.
 - [x] Add a dedicated Settings -> Appearance control group for theme background tuning: background overlay opacity, workspace surface opacity, hero overlay opacity, panel/card opacity, blur strength, and background layer strength.
@@ -102,7 +111,7 @@
 - [x] Add terminal/process controls for command execution and PTY interaction.
 - [x] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
 - [x] Keep the sidechat slice small enough to land without regressing the existing settings/theme/tooling workbench.
-- [ ] Decide parity strategy for remaining TUI-only slash commands such as `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new`: add Web-native affordances where app-server support exists, otherwise document them as normal prompt text or future backend work.
+- [x] Decide parity strategy for remaining TUI-only slash commands such as `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new`: add Web-native affordances where app-server support exists, otherwise document them as normal prompt text or future backend work.
 
 ## Later
 

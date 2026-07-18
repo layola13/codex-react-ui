@@ -17,9 +17,12 @@ import {
 import SendIcon from "@mui/icons-material/Send";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import BoltIcon from "@mui/icons-material/Bolt";
 import ChecklistIcon from "@mui/icons-material/Checklist";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 import FlagIcon from "@mui/icons-material/Flag";
+import RateReviewIcon from "@mui/icons-material/RateReview";
 import { alpha } from "@mui/material/styles";
 import { permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
 import type { ComposerImageAttachment, ComposerMention } from "../state/codexClient";
@@ -208,6 +211,103 @@ export function Composer({
             }
           }}
         />
+        <Stack
+          direction="row"
+          spacing={0.75}
+          flexWrap="wrap"
+          useFlexGap
+          data-testid="composer-slash-shortcuts"
+          sx={{
+            alignItems: "center",
+            "& .MuiButton-root": {
+              minHeight: 30,
+              borderRadius: 1,
+              px: 1
+            }
+          }}
+        >
+          <Tooltip title="Toggle fast mode">
+            <span>
+              <Button
+                size="small"
+                variant={modeBadges.fast ? "contained" : "outlined"}
+                color="warning"
+                startIcon={<BoltIcon />}
+                disabled={disabled}
+                onClick={() => runSlashCommandShortcut("/fast")}
+              >
+                /fast
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Show session status">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<AssessmentIcon />}
+                disabled={disabled}
+                onClick={() => runSlashCommandShortcut("/status")}
+              >
+                /status
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Set a sticky goal">
+            <span>
+              <Button
+                size="small"
+                variant={modeBadges.goalActive ? "contained" : "outlined"}
+                color="success"
+                startIcon={<FlagIcon />}
+                disabled={disabled}
+                onClick={() => setSlashTemplate("/goal ")}
+              >
+                /goal
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Toggle plan mode">
+            <span>
+              <Button
+                size="small"
+                variant={modeBadges.plan ? "contained" : "outlined"}
+                color="primary"
+                startIcon={<ChecklistIcon />}
+                disabled={disabled}
+                onClick={() => runSlashCommandShortcut(modeBadges.plan ? "/plan off" : "/plan")}
+              >
+                /plan
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Start a review">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<RateReviewIcon />}
+                disabled={disabled}
+                onClick={() => runSlashCommandShortcut("/review")}
+              >
+                /review
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title="Rename current thread">
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditNoteIcon />}
+                disabled={disabled}
+                onClick={() => setSlashTemplate("/rename ")}
+              >
+                /rename
+              </Button>
+            </span>
+          </Tooltip>
+        </Stack>
         {images.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ overflowX: "auto", pb: 0.5 }}>
             {images.map((image) => (
@@ -314,6 +414,14 @@ export function Composer({
       </Stack>
     </Box>
   );
+
+  function runSlashCommandShortcut(command: string): void {
+    onSend(command, [], []);
+  }
+
+  function setSlashTemplate(command: string): void {
+    setText((current) => (current.trim().length === 0 || current.trim().startsWith("/") ? command : `${current.trimEnd()}\n${command}`));
+  }
 
   async function addImages(fileList: FileList | File[] | null): Promise<void> {
     if (!fileList) {
