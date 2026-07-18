@@ -4,6 +4,7 @@
 
 - Current status snapshot:
   - The long-running settings/theme/tooling/files/terminal/profile/audit/image-input scope remains green.
+  - Settings -> Codex Plugins now uses real Codex tooling data instead of placeholder chips: marketplace plugins, installed mentions, plugin app auth, MCP inventory, MCP resource/tool actions, and `/plugins` plus `/mcp` composer entry points are wired.
   - The sidechat slice is implemented and verified: top-right entry point, right-side panel, fixed `+` affordance, multiple independent tabs, stable main-chat focus, raw slash-command forwarding, Playwright coverage, and screenshot evidence.
   - Sidechat reference assets remain under `snapshot/sidechat/`; the fresh implementation screenshot is `snapshot/sidechat-workbench.png`.
   - `/root/projects/material-kit-react/README.md` was rechecked during the slice; the sidechat UI stays on the existing Minimal UI / MUI surface language rather than introducing a separate visual system.
@@ -14,10 +15,21 @@
 - Completed feature areas that should not be regressed:
   - schema-driven Settings -> All config with 93 top-level Codex settings and nested/runtime key support
   - relay/channel management in Settings -> Relay with secret-free provider metadata and keyring-backed credentials
+  - Settings-hosted Codex plugin management with MCP server inventory, installed plugin mentions, plugin app auth state, and UI slash entry points
   - System/Light/Dark theme cards plus built-in/custom theme plugin switching
   - draggable/resizable workbench panels, task tabs, right companion/status surface, pet dock settings, and Markdown chat rendering
   - MCP, Skills, Plugins, plugin mentions, MCP OAuth/resources, direct MCP tool calls, files/editor, terminal/process controls, profile import/export, and dangerous-permission audits
   - main-composer image attachments, including drag-and-drop, mixed text/image input, data URL submission, and practical byte limits instead of an arbitrary five-image count cap
+- Codex plugin Settings implementation status:
+  - Added a real `CodexPluginSettingsPanel` for Settings -> Codex Plugins.
+  - Reused the live `plugin/list`, `plugin/installed`, `plugin/read`, `plugin/install`, `plugin/uninstall`, `plugin/skill/read`, `app/list`, `mcpServerStatus/list`, `config/mcpServer/reload`, `mcpServer/resource/read`, and `mcpServer/tool/call` flows already backed by app-server.
+  - Added marketplace, installed, MCP, and apps tabs with search, install/uninstall, detail, mention insertion, app auth, MCP reload, OAuth, resource read, and direct tool-call controls.
+  - Removed the previous Settings Plugins placeholder content and kept theme-plugin customization in Appearance.
+  - Added main composer UI slash routing so exact `/plugins` opens Settings -> Codex Plugins marketplace and exact `/mcp` opens the MCP tab; these commands do not send `turn/start`.
+  - Verification passed:
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm --filter @codex-ui/web build`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "Codex plugins and MCP|uses installed-only plugin mentions|supports direct MCP tool calls"`
 - Sidechat implementation status:
   - Added the visible top-right sidechat control; opening sidechat hides the inspector so the right panel matches the reference side-by-side shape, while the inspector can still be reopened manually.
   - Mounted `SideChatPanel` in desktop resizable panels and mobile stacked layout.

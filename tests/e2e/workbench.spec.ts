@@ -1164,6 +1164,52 @@ test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
   await expect(page.getByText('"message": "from-playwright"')).toBeVisible();
 });
 
+test("manages Codex plugins and MCP servers from Settings with slash command entry points", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Plugins settings").click();
+  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
+  await expect(page.getByText("Codex plugin settings")).toBeVisible();
+  await expect(page.getByText("Customer customization")).toHaveCount(0);
+  await expect(page.getByText("Theme plugins", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Auth Plugin" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Details" }).first().click();
+  await expect(page.getByText("Detailed mock plugin description.")).toBeVisible();
+  await expect(page.getByText("mcp 1", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "MCP 1" }).click();
+  await expect(page.getByText("mock-mcp")).toBeVisible();
+  await expect(page.getByText("Ping tool")).toBeVisible();
+
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.evaluate(() => {
+    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
+  });
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("/plugins");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Marketplace 2" })).toHaveAttribute("aria-selected", "true");
+
+  let outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
+  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
+
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.evaluate(() => {
+    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
+  });
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("/mcp");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "MCP 1" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("mock-mcp")).toBeVisible();
+
+  outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
+  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
+});
+
 test("exports and imports UI profiles without API keys", async ({ page }) => {
   await page.goto("/");
 

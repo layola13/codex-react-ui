@@ -10,6 +10,8 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - New conversation permission presets, including the explicit `Dangerously bypass approvals and sandbox` option gated by typing `BYPASS`.
 - Third-party provider metadata: base URL, native models, model aliases, API key preview, save, and activate.
 - Provider activation writes Codex config via `config/batchWrite` and restarts app-server so temporary API-key env vars are available.
+- Settings -> Codex Plugins manages real Codex plugin marketplaces, installed plugin mentions, plugin app auth state, and MCP server inventory without placeholder content.
+- Main composer UI commands `/plugins` and `/mcp` open the corresponding Settings plugin views instead of starting a Codex turn.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
 
 ## Development

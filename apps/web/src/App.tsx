@@ -74,7 +74,8 @@ import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
 import { RightInspector } from "./components/RightInspector";
-import { SettingsDrawer, type ReasoningOption } from "./components/SettingsDrawer";
+import { SettingsDrawer, type ReasoningOption, type SettingsSectionId } from "./components/SettingsDrawer";
+import type { CodexPluginSettingsTab } from "./components/CodexPluginSettingsPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import {
   applyConfigWriteToView,
@@ -188,6 +189,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("/root/projects");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("codex");
+  const [settingsPluginTab, setSettingsPluginTab] = useState<CodexPluginSettingsTab>("marketplace");
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
   const [inspectorVisible, setInspectorVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.inspectorVisible, true));
@@ -232,6 +235,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
   const desktopLayout = useMediaQuery("(min-width:900px)");
+
+  const openSettings = useCallback((section: SettingsSectionId = "codex", pluginTab: CodexPluginSettingsTab = "marketplace") => {
+    setSettingsSection(section);
+    if (section === "plugins") {
+      setSettingsPluginTab(pluginTab);
+    }
+    setSettingsOpen(true);
+  }, []);
 
   const client = useMemo(() => {
     const socketClient = new CodexSocketClient();
@@ -594,6 +605,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }, [loadTooling, state.connected]);
 
   useEffect(() => {
+    if (settingsOpen && settingsSection === "plugins" && state.connected && state.engine.phase === "ready") {
+      void loadTooling({ forceSkillReload: true });
+    }
+  }, [loadTooling, settingsOpen, settingsSection, state.connected, state.engine.phase]);
+
+  useEffect(() => {
     if (!selectedModel && state.models[0]) {
       setSelectedModel(state.models[0].model ?? state.models[0].id ?? "");
     }
@@ -670,6 +687,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const sendPrompt = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
+      const uiCommand = composerUiSlashCommand(text, images, mentions);
+      if (uiCommand) {
+        openSettings("plugins", uiCommand);
+        return;
+      }
       const input = composerInputToUserInput(text, images, mentions);
       if (input.length === 0) {
         return;
@@ -715,7 +737,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [activeProviderId, client, cwd, loadAuditEvents, permission, reasoningEffort, selectedModel, state.activeThreadId, state.providers]
+    [activeProviderId, client, cwd, loadAuditEvents, openSettings, permission, reasoningEffort, selectedModel, state.activeThreadId, state.providers]
   );
 
   const addSideChatTab = useCallback(() => {
@@ -1515,7 +1537,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             Refresh
           </Button>
           <Tooltip title="Open settings">
-            <IconButton size="small" onClick={() => setSettingsOpen(true)} aria-label="Open settings">
+            <IconButton size="small" onClick={() => openSettings("codex")} aria-label="Open settings">
               <SettingsIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -1725,6 +1747,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       </Popover>
       <SettingsDrawer
         open={settingsOpen}
+        initialSection={settingsSection}
+        initialPluginTab={settingsPluginTab}
         themeMode={themeMode}
         installedThemePluginIds={installedThemePluginIds}
         customThemePlugins={customThemePlugins}
@@ -1742,6 +1766,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         codexConfigLoading={codexConfigLoading}
         codexConfigSaving={codexConfigSaving}
         codexConfigError={codexConfigError}
+        tooling={state.tooling}
+        toolingLoading={state.toolingLoading}
+        activeThreadId={state.activeThreadId}
+        pluginDetails={pluginDetails}
+        pluginSkillPreviews={pluginSkillPreviews}
+        pluginAuthNotices={pluginAuthNotices}
+        mcpResourceContents={mcpResourceContents}
+        mcpOauthUrls={mcpOauthUrls}
         onClose={() => setSettingsOpen(false)}
         onThemeModeChange={onThemeModeChange}
         onInstallThemePlugin={installThemePlugin}
@@ -1759,6 +1791,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onCodexConfigValueChange={(keyPath, value) => void writeCodexConfigValue(keyPath, value)}
         onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
         onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
+        onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
+        onReloadMcp={() => void reloadMcp()}
+        onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
+        onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
+        onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
+        onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
+        onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
+        onInsertPluginMention={insertPluginMention}
+        onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
+        onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
       />
       <Snackbar
         open={state.errors.length > 0}
@@ -1771,6 +1813,24 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       </Snackbar>
     </Box>
   );
+}
+
+function composerUiSlashCommand(
+  text: string,
+  images: ComposerImageAttachment[],
+  mentions: ComposerMention[]
+): CodexPluginSettingsTab | null {
+  if (images.length > 0 || mentions.length > 0) {
+    return null;
+  }
+  switch (text.trim().toLowerCase()) {
+    case "/plugins":
+      return "marketplace";
+    case "/mcp":
+      return "mcp";
+    default:
+      return null;
+  }
 }
 
 function readStoredBoolean(key: string, fallback: boolean): boolean {

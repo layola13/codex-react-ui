@@ -61,6 +61,15 @@ import {
   type DynamicCodexConfigField
 } from "../state/codexConfigSettings";
 import { themePlugins, type ThemeId, type ThemeMode, type ThemePlugin } from "../theme";
+import type {
+  McpResourceContentEntry,
+  PluginDetailEntry,
+  PluginEntry,
+  PluginInstallAuthNotice,
+  PluginMarketplace,
+  ToolingState
+} from "../state/codexClient";
+import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
 
 export type ReasoningOption = {
@@ -69,7 +78,7 @@ export type ReasoningOption = {
   description?: string;
 };
 
-type SettingsSectionId =
+export type SettingsSectionId =
   | "codex"
   | "appearance"
   | "layout"
@@ -81,6 +90,8 @@ type SettingsSectionId =
 
 type Props = {
   open: boolean;
+  initialSection?: SettingsSectionId;
+  initialPluginTab?: CodexPluginSettingsTab;
   themeMode: ThemeMode;
   installedThemePluginIds: ThemeId[];
   customThemePlugins: ThemePlugin[];
@@ -98,6 +109,14 @@ type Props = {
   codexConfigLoading: boolean;
   codexConfigSaving: boolean;
   codexConfigError: string | null;
+  tooling: ToolingState;
+  toolingLoading: boolean;
+  activeThreadId: string | null;
+  pluginDetails: Record<string, PluginDetailEntry>;
+  pluginSkillPreviews: Record<string, string>;
+  pluginAuthNotices: Record<string, PluginInstallAuthNotice>;
+  mcpResourceContents: Record<string, McpResourceContentEntry[]>;
+  mcpOauthUrls: Record<string, string>;
   onClose: () => void;
   onThemeModeChange: (mode: ThemeMode) => void;
   onInstallThemePlugin: (id: ThemeId) => void;
@@ -115,6 +134,16 @@ type Props = {
   onCodexConfigValueChange: (keyPath: string, value: JsonValue) => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
   onActivateProvider: (providerId: string, model?: string) => void;
+  onReloadTooling: () => void;
+  onReloadMcp: () => void;
+  onStartMcpOauth: (serverName: string) => void;
+  onReadMcpResource: (serverName: string, uri: string) => void;
+  onCallMcpTool: (serverName: string, toolName: string, args: JsonValue) => Promise<JsonValue>;
+  onReadPluginDetail: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
+  onReadPluginSkill: (marketplace: PluginMarketplace, plugin: PluginEntry, skillName: string) => void;
+  onInsertPluginMention: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
+  onInstallPlugin: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
+  onUninstallPlugin: (plugin: PluginEntry) => void;
 };
 
 const NAV_ITEMS: Array<{ id: SettingsSectionId; label: string; icon: ReactNode }> = [
@@ -130,6 +159,8 @@ const NAV_ITEMS: Array<{ id: SettingsSectionId; label: string; icon: ReactNode }
 
 export function SettingsDrawer({
   open,
+  initialSection = "codex",
+  initialPluginTab = "marketplace",
   themeMode,
   installedThemePluginIds,
   customThemePlugins,
@@ -147,6 +178,14 @@ export function SettingsDrawer({
   codexConfigLoading,
   codexConfigSaving,
   codexConfigError,
+  tooling,
+  toolingLoading,
+  activeThreadId,
+  pluginDetails,
+  pluginSkillPreviews,
+  pluginAuthNotices,
+  mcpResourceContents,
+  mcpOauthUrls,
   onClose,
   onThemeModeChange,
   onInstallThemePlugin,
@@ -163,7 +202,17 @@ export function SettingsDrawer({
   onCodexConfigFieldChange,
   onCodexConfigValueChange,
   onSaveProvider,
-  onActivateProvider
+  onActivateProvider,
+  onReloadTooling,
+  onReloadMcp,
+  onStartMcpOauth,
+  onReadMcpResource,
+  onCallMcpTool,
+  onReadPluginDetail,
+  onReadPluginSkill,
+  onInsertPluginMention,
+  onInstallPlugin,
+  onUninstallPlugin
 }: Props) {
   const [section, setSection] = useState<SettingsSectionId>("codex");
   const [codexConfigMode, setCodexConfigMode] = useState<"quick" | "all">("quick");
@@ -200,11 +249,11 @@ export function SettingsDrawer({
 
   useEffect(() => {
     if (open) {
-      setSection("codex");
+      setSection(initialSection);
       setCodexConfigMode("quick");
       setCodexConfigSearch("");
     }
-  }, [open]);
+  }, [initialSection, open]);
 
   return (
     <Drawer
@@ -526,14 +575,29 @@ export function SettingsDrawer({
             )}
 
             {section === "plugins" && (
-              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title="Plugins" subtitle="Skills, MCP apps, and theme plugins share the customization surface">
-                <SettingRow title="Customer customization" description="Theme plugins, Skills and MCP-backed apps share this customization surface.">
-                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                    <Chip size="small" label="Skills ready" />
-                    <Chip size="small" label="Plugin marketplace ready" />
-                    <Chip size="small" label="Theme plugins" variant="outlined" />
-                  </Stack>
-                </SettingRow>
+              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title="Codex Plugins" subtitle="Marketplace plugins, installed plugin mentions, apps, and MCP servers">
+                <CodexPluginSettingsPanel
+                  key={`${open ? "open" : "closed"}:${initialPluginTab}`}
+                  activeThreadId={activeThreadId}
+                  tooling={tooling}
+                  toolingLoading={toolingLoading}
+                  initialTab={initialPluginTab}
+                  pluginDetails={pluginDetails}
+                  pluginSkillPreviews={pluginSkillPreviews}
+                  pluginAuthNotices={pluginAuthNotices}
+                  mcpResourceContents={mcpResourceContents}
+                  mcpOauthUrls={mcpOauthUrls}
+                  onReloadTooling={onReloadTooling}
+                  onReloadMcp={onReloadMcp}
+                  onStartMcpOauth={onStartMcpOauth}
+                  onReadMcpResource={onReadMcpResource}
+                  onCallMcpTool={onCallMcpTool}
+                  onReadPluginDetail={onReadPluginDetail}
+                  onReadPluginSkill={onReadPluginSkill}
+                  onInsertPluginMention={onInsertPluginMention}
+                  onInstallPlugin={onInstallPlugin}
+                  onUninstallPlugin={onUninstallPlugin}
+                />
               </SettingsSection>
             )}
 

@@ -6,34 +6,30 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-The sidechat slice is complete and verified.
+The Codex plugin Settings slice is implemented and under final full-suite verification.
 
 1. Settings/image/tooling regression scope stayed green:
    - Settings -> Codex Engine remains backed by the bundled Codex JSON schema.
    - Relay providers remain in Settings -> Relay and secrets remain out of Codex config writes.
    - Main composer image input still uses Codex image data URLs with size-based browser guards.
-2. Sidechat behavior is implemented:
-   - top-right toolbar control opens the sidechat panel and hides the inspector to match the reference side-by-side layout
-   - desktop uses a resizable right-side panel; mobile uses a stacked sidechat panel
-   - multiple sidechat tabs/windows can stay open at once
-   - each sidechat tab owns its own draft, local transcript, in-flight state, and Codex `threadId`
-   - sidechat threads are filtered out of the main task tabs/history and main `ChatPanel`
-   - sidechat websocket notifications do not steal the selected main conversation
-   - `/goal ...`, `/status ...`, and other slash-command-shaped inputs are sent as exact Codex text input with no UI allow-list or rewrite
-   - TUI-only slash commands are documented as requiring app-server support for TUI-specific behavior
-3. Verification is complete:
-   - `pnpm typecheck`
+2. Settings -> Codex Plugins is real, not placeholder:
+   - marketplace plugins render from `plugin/list`
+   - installed plugin mentions render from `plugin/installed`
+   - plugin detail, install/uninstall, app auth, skill preview, and mention insertion use existing app-server RPCs
+   - MCP inventory renders from `mcpServerStatus/list`
+   - MCP reload, OAuth, resource read, and direct tool-call controls are available in Settings
+   - theme plugin customization remains isolated in Appearance
+3. Slash command entry points are implemented:
+   - exact `/plugins` opens Settings -> Codex Plugins marketplace without sending `turn/start`
+   - exact `/mcp` opens the MCP tab without sending `turn/start`
+   - sidechat keeps its existing raw slash-command forwarding behavior
+4. Verification so far:
+   - `pnpm --filter @codex-ui/web typecheck`
    - `pnpm --filter @codex-ui/web build`
-   - `pnpm check:codex-config-schema`
-   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
-   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
-   - `pnpm test:e2e` (16/16 Chromium tests)
-4. Screenshot evidence is complete:
-   - captured `snapshot/sidechat-workbench.png`
-   - inspected it against `snapshot/sidechat/屏幕截图 2026-07-18 153125.png` and the other sidechat reference images for the right panel, tab strip, fixed `+`, close controls, and bottom composer
-5. Release hygiene:
-   - `README.md`, `tasks.md`, `progress.md`, and `current_plan.md` describe the verified sidechat state
-   - the sidechat slice has been committed and pushed to `origin/main`
+   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "Codex plugins and MCP|uses installed-only plugin mentions|supports direct MCP tool calls"`
+5. Remaining release hygiene:
+   - run the full E2E suite after this slice
+   - commit and push after verification is green if this slice is accepted for landing
 
 ## Engineering Rules
 
@@ -46,30 +42,22 @@ The sidechat slice is complete and verified.
 
 ## Current Baseline
 
-The verified sidechat slice is now the current baseline:
+The verified sidechat slice remains the pushed baseline. The next landing target is the Codex plugin Settings slice:
 
-- independent multi-tab sidechat behavior is wired to Codex threads
-- main-chat focus remains stable while sidechat notifications stream
-- slash-command input is preserved and tested
-- desktop/mobile layout behavior is verified
-- sidechat screenshot evidence is saved at `snapshot/sidechat-workbench.png`
-- existing settings/theme/tooling/image tests remain green
-- `tasks.md`, `progress.md`, and `current_plan.md` describe the verified state
-- the commits are pushed to `origin/main`
+- Settings -> Codex Plugins must contain no placeholder-only content
+- plugin marketplace, installed plugins, apps/auth, and MCP inventory must be backed by real app-server data
+- `/plugins` and `/mcp` must open Settings views and not start a Codex turn
+- existing right-inspector plugin/MCP workflows must remain green
 
 ## Latest Verification
 
-- `pnpm typecheck`
-- `pnpm check:codex-config-schema`
 - `pnpm --filter @codex-ui/web typecheck`
 - `pnpm --filter @codex-ui/web build`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat|matches desktop and mobile workbench screenshots"`
-- `pnpm test:e2e` (16/16 Chromium tests)
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "Codex plugins and MCP|uses installed-only plugin mentions|supports direct MCP tool calls"`
 
-The sidechat-specific checks and screenshot comparison are now complete.
+Full-suite verification is pending for the Codex plugin Settings slice.
 
 ## Detailed Remaining Work
 
-No remaining sidechat work is tracked for this slice.
+1. Run full E2E.
+2. Commit and push the Codex plugin Settings slice if verification is green.

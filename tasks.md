@@ -42,6 +42,7 @@
 - [x] Add plugin marketplace inventory with install/uninstall UI.
 - [x] Add plugin detail, remote skill preview, and composer mention insertion UI.
 - [x] Add MCP OAuth login and resource read UI.
+- [x] Complete Settings -> Codex Plugins with real plugin marketplace/install/detail/mention support, plugin app auth state, MCP server inventory, and `/plugins` + `/mcp` Settings entry points; remove the previous placeholder content.
 - [x] Add Playwright E2E harness for workbench/tooling smoke checks.
 - [x] Persist provider API keys through a system keyring with memory fallback.
 - [x] Apply chained model aliases in provider activation and turn-start paths.
