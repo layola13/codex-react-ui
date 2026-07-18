@@ -67,7 +67,6 @@ import {
 import {
   REFERENCE_BACKGROUND_TUNING,
   clampThemeBlur,
-  clampThemePercent,
   isHexColor,
   percentToUnit,
   themePlugins,
@@ -2247,7 +2246,7 @@ function CustomThemePluginEditor({
               backgroundImage: safeBackgroundPreview
                 ? (theme) =>
                     [
-                      `linear-gradient(90deg, ${theme.palette.background.paper} 0%, rgba(255,255,255,0.72) 48%, rgba(255,255,255,0.22) 100%)`,
+                      `linear-gradient(90deg, rgba(255,255,255,${Math.min(0.9, percentToUnit(heroOverlayOpacity) + 0.14)}) 0%, rgba(255,255,255,${percentToUnit(heroOverlayOpacity)}) 48%, rgba(255,255,255,${Math.max(0, percentToUnit(heroOverlayOpacity) * 0.28)}) 100%)`,
                       `url("${safeBackgroundPreview}")`
                     ].join(", ")
                 : (theme) =>
@@ -2272,6 +2271,8 @@ function CustomThemePluginEditor({
                   <Box key={color} sx={{ width: 28, height: 28, borderRadius: 0.75, bgcolor: color, border: "1px solid", borderColor: "divider" }} />
                 ))}
                 {safeBackgroundPreview && <Chip size="small" label={appBackgroundImage.startsWith("data:image/") ? "local image" : "remote image"} color="primary" />}
+                {appBackgroundImage.trim().toLowerCase().includes("gif") && <Chip size="small" label="gif ready" color="primary" variant="outlined" />}
+                {safeVideoPreview && <Chip size="small" label={appBackgroundVideo.startsWith("data:video/") ? "local video" : "remote video"} color="secondary" />}
               </Stack>
             </Stack>
           </Paper>
@@ -2309,6 +2310,7 @@ function CustomThemePluginEditor({
                 void readThemeImageFile(file)
                   .then((url) => {
                     setAppBackgroundImage(url);
+                    setAppBackgroundVideo("");
                     setError(null);
                   })
                   .catch((imageError) => {
@@ -2323,6 +2325,48 @@ function CustomThemePluginEditor({
               onChange={(event) => setHeroImage(event.target.value)}
               sx={{ flex: 1 }}
               inputProps={{ "aria-label": "Custom theme hero image" }}
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <TextField
+              size="small"
+              label="Workbench background video"
+              value={appBackgroundVideo}
+              onChange={(event) => setAppBackgroundVideo(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme app background video" }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              onClick={() => videoFileRef.current?.click()}
+              aria-label="Choose video file"
+              sx={{ flex: "0 0 auto" }}
+            >
+              Choose video
+            </Button>
+            <input
+              ref={videoFileRef}
+              type="file"
+              aria-label="Background video file"
+              accept="video/mp4,video/webm"
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                event.currentTarget.value = "";
+                if (!file) {
+                  return;
+                }
+                void readThemeVideoFile(file)
+                  .then((url) => {
+                    setAppBackgroundVideo(url);
+                    setError(null);
+                  })
+                  .catch((videoError) => {
+                    setError(videoError instanceof Error ? videoError.message : String(videoError));
+                  });
+              }}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
@@ -2366,6 +2410,66 @@ function CustomThemePluginEditor({
               label="Use background as hero"
             />
           </Stack>
+          <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1, bgcolor: "background.paper" }}>
+            <Stack spacing={1}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Background tuning
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
+                <ThemeNumberField label="Background media strength" value={backgroundLayerOpacity} onChange={setBackgroundLayerOpacity} min={0} max={100} />
+                <ThemeNumberField label="Background overlay opacity" value={backgroundOverlayOpacity} onChange={setBackgroundOverlayOpacity} min={0} max={100} />
+                <ThemeNumberField label="Effects layer opacity" value={effectsLayerOpacity} onChange={setEffectsLayerOpacity} min={0} max={100} />
+                <ThemeNumberField label="Workspace surface opacity" value={workspaceSurfaceOpacity} onChange={setWorkspaceSurfaceOpacity} min={0} max={100} />
+                <ThemeNumberField label="Hero overlay opacity" value={heroOverlayOpacity} onChange={setHeroOverlayOpacity} min={0} max={100} />
+                <ThemeNumberField label="Panel opacity" value={panelSurfaceOpacity} onChange={setPanelSurfaceOpacity} min={0} max={100} />
+                <ThemeNumberField label="Glass blur" value={blurStrength} onChange={setBlurStrength} min={0} max={40} suffix="px" />
+                <TextField size="small" label="Tone color" value={toneColor} onChange={(event) => setToneColor(event.target.value)} inputProps={{ "aria-label": "Theme tone color" }} />
+                <ThemeNumberField label="Tone opacity" value={toneOpacity} onChange={setToneOpacity} min={0} max={100} />
+              </Box>
+            </Stack>
+          </Paper>
+          <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1, bgcolor: "background.paper" }}>
+            <Stack spacing={1}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                Dynamic background
+              </Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                <FormControl size="small" sx={{ minWidth: 190 }}>
+                  <InputLabel>Dynamic background</InputLabel>
+                  <Select
+                    value={sceneRenderer}
+                    label="Dynamic background"
+                    inputProps={{ "aria-label": "Theme dynamic background" }}
+                    onChange={(event) => setSceneRenderer(event.target.value as "none" | "canvas" | "three")}
+                  >
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="canvas">Canvas loop</MenuItem>
+                    <MenuItem value="three">Three.js loop</MenuItem>
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 180 }} disabled={sceneRenderer === "none"}>
+                  <InputLabel>Scene preset</InputLabel>
+                  <Select
+                    value={scenePreset}
+                    label="Scene preset"
+                    inputProps={{ "aria-label": "Theme scene preset" }}
+                    onChange={(event) => setScenePreset(event.target.value as ThemeBackgroundScene["preset"])}
+                  >
+                    <MenuItem value="aurora">Aurora</MenuItem>
+                    <MenuItem value="particles">Particles</MenuItem>
+                    <MenuItem value="orbit">Orbit</MenuItem>
+                  </Select>
+                </FormControl>
+                <TextField size="small" label="Scene color" value={sceneColor} disabled={sceneRenderer === "none"} onChange={(event) => setSceneColor(event.target.value)} inputProps={{ "aria-label": "Theme scene color" }} />
+                <TextField size="small" label="Scene secondary" value={sceneSecondaryColor} disabled={sceneRenderer === "none"} onChange={(event) => setSceneSecondaryColor(event.target.value)} inputProps={{ "aria-label": "Theme scene secondary color" }} />
+              </Stack>
+              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
+                <ThemeNumberField label="Scene speed" value={sceneSpeed} onChange={setSceneSpeed} min={0.1} max={3} step={0.05} suffix="x" disabled={sceneRenderer === "none"} />
+                <ThemeNumberField label="Scene density" value={sceneDensity} onChange={setSceneDensity} min={10} max={100} disabled={sceneRenderer === "none"} />
+                <ThemeNumberField label="Scene opacity" value={sceneOpacity} onChange={setSceneOpacity} min={0} max={100} disabled={sceneRenderer === "none"} />
+              </Box>
+            </Stack>
+          </Paper>
         </Stack>
         {error ? (
           <Alert severity="error" variant="outlined">
@@ -2426,7 +2530,39 @@ function CustomThemePluginEditor({
   );
 }
 
-function isSafeThemeAssetUrl(value: string): boolean {
+function ThemeNumberField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  suffix,
+  disabled = false
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <TextField
+      size="small"
+      type="number"
+      label={suffix ? `${label} (${suffix})` : `${label} (%)`}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(clampDecimal(Number(event.target.value), value, min, max))}
+      inputProps={{ min, max, step, "aria-label": `Theme ${label.toLowerCase()}` }}
+    />
+  );
+}
+
+function isSafeThemeImageUrl(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed || /["'()\\]/.test(trimmed)) {
     return false;
@@ -2434,8 +2570,17 @@ function isSafeThemeAssetUrl(value: string): boolean {
   return trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/");
 }
 
+function isSafeThemeVideoUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /["'()\\]/.test(trimmed)) {
+    return false;
+  }
+  return trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:video/");
+}
+
 const MAX_THEME_IMAGE_BYTES = 6 * 1024 * 1024;
-const MAX_THEME_JSON_BYTES = 8 * 1024 * 1024;
+const MAX_THEME_VIDEO_BYTES = 6 * 1024 * 1024;
+const MAX_THEME_JSON_BYTES = 16 * 1024 * 1024;
 
 function readThemeImageFile(file: File): Promise<string> {
   if (!file.type.startsWith("image/")) {
@@ -2459,9 +2604,32 @@ function readThemeImageFile(file: File): Promise<string> {
   });
 }
 
+function readThemeVideoFile(file: File): Promise<string> {
+  const supported = file.type === "video/mp4" || file.type === "video/webm" || /\.(mp4|webm)$/i.test(file.name);
+  if (!supported) {
+    return Promise.reject(new Error("Theme background video must be an MP4 or WebM file."));
+  }
+  if (file.size > MAX_THEME_VIDEO_BYTES) {
+    return Promise.reject(new Error("Theme background video must be smaller than 6 MiB."));
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result);
+      if (result.startsWith("data:video/")) {
+        resolve(result);
+      } else {
+        reject(new Error("Theme background could not be converted to a data:video URL."));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Theme background video could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function readThemePluginFile(file: File): Promise<ThemePlugin> {
   if (file.size > MAX_THEME_JSON_BYTES) {
-    throw new Error("Theme plugin JSON must be smaller than 8 MiB.");
+    throw new Error("Theme plugin JSON must be smaller than 16 MiB.");
   }
   const parsed = JSON.parse(await file.text()) as unknown;
   return normalizeImportedThemePlugin(parsed);
@@ -2480,24 +2648,32 @@ function normalizeImportedThemePlugin(value: unknown): ThemePlugin {
   if (!name || !primary || !secondary || !background) {
     throw new Error("Theme plugin JSON requires name and preview colors.");
   }
-  if (![primary, secondary, background].every((entry) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(entry))) {
+  if (![primary, secondary, background].every(isHexColor)) {
     throw new Error("Imported theme preview colors must be hex colors.");
   }
   const rawAssets = isPlainRecord(value.assets) ? value.assets : {};
   const assets = removeEmptyThemeAssets({
     appBackgroundImage: typeof rawAssets.appBackgroundImage === "string" ? rawAssets.appBackgroundImage.trim() : "",
+    appBackgroundVideo: typeof rawAssets.appBackgroundVideo === "string" ? rawAssets.appBackgroundVideo.trim() : "",
     heroImage: typeof rawAssets.heroImage === "string" ? rawAssets.heroImage.trim() : "",
     cornerImage: typeof rawAssets.cornerImage === "string" ? rawAssets.cornerImage.trim() : "",
     petImage: typeof rawAssets.petImage === "string" ? rawAssets.petImage.trim() : ""
   });
-  if (assets && !Object.values(assets).every((entry) => !entry || isSafeThemeAssetUrl(entry))) {
-    throw new Error("Imported theme media must be http(s), blob, or data:image URLs.");
+  if (assets?.appBackgroundImage && !isSafeThemeImageUrl(assets.appBackgroundImage)) {
+    throw new Error("Imported theme background image must be http(s), blob, or data:image.");
+  }
+  if (assets?.appBackgroundVideo && !isSafeThemeVideoUrl(assets.appBackgroundVideo)) {
+    throw new Error("Imported theme background video must be http(s), blob, or data:video.");
+  }
+  if ([assets?.heroImage, assets?.cornerImage, assets?.petImage].some((entry) => entry && !isSafeThemeImageUrl(entry))) {
+    throw new Error("Imported theme hero, corner, and pet media must be http(s), blob, or data:image.");
   }
   const rawLayout = isPlainRecord(value.layout) ? value.layout : {};
   const decorationIntensity =
     rawLayout.decorationIntensity === "none" || rawLayout.decorationIntensity === "rich" || rawLayout.decorationIntensity === "subtle"
       ? rawLayout.decorationIntensity
       : "subtle";
+  const backgroundScene = normalizeThemeBackgroundScene(rawLayout.backgroundScene, primary, secondary);
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -2515,9 +2691,57 @@ function normalizeImportedThemePlugin(value: unknown): ThemePlugin {
     layout: {
       heroEnabled: rawLayout.heroEnabled !== false,
       petEnabled: rawLayout.petEnabled !== false,
-      decorationIntensity
+      decorationIntensity,
+      backgroundLayerOpacity: clampUnitNumber(rawLayout.backgroundLayerOpacity, REFERENCE_BACKGROUND_TUNING.backgroundLayerOpacity),
+      backgroundOverlayOpacity: clampUnitNumber(rawLayout.backgroundOverlayOpacity, REFERENCE_BACKGROUND_TUNING.backgroundOverlayOpacity),
+      effectsLayerOpacity: clampUnitNumber(rawLayout.effectsLayerOpacity, REFERENCE_BACKGROUND_TUNING.effectsLayerOpacity),
+      workspaceSurfaceOpacity: clampUnitNumber(rawLayout.workspaceSurfaceOpacity, REFERENCE_BACKGROUND_TUNING.workspaceSurfaceOpacity),
+      heroOverlayOpacity: clampUnitNumber(rawLayout.heroOverlayOpacity, REFERENCE_BACKGROUND_TUNING.heroOverlayOpacity),
+      panelSurfaceOpacity: clampUnitNumber(rawLayout.panelSurfaceOpacity, REFERENCE_BACKGROUND_TUNING.panelSurfaceOpacity),
+      blurStrength: clampThemeBlur(readNumber(rawLayout.blurStrength), REFERENCE_BACKGROUND_TUNING.blurStrength),
+      toneColor: typeof rawLayout.toneColor === "string" && isHexColor(rawLayout.toneColor) ? rawLayout.toneColor : primary,
+      toneOpacity: clampUnitNumber(rawLayout.toneOpacity, REFERENCE_BACKGROUND_TUNING.toneOpacity),
+      backgroundScene
     }
   };
+}
+
+function normalizeThemeBackgroundScene(value: unknown, fallbackColor: string, fallbackSecondaryColor: string): ThemeBackgroundScene | undefined {
+  if (!isPlainRecord(value)) {
+    return undefined;
+  }
+  const renderer = value.renderer === "canvas" || value.renderer === "three" ? value.renderer : null;
+  const preset = value.preset === "aurora" || value.preset === "particles" || value.preset === "orbit" ? value.preset : null;
+  if (!renderer || !preset) {
+    return undefined;
+  }
+  const color = typeof value.color === "string" && isHexColor(value.color) ? value.color : fallbackColor;
+  const secondaryColor = typeof value.secondaryColor === "string" && isHexColor(value.secondaryColor) ? value.secondaryColor : fallbackSecondaryColor;
+  return {
+    renderer,
+    preset,
+    color,
+    secondaryColor,
+    speed: clampDecimal(readNumber(value.speed), 0.65, 0.1, 3),
+    density: clampUnitNumber(value.density, 0.55),
+    opacity: clampUnitNumber(value.opacity, 0.54)
+  };
+}
+
+function readNumber(value: unknown): number {
+  return typeof value === "number" ? value : Number(value);
+}
+
+function clampUnitNumber(value: unknown, fallback: number): number {
+  return clampDecimal(readNumber(value), fallback, 0, 1);
+}
+
+function clampDecimal(value: unknown, fallback: number, min: number, max: number): number {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, numberValue));
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
