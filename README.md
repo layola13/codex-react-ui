@@ -13,7 +13,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Settings -> Codex Plugins manages real Codex plugin marketplaces, installed plugin mentions, hooks, plugin app auth state, and MCP server inventory without placeholder content.
 - Main composer UI commands `/fast`, `/status`, `/stats`, `/usage`, `/goal`, and `/plan` are handled by the browser before `turn/start`; Settings-oriented commands open Settings instead of the right workspace.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
-- User theme plugins with editable preview colors, uploaded background images, optional hero reuse, and JSON import/export.
+- User theme plugins with editable preview colors, image/GIF/video backgrounds, optional dynamic Canvas/Three.js scenes, background tuning controls, and JSON import/export.
 
 ## Development
 
@@ -87,11 +87,18 @@ User-defined themes are managed from Settings, not from the right workspace pane
 To replace the workbench background:
 
 1. Click the image picker in the custom theme editor.
-2. Select a `png`, `jpg`, `webp`, or `gif` image up to 6 MiB.
-3. Enable `Use background as hero` if the main empty-state hero should reuse the same image.
-4. Save the theme, then select it from the theme plugin list.
+2. Select a `png`, `jpg`, `webp`, or `gif` image up to 6 MiB. Animated GIFs are preserved as image backgrounds.
+3. Optionally use the video picker for an `mp4` or `webm` background up to 6 MiB. Video backgrounds autoplay muted, loop, and are exported with the theme.
+4. Enable `Use background as hero` if the main empty-state hero should reuse the same image.
+5. Tune the background from the same editor, then save the theme and select it from the theme plugin list.
 
-The uploaded image is stored in the user theme as `assets.appBackgroundImage`. When hero reuse is enabled, the same image is also written to `assets.heroImage`. Custom theme plugins can be exported as JSON and imported on another machine from the same Theme plugins view.
+User media themes default to a low-mask presentation: the background layer is fully visible, background overlay is `0`, the future effects/glass layer is `0`, workspace surfaces are lightly translucent, and the hero overlay is kept low. The editor exposes background media strength, background overlay opacity, effects layer opacity, workspace surface opacity, hero overlay opacity, panel opacity, glass blur, tone color, and tone opacity so users can choose how visible or glassy the UI should be.
+
+The uploaded image is stored as `assets.appBackgroundImage`. Uploaded videos are stored as `assets.appBackgroundVideo`. When hero reuse is enabled, the same image is also written to `assets.heroImage`.
+
+Theme plugins can also include a declaration-based dynamic background scene in `layout.backgroundScene`. Supported renderers are `canvas` and `three`, with presets such as `aurora`, `particles`, and `orbit`. Imported themes do not execute arbitrary JavaScript; shared Canvas/Three.js backgrounds are rendered only from the stored declaration fields.
+
+Custom theme plugins can be exported as JSON and imported on another machine from the same Theme plugins view. Export/import preserves media assets, background tuning, tone settings, and dynamic background declarations so themes can be exchanged intact.
 
 ## Main Slash Commands
 

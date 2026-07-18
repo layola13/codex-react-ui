@@ -2,16 +2,16 @@
 
 ## Now
 
-- [ ] Make user background themes default to a vivid, low-mask presentation matching the provided reference instead of washing the image out.
-- [ ] Add a future-proof background effects/glass layer between background media and UI, defaulting to transparent so it does not dim user media.
-- [ ] Add a dedicated Settings -> Appearance control group for theme background tuning: background overlay opacity, workspace surface opacity, hero overlay opacity, panel/card opacity, blur strength, and background layer strength.
-- [ ] Add user-adjustable theme color tone controls so custom themes can tune the accent/tint without editing JSON by hand.
-- [ ] Preserve GIF support for image backgrounds and add MP4/WebM background video support with safe upload, preview, export, and import.
-- [ ] Add a declaration-based canvas/Three.js looping background slot for theme plugins so shared themes can include dynamic scenes without executing arbitrary imported JavaScript.
-- [ ] Include background tuning and tone controls in theme JSON export/import so users can exchange and install each other's themes intact.
-- [ ] Apply the new theme tuning values to the shell background, main workspace, empty-state hero, cards, and composer while keeping Settings out of the right runtime workspace.
-- [ ] Add Playwright coverage and screenshots proving the reference-style user background remains visible and the tuning controls update the rendered workbench.
-- [ ] Run typecheck, focused Playwright theme tests, full relevant e2e, build/diff checks, then commit and push the theme background tuning slice.
+- [x] Make user background themes default to a vivid, low-mask presentation matching the provided reference instead of washing the image out.
+- [x] Add a future-proof background effects/glass layer between background media and UI, defaulting to transparent so it does not dim user media.
+- [x] Add a dedicated Settings -> Appearance control group for theme background tuning: background overlay opacity, workspace surface opacity, hero overlay opacity, panel/card opacity, blur strength, and background layer strength.
+- [x] Add user-adjustable theme color tone controls so custom themes can tune the accent/tint without editing JSON by hand.
+- [x] Preserve GIF support for image backgrounds and add MP4/WebM background video support with safe upload, preview, export, and import.
+- [x] Add a declaration-based canvas/Three.js looping background slot for theme plugins so shared themes can include dynamic scenes without executing arbitrary imported JavaScript.
+- [x] Include background tuning and tone controls in theme JSON export/import so users can exchange and install each other's themes intact.
+- [x] Apply the new theme tuning values to the shell background, main workspace, empty-state hero, cards, and composer while keeping Settings out of the right runtime workspace.
+- [x] Add Playwright coverage and screenshots proving the reference-style user background remains visible and the tuning controls update the rendered workbench.
+- [x] Run typecheck, focused Playwright theme tests, full relevant e2e, build/diff checks, then commit and push the theme background tuning slice.
 - [x] Add a main composer slash-command router for lightweight UI commands instead of only handling `/plugins`, `/mcp`, and `/hooks`.
 - [x] Add `/fast` with a lightning badge near the composer/top status and prevent it from being sent as a normal Codex turn.
 - [x] Add `/status`, `/stats`, and `/usage` as primary session/project stats surfaces, including token usage, model/provider, effort, permissions, active goal, and mode flags.

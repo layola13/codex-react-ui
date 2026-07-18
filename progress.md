@@ -2,6 +2,23 @@
 
 ## 2026-07-18
 
+- User theme background tuning implementation:
+  - Added explicit theme visual tuning defaults so user-supplied background media uses a vivid low-mask presentation instead of a washed-out overlay.
+  - Added a transparent-by-default effects/glass layer between background media and the UI shell for future glass effects without dimming the current background.
+  - Extended theme plugin data with `assets.appBackgroundVideo`, surface opacity controls, blur strength, tone color/opacity, and declaration-based `layout.backgroundScene` support.
+  - Added Settings -> Appearance controls for image/GIF backgrounds, MP4/WebM video backgrounds, background media strength, overlay opacity, effects layer opacity, workspace opacity, hero overlay opacity, panel opacity, glass blur, tone color, tone opacity, and Canvas/Three.js dynamic background presets.
+  - Implemented background rendering for CSS image/GIF media, muted looping video media, declaration-based Canvas loops, and declaration-based Three.js loops without executing imported theme JavaScript.
+  - Applied theme tuning to the shell background, workspace surfaces, empty-state hero, cards, and composer while keeping Settings out of the right runtime workspace.
+  - Preserved theme portability: JSON export/import includes media assets, tuning fields, tone fields, and dynamic scene declarations so themes can be shared and installed by other users.
+  - Refreshed screenshot evidence:
+    - `snapshot/theme-plugin-applied.png`
+    - `snapshot/user-theme-background-switching.png`
+  - Verification passed:
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "uploaded background images and user theme switching"`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "user theme|uploaded background"`
+    - `pnpm --filter @codex-ui/web build`
+
 - Slash command status/goal/fast/plan implementation:
   - Added a main composer slash-command router for browser-owned commands while keeping sidechat slash-shaped input unparsed and isolated.
   - Implemented `/fast` with lightning badges in the top bar, chat status strip, and composer; fast mode lowers new main-chat turns to the lowest available reasoning effort.

@@ -6,23 +6,24 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
-Implemented the main-composer slash command router and first-class status surfaces for the commands the web workbench owns directly.
+Implemented the user theme background tuning slice so shared user themes can carry images, video, tuning, and dynamic background declarations without moving Settings into the right runtime workspace.
 
-1. Route lightweight slash commands in the browser before `turn/start`:
-   - `/fast` toggles fast mode and shows a lightning status badge near the top bar and composer
-   - `/status`, `/stats`, and `/usage` open primary status/stats surfaces with token usage, model/provider, reasoning effort, permission mode, active goal, and mode flags
-   - `/goal` sets, edits, pauses/resumes, clears, and displays the current objective
-   - `/plan` enables plan mode, shows a plan marker, and lets `/plan <text>` send a plan-mode prompt
-2. Keep heavyweight settings commands in Settings:
-   - `/plugins`, `/mcp`, and `/hooks` keep opening Settings -> Codex Plugins tabs
-   - `/theme`, `/pets`, `/statusline`, `/title`, `/model`, `/permissions`, and `/debug-config` route to Settings sections instead of the right runtime workspace
-3. Preserve layout ownership:
-   - right runtime workspace stays hidden by default and remains for Side chat, Browser, and Terminal only
-   - Settings content remains in Settings
-   - `/goal` content is sticky at the top of the chat area and does not scroll away with the transcript
+1. Keep user media vivid by default:
+   - image/GIF and video themes default to full-strength background media
+   - background overlay, tone overlay, and the future effects/glass layer default to transparent
+   - workspace, hero, panel, and composer surfaces use tunable opacity/blur values instead of hard-coded heavy masks
+2. Expand theme plugin portability:
+   - `assets.appBackgroundVideo` stores MP4/WebM theme backgrounds
+   - `layout.backgroundScene` stores declaration-based Canvas or Three.js loops
+   - exported/imported JSON preserves media assets, opacity tuning, tone settings, and dynamic background declarations
+3. Add Settings controls:
+   - background image/GIF upload
+   - MP4/WebM background video upload
+   - background media strength, background overlay, effects layer, workspace surface, hero overlay, panel surface, glass blur, tone color, and tone opacity
+   - Canvas/Three.js renderer, preset, color, speed, density, and opacity controls
 4. Add verification:
-   - Playwright coverage and screenshot evidence for `/fast`, `/status` or `/stats`, sticky `/goal`, and `/plan`
-   - typecheck, focused Playwright, full workbench e2e, build, and diff checks before commit/push
+   - Playwright covers user background switching, video persistence, import/export tuning, and dynamic scene rendering
+   - screenshot evidence is refreshed for the applied theme and user background switching flows
 
 ## Engineering Rules
 
@@ -45,14 +46,14 @@ The verified baseline for this landing target is:
 
 ## Latest Verification
 
-- Slash-command status/goal/fast/plan verification:
+- User theme background tuning verification:
   - `pnpm --filter @codex-ui/web typecheck`
-  - `pnpm exec playwright test tests/e2e/workbench.spec.ts`
-  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "fast status goal and plan"`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "uploaded background images and user theme switching"`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "user theme|uploaded background"`
   - `pnpm --filter @codex-ui/web build`
-  - screenshot evidence: `snapshot/slash-command-status-goal-plan.png`
+  - screenshot evidence: `snapshot/theme-plugin-applied.png`, `snapshot/user-theme-background-switching.png`
 
-The slash-command status/goal/fast/plan slice is implemented and verified.
+The user theme background tuning slice is implemented and verified.
 
 ## Remaining Slash Command Work
 
