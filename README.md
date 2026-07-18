@@ -45,6 +45,24 @@ http://127.0.0.1:43110/?token=<session-token>
 
 `/api/session` is intentionally the only unauthenticated API. Other API and websocket calls require the token.
 
+## README Patrol
+
+To keep this repository's `README.md` checkpointed every 60 seconds without staging unrelated files:
+
+```bash
+pnpm readme:autopush:start
+```
+
+Useful controls:
+
+```bash
+pnpm readme:autopush:status
+pnpm readme:autopush:run-once
+pnpm readme:autopush:stop
+```
+
+The watcher only stages `README.md`, writes its pid/log files under `.codex-maintenance/`, and uses `origin` plus the current branch by default. Override the polling interval or remote with `README_AUTOPUSH_INTERVAL` and `README_AUTOPUSH_REMOTE`.
+
 ## Provider Switching
 
 Saved provider metadata is stored at `~/.codex-react-ui/providers.json` with file mode `0600`. API keys are kept only in the current Node process memory and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
