@@ -47,7 +47,7 @@ http://127.0.0.1:43110/?token=<session-token>
 
 ## README Patrol
 
-To keep this repository's `README.md` checkpointed every 60 seconds without staging unrelated files:
+To keep this repository's `README.md` checkpointed every 120 seconds without staging unrelated files:
 
 ```bash
 pnpm readme:autopush:start
