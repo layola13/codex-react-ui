@@ -1161,6 +1161,25 @@ test("supports uploaded background images and user theme switching", async ({ pa
   await page.getByLabel("Custom theme background").fill("#FFF4F7");
   await page.getByLabel("Background image file").setInputFiles("/root/projects/codex-react-ui/snapshot/参考/HNVjQXebIAI_AwK.jpg");
   await expect(page.getByTestId("custom-theme-background-preview")).toContainText("local image");
+  await expect(page.getByLabel("Theme background overlay opacity")).toHaveValue("0");
+  await expect(page.getByLabel("Theme effects layer opacity")).toHaveValue("0");
+  await expect(page.getByLabel("Theme tone opacity")).toHaveValue("0");
+  await page.getByLabel("Background video file").setInputFiles({
+    name: "reference-loop.mp4",
+    mimeType: "video/mp4",
+    buffer: Buffer.from([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109])
+  });
+  await expect(page.getByTestId("custom-theme-background-preview")).toContainText("local video");
+  await page.getByLabel("Theme background overlay opacity").fill("8");
+  await page.getByLabel("Theme workspace surface opacity").fill("14");
+  await page.getByLabel("Theme hero overlay opacity").fill("18");
+  await page.getByLabel("Theme panel opacity").fill("72");
+  await page.getByLabel("Theme glass blur").fill("6");
+  await page.getByLabel("Theme tone color").fill("#D94F75");
+  await page.getByLabel("Theme dynamic background").click();
+  await page.getByRole("option", { name: "Three.js loop" }).click();
+  await page.getByLabel("Theme scene preset").click();
+  await page.getByRole("option", { name: "Orbit" }).click();
   await page.getByLabel("Save custom theme plugin").click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
 
@@ -1169,10 +1188,18 @@ test("supports uploaded background images and user theme switching", async ({ pa
     return raw ? JSON.parse(raw) : [];
   });
   expect(JSON.stringify(storedTheme)).toContain("data:image/jpeg;base64,");
+  expect(JSON.stringify(storedTheme)).toContain("data:video/mp4;base64,");
+  expect(JSON.stringify(storedTheme)).toContain("\"backgroundOverlayOpacity\":0.08");
+  expect(JSON.stringify(storedTheme)).toContain("\"workspaceSurfaceOpacity\":0.14");
+  expect(JSON.stringify(storedTheme)).toContain("\"renderer\":\"three\"");
 
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
   await expect(page.getByTestId("default-workbench-empty")).toBeVisible();
+  await expect(page.getByTestId("theme-background-media")).toBeVisible();
+  await expect(page.getByTestId("theme-background-image")).toBeVisible();
+  await expect(page.getByTestId("theme-background-video")).toBeVisible();
+  await expect(page.getByTestId("theme-background-three")).toBeVisible();
   await page.screenshot({
     path: "snapshot/user-theme-background-switching.png",
     fullPage: false
@@ -1190,6 +1217,8 @@ test("supports uploaded background images and user theme switching", async ({ pa
   await page.getByLabel("Edit theme Reference Rose").click();
   await expect(page.getByText("Edit theme plugin")).toBeVisible();
   await expect(page.getByLabel("Custom theme app background image")).toHaveValue(/^data:image\/jpeg;base64,/);
+  await expect(page.getByLabel("Custom theme app background video")).toHaveValue(/^data:video\/mp4;base64,/);
+  await expect(page.getByLabel("Theme dynamic background")).toHaveText("Three.js loop");
   await page.getByLabel("Custom theme secondary").fill("#2563EB");
   await page.getByLabel("Save custom theme plugin").click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
@@ -1202,9 +1231,21 @@ test("supports uploaded background images and user theme switching", async ({ pa
     dark: false,
     assets: {
       appBackgroundImage:
-        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzIwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjMyMCIgZmlsbD0iI2VjZmRmNSIvPjxjaXJjbGUgY3g9IjY4MCIgY3k9IjEyMCIgcj0iOTAiIGZpbGw9IiMwZjc2NmUiIG9wYWNpdHk9IjAuMjUiLz48cGF0aCBkPSJNMTIwIDIyMCBDMjgwIDkwIDQ2MCAyNzAgNzIwIDEyMCIgc3Ryb2tlPSIjZjU5ZTBiIiBzdHJva2Utd2lkdGg9IjE4IiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjQ1Ii8+PC9zdmc+"
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzIwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjMyMCIgZmlsbD0iI2VjZmRmNSIvPjxjaXJjbGUgY3g9IjY4MCIgY3k9IjEyMCIgcj0iOTAiIGZpbGw9IiMwZjc2NmUiIG9wYWNpdHk9IjAuMjUiLz48cGF0aCBkPSJNMTIwIDIyMCBDMjgwIDkwIDQ2MCAyNzAgNzIwIDEyMCIgc3Ryb2tlPSIjZjU5ZTBiIiBzdHJva2Utd2lkdGg9IjE4IiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjQ1Ii8+PC9zdmc+",
+      appBackgroundVideo: "https://example.com/theme-loop.webm"
     },
-    layout: { heroEnabled: true, petEnabled: true, decorationIntensity: "subtle" }
+    layout: {
+      heroEnabled: true,
+      petEnabled: true,
+      decorationIntensity: "subtle",
+      backgroundOverlayOpacity: 0.04,
+      effectsLayerOpacity: 0,
+      workspaceSurfaceOpacity: 0.18,
+      panelSurfaceOpacity: 0.7,
+      toneColor: "#0F766E",
+      toneOpacity: 0,
+      backgroundScene: { renderer: "canvas", preset: "particles", color: "#0F766E", secondaryColor: "#F59E0B", speed: 0.8, density: 0.4, opacity: 0.5 }
+    }
   };
   await page.getByLabel("Custom theme plugin JSON file").setInputFiles({
     name: "imported-mint.theme.json",
@@ -1212,6 +1253,8 @@ test("supports uploaded background images and user theme switching", async ({ pa
     buffer: Buffer.from(JSON.stringify(importedTheme))
   });
   await expect(page.getByLabel("Custom theme name")).toHaveValue("Imported Mint");
+  await expect(page.getByLabel("Custom theme app background video")).toHaveValue("https://example.com/theme-loop.webm");
+  await expect(page.getByLabel("Theme dynamic background")).toHaveText("Canvas loop");
   await page.getByLabel("Save custom theme plugin").click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-imported-mint-/);
   await page.getByLabel("Skin theme").click();
