@@ -25,6 +25,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import SearchIcon from "@mui/icons-material/Search";
 import type { JsonValue } from "@codex-ui/shared";
 import type {
+  HookGroup,
   McpResourceContentEntry,
   PluginAppEntry,
   PluginDetailEntry,
@@ -34,7 +35,7 @@ import type {
   ToolingState
 } from "../state/codexClient";
 
-export type CodexPluginSettingsTab = "marketplace" | "installed" | "mcp" | "apps";
+export type CodexPluginSettingsTab = "marketplace" | "installed" | "mcp" | "hooks" | "apps";
 
 type Props = {
   activeThreadId: string | null;
@@ -83,6 +84,7 @@ export function CodexPluginSettingsPanel({
   const pluginCount = tooling.pluginMarketplaces.reduce((count, marketplace) => count + marketplace.plugins.length, 0);
   const installedPlugins = useMemo(() => installedPluginEntries(tooling), [tooling]);
   const authAppCount = tooling.apps.filter((app) => app.isAccessible === false || app.installUrl).length;
+  const hookCount = tooling.hookGroups.reduce((count, group) => count + group.hooks.length, 0);
 
   useEffect(() => {
     setTab(initialTab);
@@ -96,7 +98,7 @@ export function CodexPluginSettingsPanel({
             Codex plugin settings
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage Codex plugins, plugin apps, and MCP servers discovered by the local Codex engine.
+            Manage Codex plugins, hooks, plugin apps, and MCP servers discovered by the local Codex engine.
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -111,6 +113,7 @@ export function CodexPluginSettingsPanel({
         <Chip size="small" label={`${installedPlugins.length} installed`} color={installedPlugins.length ? "success" : "default"} />
         <Chip size="small" label={`${pluginCount} available`} variant="outlined" />
         <Chip size="small" label={`${tooling.mcpServers.length} MCP servers`} variant="outlined" />
+        <Chip size="small" label={`${hookCount} hooks`} variant="outlined" />
         <Chip size="small" label={`${authAppCount} app auth`} color={authAppCount ? "warning" : "default"} variant="outlined" />
       </Stack>
 
@@ -132,6 +135,7 @@ export function CodexPluginSettingsPanel({
           <Tab value="marketplace" label={`Marketplace ${pluginCount}`} />
           <Tab value="installed" label={`Installed ${installedPlugins.length}`} />
           <Tab value="mcp" label={`MCP ${tooling.mcpServers.length}`} />
+          <Tab value="hooks" label={`Hooks ${hookCount}`} />
           <Tab value="apps" label={`Apps ${tooling.apps.length}`} />
         </Tabs>
         <Box sx={{ p: { xs: 1.25, sm: 1.5 } }}>
@@ -171,6 +175,7 @@ export function CodexPluginSettingsPanel({
               onCallMcpTool={onCallMcpTool}
             />
           )}
+          {tab === "hooks" && <HooksSettings hookGroups={tooling.hookGroups} />}
           {tab === "apps" && <PluginAppsSettings apps={tooling.apps} />}
         </Box>
       </Paper>
@@ -709,6 +714,109 @@ function McpSettings({
           </Paper>
         );
       })}
+    </Stack>
+  );
+}
+
+function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
+  const hookCount = hookGroups.reduce((count, group) => count + group.hooks.length, 0);
+
+  return (
+    <Stack spacing={1.25}>
+      <Stack direction="row" alignItems="center" spacing={1}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+            Codex hooks
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Hooks are resolved from Codex config and installed plugin contributions for the current workspace.
+          </Typography>
+        </Box>
+        <Chip size="small" label={`${hookCount} hooks`} />
+      </Stack>
+      {hookCount === 0 && (
+        <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
+          No Codex hooks are currently returned by the local engine for this workspace.
+        </Typography>
+      )}
+      {hookGroups.map((group) => (
+        <Paper key={group.cwd} variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "flex-start" }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
+                {group.cwd}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {group.hooks.length} hooks / {group.warnings.length} warnings / {group.errors.length} errors
+              </Typography>
+            </Box>
+            <Chip size="small" label={group.hooks.length} color={group.hooks.length ? "primary" : "default"} />
+          </Stack>
+
+          {group.warnings.map((warning) => (
+            <Alert key={warning} severity="warning" sx={{ mt: 1 }}>
+              {warning}
+            </Alert>
+          ))}
+          {group.errors.map((error) => (
+            <Alert key={`${error.path}:${error.message}`} severity="error" sx={{ mt: 1 }}>
+              {[error.path, error.message].filter(Boolean).join(": ")}
+            </Alert>
+          ))}
+
+          {group.hooks.map((hook) => (
+            <Box key={hook.key} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1, mt: 1 }}>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "flex-start" }}>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                    {hook.eventName}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                    {hook.key}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent={{ xs: "flex-start", sm: "flex-end" }}>
+                  <Chip size="small" label={hook.enabled ? "enabled" : "disabled"} color={hook.enabled ? "success" : "default"} />
+                  <Chip
+                    size="small"
+                    label={hook.trustStatus}
+                    color={hook.trustStatus === "trusted" ? "success" : hook.trustStatus === "untrusted" ? "warning" : "default"}
+                    variant="outlined"
+                  />
+                </Stack>
+              </Stack>
+
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                <Chip size="small" label={hook.handlerType} />
+                <Chip size="small" label={hook.isManaged ? "managed" : "user"} variant="outlined" />
+                <Chip size="small" label={`source ${hook.source}`} variant="outlined" />
+                {hook.matcher && <Chip size="small" label={`matcher ${hook.matcher}`} variant="outlined" />}
+                {hook.timeoutSec != null && <Chip size="small" label={`timeout ${hook.timeoutSec}s`} variant="outlined" />}
+                {hook.pluginId && <Chip size="small" label={`plugin ${hook.pluginId}`} variant="outlined" />}
+              </Stack>
+
+              {hook.statusMessage && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, overflowWrap: "anywhere" }}>
+                  {hook.statusMessage}
+                </Typography>
+              )}
+              {hook.command && (
+                <Typography component="pre" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontSize: 12, m: 0, mt: 0.75, maxHeight: 140, overflow: "auto" }}>
+                  {hook.command}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, overflowWrap: "anywhere" }}>
+                {hook.sourcePath}
+              </Typography>
+              {hook.currentHash && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                  {hook.currentHash}
+                </Typography>
+              )}
+            </Box>
+          ))}
+        </Paper>
+      ))}
     </Stack>
   );
 }

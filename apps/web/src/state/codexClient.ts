@@ -60,6 +60,31 @@ export type SkillGroup = {
   errors: Array<{ path: string; message: string }>;
 };
 
+export type HookEntry = {
+  key: string;
+  eventName: string;
+  handlerType: string;
+  matcher?: string;
+  command?: string;
+  timeoutSec?: number;
+  statusMessage?: string;
+  sourcePath: string;
+  source: string;
+  pluginId?: string;
+  displayOrder?: number;
+  enabled: boolean;
+  isManaged: boolean;
+  currentHash?: string;
+  trustStatus: string;
+};
+
+export type HookGroup = {
+  cwd: string;
+  hooks: HookEntry[];
+  warnings: string[];
+  errors: Array<{ path: string; message: string }>;
+};
+
 export type PluginEntry = {
   id: string;
   remotePluginId?: string;
@@ -173,6 +198,7 @@ export type PluginMarketplace = {
 export type ToolingState = {
   mcpServers: McpServerEntry[];
   skillGroups: SkillGroup[];
+  hookGroups: HookGroup[];
   pluginMarketplaces: PluginMarketplace[];
   installedPluginMarketplaces: PluginMarketplace[];
   apps: PluginAppEntry[];
@@ -260,6 +286,7 @@ export const initialClientState: ClientState = {
   tooling: {
     mcpServers: [],
     skillGroups: [],
+    hookGroups: [],
     pluginMarketplaces: [],
     installedPluginMarketplaces: [],
     apps: [],
@@ -624,6 +651,24 @@ export function parseSkillGroups(value: JsonValue): SkillGroup[] {
   });
 }
 
+export function parseHookGroups(value: JsonValue): HookGroup[] {
+  return asArray(asRecord(value).data).map((entry) => {
+    const group = asRecord(entry);
+    return {
+      cwd: stringValue(group.cwd) ?? "global",
+      hooks: asArray(group.hooks).map((hook) => hookToEntry(asRecord(hook))),
+      warnings: asArray(group.warnings).map(String),
+      errors: asArray(group.errors).map((error) => {
+        const raw = asRecord(error);
+        return {
+          path: stringValue(raw.path) ?? "unknown",
+          message: stringValue(raw.message) ?? "Unable to load hook"
+        };
+      })
+    };
+  });
+}
+
 export function parsePluginMarketplaces(value: JsonValue): Pick<ToolingState, "pluginMarketplaces" | "featuredPluginIds" | "marketplaceErrors"> {
   const record = asRecord(value);
   return {
@@ -773,6 +818,20 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
 }
 
+function numberLikeValue(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return Number(value);
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
 function boolValue(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
@@ -820,6 +879,26 @@ function skillToEntry(skill: Record<string, unknown>): SkillEntry {
     path: stringValue(skill.path) ?? "",
     scope: stringValue(skill.scope) ?? "unknown",
     enabled: boolValue(skill.enabled) ?? false
+  };
+}
+
+function hookToEntry(hook: Record<string, unknown>): HookEntry {
+  return {
+    key: stringValue(hook.key) ?? "hook",
+    eventName: stringValue(hook.eventName) ?? "hook",
+    handlerType: stringValue(hook.handlerType) ?? "command",
+    matcher: stringValue(hook.matcher),
+    command: stringValue(hook.command),
+    timeoutSec: numberLikeValue(hook.timeoutSec),
+    statusMessage: stringValue(hook.statusMessage),
+    sourcePath: stringValue(hook.sourcePath) ?? "unknown",
+    source: stringValue(hook.source) ?? "unknown",
+    pluginId: stringValue(hook.pluginId),
+    displayOrder: numberLikeValue(hook.displayOrder),
+    enabled: boolValue(hook.enabled) ?? false,
+    isManaged: boolValue(hook.isManaged) ?? false,
+    currentHash: stringValue(hook.currentHash),
+    trustStatus: stringValue(hook.trustStatus) ?? "unknown"
   };
 }
 

@@ -47,6 +47,7 @@ import {
   fetchSessionToken,
   importProfile,
   initialClientState,
+  parseHookGroups,
   parseMcpServers,
   parseMcpResourceContents,
   parseApps,
@@ -462,9 +463,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       dispatch({ type: "toolingLoading", loading: true });
       const effectiveSkillExtraRoots = options?.skillExtraRoots ?? skillExtraRoots;
       const skillCwds = [cwd, ...effectiveSkillExtraRoots].filter((entry, index, entries) => entry && entries.indexOf(entry) === index);
-      const [mcpResult, skillResult, pluginResult, installedPluginResult, appResult] = await Promise.allSettled([
+      const [mcpResult, skillResult, hookResult, pluginResult, installedPluginResult, appResult] = await Promise.allSettled([
         client.rpc("mcpServerStatus/list", { detail: "full" }),
         client.rpc("skills/list", { cwds: skillCwds, forceReload: options?.forceSkillReload ?? false }),
+        client.rpc("hooks/list", { cwds: [cwd] }),
         client.rpc("plugin/list", {
           cwds: [cwd],
           marketplaceKinds: ["local", "workspace-directory", "vertical", "shared-with-me", "created-by-me-remote"]
@@ -476,6 +478,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       const nextTooling: ClientState["tooling"] = {
         mcpServers: [],
         skillGroups: [],
+        hookGroups: [],
         pluginMarketplaces: [],
         installedPluginMarketplaces: [],
         apps: [],
@@ -494,6 +497,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         nextTooling.skillGroups = parseSkillGroups(skillResult.value);
       } else {
         errors.push(errorMessage("Skills inventory", skillResult.reason));
+      }
+
+      if (hookResult.status === "fulfilled") {
+        nextTooling.hookGroups = parseHookGroups(hookResult.value);
+      } else {
+        errors.push(errorMessage("Hooks inventory", hookResult.reason));
       }
 
       if (pluginResult.status === "fulfilled") {
@@ -1828,6 +1837,8 @@ function composerUiSlashCommand(
       return "marketplace";
     case "/mcp":
       return "mcp";
+    case "/hooks":
+      return "hooks";
     default:
       return null;
   }

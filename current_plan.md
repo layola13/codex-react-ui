@@ -15,6 +15,7 @@ The Codex plugin Settings slice is implemented and under final full-suite verifi
 2. Settings -> Codex Plugins is real, not placeholder:
    - marketplace plugins render from `plugin/list`
    - installed plugin mentions render from `plugin/installed`
+   - hooks render from `hooks/list`
    - plugin detail, install/uninstall, app auth, skill preview, and mention insertion use existing app-server RPCs
    - MCP inventory renders from `mcpServerStatus/list`
    - MCP reload, OAuth, resource read, and direct tool-call controls are available in Settings
@@ -22,6 +23,7 @@ The Codex plugin Settings slice is implemented and under final full-suite verifi
 3. Slash command entry points are implemented:
    - exact `/plugins` opens Settings -> Codex Plugins marketplace without sending `turn/start`
    - exact `/mcp` opens the MCP tab without sending `turn/start`
+   - exact `/hooks` opens the Hooks tab without sending `turn/start`
    - sidechat keeps its existing raw slash-command forwarding behavior
 4. Verification so far:
    - `pnpm --filter @codex-ui/web typecheck`
@@ -45,8 +47,8 @@ The Codex plugin Settings slice is implemented and under final full-suite verifi
 The verified sidechat slice remains the pushed baseline. The next landing target is the Codex plugin Settings slice:
 
 - Settings -> Codex Plugins must contain no placeholder-only content
-- plugin marketplace, installed plugins, apps/auth, and MCP inventory must be backed by real app-server data
-- `/plugins` and `/mcp` must open Settings views and not start a Codex turn
+- plugin marketplace, installed plugins, hooks, apps/auth, and MCP inventory must be backed by real app-server data
+- `/plugins`, `/mcp`, and `/hooks` must open Settings views and not start a Codex turn
 - existing right-inspector plugin/MCP workflows must remain green
 
 ## Latest Verification

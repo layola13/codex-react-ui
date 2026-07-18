@@ -539,6 +539,52 @@ test.beforeEach(async ({ page }) => {
             ? ((params as { extraRoots?: string[] }).extraRoots ?? []).map(String)
             : [];
           return {};
+        case "hooks/list":
+          return {
+            data: [
+              {
+                cwd: "/root/projects",
+                hooks: [
+                  {
+                    key: "/root/.codex/config.toml:pre_tool_use:0:0",
+                    eventName: "pre_tool_use",
+                    handlerType: "command",
+                    matcher: "Bash",
+                    command: "python3 /root/hooks/pre_tool_use.py",
+                    timeoutSec: 5,
+                    statusMessage: "checking command",
+                    sourcePath: "/root/.codex/config.toml",
+                    source: "user",
+                    pluginId: null,
+                    displayOrder: 0,
+                    enabled: true,
+                    isManaged: false,
+                    currentHash: "sha256:mock-user-hook",
+                    trustStatus: "trusted"
+                  },
+                  {
+                    key: "plugin://mock-plugin@mock-market:post_turn:0:0",
+                    eventName: "post_turn",
+                    handlerType: "command",
+                    matcher: null,
+                    command: "node mock-plugin/hook.js",
+                    timeoutSec: 10,
+                    statusMessage: "sync plugin state",
+                    sourcePath: "/root/.codex/plugins/mock-plugin/plugin.json",
+                    source: "plugin",
+                    pluginId: "mock-plugin@mock-market",
+                    displayOrder: 1,
+                    enabled: false,
+                    isManaged: true,
+                    currentHash: "sha256:mock-plugin-hook",
+                    trustStatus: "untrusted"
+                  }
+                ],
+                warnings: ["Mock hook warning"],
+                errors: [{ path: "/root/projects/.codex/hooks.toml", message: "Mock hook parse warning" }]
+              }
+            ]
+          };
         case "fs/readFile":
           if ((params as { path?: string } | undefined)?.path === "/tmp/mock/SKILL.md") {
             return {
@@ -1180,6 +1226,15 @@ test("manages Codex plugins and MCP servers from Settings with slash command ent
   await expect(page.getByText("Detailed mock plugin description.")).toBeVisible();
   await expect(page.getByText("mcp 1", { exact: true })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Hooks 2" }).click();
+  await expect(page.getByText("Codex hooks")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "pre_tool_use" })).toBeVisible();
+  await expect(page.getByText("python3 /root/hooks/pre_tool_use.py")).toBeVisible();
+  await expect(page.getByText("trusted", { exact: true })).toBeVisible();
+  await expect(page.getByText("plugin mock-plugin@mock-market")).toBeVisible();
+  await expect(page.getByText("Mock hook warning")).toBeVisible();
+  await expect(page.getByText(/Mock hook parse warning/)).toBeVisible();
+
   await page.getByRole("tab", { name: "MCP 1" }).click();
   await expect(page.getByText("mock-mcp")).toBeVisible();
   await expect(page.getByText("Ping tool")).toBeVisible();
@@ -1205,6 +1260,19 @@ test("manages Codex plugins and MCP servers from Settings with slash command ent
   await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "MCP 1" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("mock-mcp")).toBeVisible();
+
+  outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
+  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
+
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.evaluate(() => {
+    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
+  });
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("/hooks");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Hooks 2" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "pre_tool_use" })).toBeVisible();
 
   outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
   expect(outbound.some((message) => message.method === "turn/start")).toBe(false);

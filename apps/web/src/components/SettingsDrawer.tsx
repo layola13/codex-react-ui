@@ -575,7 +575,7 @@ export function SettingsDrawer({
             )}
 
             {section === "plugins" && (
-              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title="Codex Plugins" subtitle="Marketplace plugins, installed plugin mentions, apps, and MCP servers">
+              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title="Codex Plugins" subtitle="Marketplace plugins, installed plugin mentions, hooks, apps, and MCP servers">
                 <CodexPluginSettingsPanel
                   key={`${open ? "open" : "closed"}:${initialPluginTab}`}
                   activeThreadId={activeThreadId}
