@@ -10,6 +10,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - New conversation permission presets, including the explicit `Dangerously bypass approvals and sandbox` option gated by typing `BYPASS`.
 - Third-party provider metadata: base URL, native models, model aliases, API key preview, save, and activate.
 - Provider activation writes Codex config via `config/batchWrite` and restarts app-server so temporary API-key env vars are available.
+- Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
 
 ## Development
 
@@ -61,6 +62,12 @@ The Config tab can export and import UI profiles as JSON. Profiles include provi
 ## Dangerous Permission Audit
 
 Dangerous `thread/start` and `turn/start` calls are appended to `~/.codex-react-ui/audit-log.jsonl` with file mode `0600`. Records include method, timestamp, cwd, thread/model identifiers, permission reasons, and input counts, but not prompt text or API keys. The Config tab shows the most recent local audit records.
+
+## Sidechat Isolation
+
+Sidechat tabs remain separate from the main workbench focus. Opening a sidechat tab starts a separate Codex thread on first send, keeps that thread out of the main task tabs/history view, and does not change the selected main conversation while sidechat notifications stream over the shared websocket.
+
+Slash-command-shaped sidechat input is not parsed, blocked, or rewritten by the browser UI. Text such as `/goal ...` is sent as normal Codex text input exactly as typed; commands that only exist in the terminal TUI still need app-server support before they can perform TUI-specific behavior here.
 
 ## Current Gaps
 

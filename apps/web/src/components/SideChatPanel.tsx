@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { alpha } from "@mui/material/styles";
 import {
   Box,
@@ -107,80 +107,92 @@ export function SideChatPanel({
       }}
     >
       <Box
-        role="tablist"
-        aria-label="Side chat tabs"
         sx={{
           display: "flex",
           alignItems: "center",
           gap: 0.5,
           px: 1.25,
           minWidth: 0,
-          overflowX: "auto",
+          overflow: "hidden",
           borderBottom: "1px solid",
           borderColor: "divider",
           bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.48 : 0.72)
         }}
       >
-        {tabs.map((tab) => {
-          const active = tab.id === activeTab?.id;
-          return (
-            <Box
-              key={tab.id}
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                flex: "0 0 auto",
-                minWidth: 0,
-                borderRadius: 999,
-                bgcolor: active ? "action.selected" : "transparent",
-                border: "1px solid",
-                borderColor: active ? "divider" : "transparent"
-              }}
-            >
+        <Box
+          role="tablist"
+          aria-label="Side chat tabs"
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            flex: 1,
+            minWidth: 0,
+            overflowX: "auto",
+            overflowY: "hidden"
+          }}
+        >
+          {tabs.map((tab) => {
+            const active = tab.id === activeTab?.id;
+            return (
               <Box
-                component="button"
-                type="button"
-                role="tab"
-                data-testid={`sidechat-tab-${tab.id}`}
-                aria-selected={active}
-                onClick={() => onTabChange(tab.id)}
+                key={tab.id}
                 sx={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 0.75,
+                  flex: "0 0 auto",
                   minWidth: 0,
-                  height: 34,
-                  pl: 1,
-                  pr: 0.5,
-                  border: 0,
-                  bgcolor: "transparent",
-                  color: active ? "text.primary" : "text.secondary",
-                  font: "inherit",
-                  cursor: "pointer"
+                  borderRadius: 999,
+                  bgcolor: active ? "action.selected" : "transparent",
+                  border: "1px solid",
+                  borderColor: active ? "divider" : "transparent"
                 }}
               >
-                <AddCircleOutlineIcon sx={{ fontSize: 16, flex: "0 0 auto" }} />
-                <Typography
-                  component="span"
-                  variant="body2"
-                  sx={{ maxWidth: { xs: 120, lg: 150 }, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                <Box
+                  component="button"
+                  type="button"
+                  role="tab"
+                  data-testid={`sidechat-tab-${tab.id}`}
+                  aria-selected={active}
+                  onClick={() => onTabChange(tab.id)}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    minWidth: 0,
+                    height: 34,
+                    pl: 1,
+                    pr: 0.5,
+                    border: 0,
+                    bgcolor: "transparent",
+                    color: active ? "text.primary" : "text.secondary",
+                    font: "inherit",
+                    cursor: "pointer"
+                  }}
                 >
-                  {tab.title}
-                </Typography>
+                  <AddCircleOutlineIcon sx={{ fontSize: 16, flex: "0 0 auto" }} />
+                  <Typography
+                    component="span"
+                    variant="body2"
+                    sx={{ maxWidth: { xs: 120, lg: 150 }, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  >
+                    {tab.title}
+                  </Typography>
+                </Box>
+                <Tooltip title={`Close ${tab.title}`}>
+                  <IconButton
+                    size="small"
+                    aria-label={`Close ${tab.title}`}
+                    onClick={() => onCloseTab(tab.id)}
+                    sx={{ mr: 0.25, color: "text.secondary" }}
+                  >
+                    <CloseIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
               </Box>
-              <Tooltip title={`Close ${tab.title}`}>
-                <IconButton
-                  size="small"
-                  aria-label={`Close ${tab.title}`}
-                  onClick={() => onCloseTab(tab.id)}
-                  sx={{ mr: 0.25, color: "text.secondary" }}
-                >
-                  <CloseIcon sx={{ fontSize: 16 }} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          );
-        })}
+            );
+          })}
+        </Box>
         <Tooltip title="New side chat">
           <IconButton
             size="small"
@@ -249,6 +261,7 @@ export function SideChatPanel({
 
       <Box
         ref={transcriptRef}
+        data-testid="sidechat-transcript"
         sx={{
           minHeight: 0,
           overflow: "auto",
@@ -435,7 +448,7 @@ function LauncherRow({
   disabled,
   onClick
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   shortcut?: string;
   disabled?: boolean;

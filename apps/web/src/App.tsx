@@ -198,12 +198,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       title: "Side chat",
       threadId: null,
       draft: "",
+      sending: false,
       userMessages: []
     }
   ]);
   const [activeSideChatId, setActiveSideChatId] = useState("sidechat-1");
   const [sideChatError, setSideChatError] = useState<string | null>(null);
   const sideChatSequenceRef = useRef(2);
+  const sideChatInFlightRef = useRef(new Set<string>());
   const [petDockEnabled, setPetDockEnabled] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.petDockEnabled, true));
   const [panelLayout, setPanelLayout] = useState<Record<string, number> | undefined>(() =>
     readPanelLayout(UI_STORAGE_KEYS.panelLayout)
@@ -724,6 +726,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       title: `Side chat ${nextIndex}`,
       threadId: null,
       draft: "",
+      sending: false,
       userMessages: []
     };
     setSideChatTabs((current) => [...current, nextTab]);
@@ -734,9 +737,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const closeSideChatTab = useCallback((tabId: string) => {
     setSideChatTabs((current) => {
       if (current.length <= 1) {
-        return current.map((tab) => (tab.id === tabId ? { ...tab, threadId: null, draft: "", userMessages: [] } : tab));
+        sideChatInFlightRef.current.delete(tabId);
+        return current.map((tab) => (tab.id === tabId ? { ...tab, threadId: null, draft: "", sending: false, userMessages: [] } : tab));
       }
       const next = current.filter((tab) => tab.id !== tabId);
+      sideChatInFlightRef.current.delete(tabId);
       setActiveSideChatId((active) => (active === tabId ? next[Math.max(0, current.findIndex((tab) => tab.id === tabId) - 1)]?.id ?? next[0]?.id ?? active : active));
       return next;
     });
@@ -748,27 +753,29 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const sendSideChatPrompt = useCallback(
     async (tabId: string, text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) {
+      const commandText = text;
+      const titleText = commandText.trim();
+      if (!titleText || sideChatInFlightRef.current.has(tabId)) {
         return;
       }
       const tab = sideChatTabs.find((entry) => entry.id === tabId);
-      if (!tab) {
+      if (!tab || tab.sending) {
         return;
       }
-      const previousActiveThreadId = state.activeThreadId;
       const localMessage = {
         id: `sidechat-message-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        text: trimmed
+        text: commandText
       };
+      sideChatInFlightRef.current.add(tabId);
       setSideChatError(null);
       setSideChatTabs((current) =>
         current.map((entry) =>
           entry.id === tabId
             ? {
                 ...entry,
-                title: entry.userMessages.length === 0 ? sideChatTitle(trimmed, current.filter((candidate) => candidate.id !== entry.id).length + 1) : entry.title,
+                title: entry.userMessages.length === 0 ? sideChatTitle(titleText, current.filter((candidate) => candidate.id !== entry.id).length + 1) : entry.title,
                 draft: "",
+                sending: true,
                 userMessages: [...entry.userMessages, localMessage]
               }
             : entry
@@ -796,13 +803,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           }
           const nextThreadId = threadId;
           setSideChatTabs((current) => current.map((entry) => (entry.id === tabId ? { ...entry, threadId: nextThreadId } : entry)));
-          if (previousActiveThreadId !== state.activeThreadId) {
-            dispatch({ type: "activeThread", threadId: previousActiveThreadId });
-          }
         }
         const turnParams: Record<string, JsonValue> = {
           threadId,
-          input: composerInputToUserInput(trimmed, [], []),
+          input: composerInputToUserInput(commandText, [], [], { preserveText: true }),
           cwd,
           sandboxPolicy: permissionOverrides.sandboxPolicy,
           approvalPolicy: permissionOverrides.approvalPolicy,
@@ -815,17 +819,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (permission === "dangerBypass") {
           await loadAuditEvents();
         }
-        dispatch({ type: "activeThread", threadId: previousActiveThreadId });
+        setSideChatTabs((current) => current.map((entry) => (entry.id === tabId ? { ...entry, sending: false } : entry)));
       } catch (error) {
         setSideChatError(error instanceof Error ? error.message : String(error));
         setSideChatTabs((current) =>
           current.map((entry) =>
             entry.id === tabId
-              ? { ...entry, draft: trimmed, userMessages: entry.userMessages.filter((message) => message.id !== localMessage.id) }
+              ? { ...entry, draft: commandText, sending: false, userMessages: entry.userMessages.filter((message) => message.id !== localMessage.id) }
               : entry
           )
         );
-        dispatch({ type: "activeThread", threadId: previousActiveThreadId });
+      } finally {
+        sideChatInFlightRef.current.delete(tabId);
       }
     },
     [
@@ -837,7 +842,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       reasoningEffort,
       selectedModel,
       sideChatTabs,
-      state.activeThreadId,
       state.providers
     ]
   );
@@ -1267,7 +1271,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             <Typography variant="body2">Starting Codex engine...</Typography>
           </Box>
         )}
-        <ChatPanel turns={state.turns} activeThreadId={state.activeThreadId} errors={state.errors} />
+        <ChatPanel turns={mainTurns} activeThreadId={state.activeThreadId} errors={state.errors} />
         <Box
           sx={{
             borderTop: "1px solid",
@@ -1345,13 +1349,40 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     );
   }
 
+  function renderSideChatPanel() {
+    return (
+      <SideChatPanel
+        tabs={sideChatTabs}
+        activeTabId={activeSideChatId}
+        turns={state.turns}
+        models={composerModels}
+        selectedModel={selectedModel}
+        reasoningLabel={selectedReasoning?.label ?? reasoningEffort}
+        permissionLabel={sideChatPermissionLabel}
+        connected={state.connected}
+        engineReady={state.engine.phase === "ready"}
+        error={sideChatError}
+        onTabChange={setActiveSideChatId}
+        onAddTab={addSideChatTab}
+        onCloseTab={closeSideChatTab}
+        onClosePanel={() => setSideChatVisible(false)}
+        onDraftChange={changeSideChatDraft}
+        onSend={(tabId, text) => void sendSideChatPrompt(tabId, text)}
+      />
+    );
+  }
+
   const statusColor =
     state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
-  const taskTabs = state.threads.slice(0, 12);
+  const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((threadId): threadId is string => Boolean(threadId)));
+  const mainThreads = state.threads.filter((thread) => !sideChatThreadIds.has(thread.id));
+  const mainTurns = state.turns.filter((turn) => !sideChatThreadIds.has(turn.threadId));
+  const taskTabs = mainThreads.slice(0, 12);
   const reasoningIndex = Math.max(0, reasoningOptions.findIndex((option) => option.value === reasoningEffort));
   const selectedReasoning = reasoningOptions[reasoningIndex] ?? reasoningOptions[0];
   const reasoningMax = Math.max(0, reasoningOptions.length - 1);
   const showReasoningGlow = reasoningIndex === reasoningMax && reasoningMax > 0;
+  const sideChatPermissionLabel = permission === "dangerBypass" ? "Bypass approvals" : "Ask for approval";
 
   return (
     <Box
@@ -1458,6 +1489,24 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               </IconButton>
             </Tooltip>
           </Box>
+          <Tooltip title={sideChatVisible ? "Hide side chat" : "Open side chat"}>
+            <IconButton
+              size="small"
+              onClick={() =>
+                setSideChatVisible((visible) => {
+                  const next = !visible;
+                  if (next) {
+                    setInspectorVisible(false);
+                  }
+                  return next;
+                })
+              }
+              aria-label={sideChatVisible ? "Hide side chat" : "Open side chat"}
+              color={sideChatVisible ? "primary" : "default"}
+            >
+              <ChatBubbleOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
           <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
             {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
@@ -1572,7 +1621,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 <Panel id="history" defaultSize="20%" minSize="14%" maxSize="34%">
                   <Box sx={{ height: "100%", minHeight: 0 }}>
                     <HistorySidebar
-                      threads={state.threads}
+                      threads={mainThreads}
                       activeThreadId={state.activeThreadId}
                       onSelect={(threadId) => selectTaskTab(threadId)}
                       onNew={() => selectTaskTab(null)}
@@ -1582,13 +1631,25 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 <ResizeHandle />
               </>
             )}
-            <Panel id="chat" defaultSize={inspectorVisible ? "52%" : "80%"} minSize="32%">
+            <Panel
+              id="chat"
+              defaultSize={sideChatVisible ? (inspectorVisible ? "34%" : "48%") : inspectorVisible ? "52%" : "80%"}
+              minSize="28%"
+            >
               {renderCenterPanel()}
             </Panel>
+            {sideChatVisible && (
+              <>
+                <ResizeHandle />
+                <Panel id="sidechat" defaultSize={inspectorVisible ? "28%" : "32%"} minSize="24%" maxSize="50%">
+                  {renderSideChatPanel()}
+                </Panel>
+              </>
+            )}
             {inspectorVisible && (
               <>
                 <ResizeHandle />
-                <Panel id="inspector" defaultSize="28%" minSize="20%" maxSize="42%">
+                <Panel id="inspector" defaultSize={sideChatVisible ? "18%" : "28%"} minSize="16%" maxSize="42%">
                   {renderInspector()}
                 </Panel>
               </>
@@ -1599,13 +1660,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           <Box sx={{ display: "grid", gridTemplateRows: "auto auto auto", minHeight: 0 }}>
             {leftPanelVisible && (
               <HistorySidebar
-                threads={state.threads}
+                threads={mainThreads}
                 activeThreadId={state.activeThreadId}
                 onSelect={(threadId) => selectTaskTab(threadId)}
                 onNew={() => selectTaskTab(null)}
               />
             )}
             {renderCenterPanel()}
+            {sideChatVisible && <Box sx={{ minHeight: 560, height: "72vh" }}>{renderSideChatPanel()}</Box>}
             {inspectorVisible && renderInspector()}
           </Box>
         )}
@@ -1838,6 +1900,14 @@ function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: str
     model = next;
   }
   return model;
+}
+
+function sideChatTitle(text: string, fallbackIndex: number): string {
+  const title = text.replace(/\s+/g, " ").trim();
+  if (!title) {
+    return fallbackIndex <= 1 ? "Side chat" : `Side chat ${fallbackIndex}`;
+  }
+  return title.length > 28 ? `${title.slice(0, 27)}...` : title;
 }
 
 function decodeBase64Text(value: string): string {

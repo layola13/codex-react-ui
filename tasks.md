@@ -46,16 +46,16 @@
 - [x] Persist provider API keys through a system keyring with memory fallback.
 - [x] Apply chained model aliases in provider activation and turn-start paths.
 - [x] Validate configured hubproxy relay envs without exposing API keys.
-- [ ] Finish sidechat workbench support:
+- [x] Finish sidechat workbench support:
   - [x] add a visible top-right entry point for sidechat
   - [x] add a dedicated sidechat panel component with a tab strip and `+` affordance
-  - [ ] support multiple concurrent sidechat tabs with independent Codex thread IDs
-  - [ ] keep slash commands such as `/goal` flowing through Codex input handling without UI blocking or rewriting
-  - [ ] decide and document whether sidechat messages should reuse the main thread focus or remain fully isolated
-  - [ ] add Playwright coverage for opening sidechat, creating extra tabs, and sending a `/goal` message
-  - [ ] capture a fresh screenshot to `/root/projects/snapshot` and compare it with the reference sidechat image
-  - [ ] run `typecheck`, `build`, `test:e2e`, and the focused sidechat regression tests after the implementation stabilizes
-  - [ ] commit and push the sidechat slice once verification is green
+  - [x] support multiple concurrent sidechat tabs with independent Codex thread IDs
+  - [x] keep slash commands such as `/goal` flowing through Codex input handling without UI blocking or rewriting
+  - [x] decide and document whether sidechat messages should reuse the main thread focus or remain fully isolated
+  - [x] add Playwright coverage for opening sidechat, creating extra tabs, and sending a `/goal` message
+  - [x] capture a fresh screenshot to `/root/projects/snapshot` and compare it with the reference sidechat image
+  - [x] run `typecheck`, `build`, `test:e2e`, and the focused sidechat regression tests after the implementation stabilizes
+  - [x] commit and push the sidechat slice once verification is green
 
 ## Next
 
@@ -65,7 +65,7 @@
 - [x] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
 - [x] Add terminal/process controls for command execution and PTY interaction.
 - [x] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
-- [ ] Keep the sidechat slice small enough to land without regressing the existing settings/theme/tooling workbench.
+- [x] Keep the sidechat slice small enough to land without regressing the existing settings/theme/tooling workbench.
 
 ## Later
 

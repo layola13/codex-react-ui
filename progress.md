@@ -3,14 +3,13 @@
 ## 2026-07-18
 
 - Current status snapshot:
-  - The long-running "complete all settings" scope is mostly implemented across Settings, relay providers, themes, tooling, files, terminal, profiles, audits, image input, and Playwright coverage.
-  - The current active slice is sidechat. `apps/web/src/components/SideChatPanel.tsx` exists and `apps/web/src/App.tsx` contains initial sidechat state/thread wiring, but the slice is not yet proven complete.
-  - The sidechat reference assets are stored under `snapshot/sidechat/`; the main reference image shows a right-side chat area with a tab bar, close control, and `+` button.
-  - The remaining sidechat work is functional as well as visual: independent concurrent tabs, stable main-thread focus, slash-command fidelity, focused Playwright tests, screenshots, full verification, and a follow-up commit/push.
+  - The long-running settings/theme/tooling/files/terminal/profile/audit/image-input scope remains green.
+  - The sidechat slice is implemented and verified: top-right entry point, right-side panel, fixed `+` affordance, multiple independent tabs, stable main-chat focus, raw slash-command forwarding, Playwright coverage, and screenshot evidence.
+  - Sidechat reference assets remain under `snapshot/sidechat/`; the fresh implementation screenshot is `snapshot/sidechat-workbench.png`.
+  - `/root/projects/material-kit-react/README.md` was rechecked during the slice; the sidechat UI stays on the existing Minimal UI / MUI surface language rather than introducing a separate visual system.
 - Current repository/verification facts:
-  - `main` is currently aligned with `origin/main`.
-  - The latest commit contains the current settings/theme/image/sidechat changes, but the sidechat-specific verification pass has not been recorded.
-  - The most recent recorded broad green gate is `pnpm test:e2e` with 14/14 Chromium tests, before the sidechat-specific tests were added.
+  - The sidechat implementation has passed the current pre-commit verification gate.
+  - `pnpm test:e2e` now runs 16 Chromium tests, including the focused sidechat regression.
   - The Codex code index was rebuilt at `/root/projects/codex/.code_index` with the Rust engine: 3448 modules, 23596 functions, and 336100 edges.
 - Completed feature areas that should not be regressed:
   - schema-driven Settings -> All config with 93 top-level Codex settings and nested/runtime key support
@@ -19,18 +18,23 @@
   - draggable/resizable workbench panels, task tabs, right companion/status surface, pet dock settings, and Markdown chat rendering
   - MCP, Skills, Plugins, plugin mentions, MCP OAuth/resources, direct MCP tool calls, files/editor, terminal/process controls, profile import/export, and dangerous-permission audits
   - main-composer image attachments, including drag-and-drop, mixed text/image input, data URL submission, and practical byte limits instead of an arbitrary five-image count cap
-- Current open risks:
-  - sidechat code was added before a fresh `typecheck`/`build` pass, so compile/runtime regressions are still possible
-  - the sidechat panel currently needs a complete layout integration audit on desktop and mobile
-  - a sidechat thread must not change the main chat's selected thread while notifications arrive over the shared WebSocket
-  - Codex TUI slash commands are broader than `/goal`; the UI must avoid hard-coding a small allow-list and must preserve command text/arguments exactly
-  - the existing mock WebSocket needs explicit support for unique sidechat thread IDs and notification/turn behavior before concurrency tests can be meaningful
-
 - Sidechat implementation status:
-  - Added `SideChatPanel` with a tab strip, tab close controls, `+` new-tab control, empty state, transcript area, compact composer, model/reasoning labels, and send action.
-  - Added initial App-level sidechat tab state, draft state, local optimistic user messages, per-tab thread IDs, and a sidechat send path that uses `thread/start` followed by `turn/start`.
-  - Added notification handling intended to keep the main chat focus stable while sidechat turns are merged into the shared client turn store.
-  - Not completed yet: the top-right button/layout integration, proof that multiple tabs can run concurrently, all slash-command behavior, focused Playwright coverage, reference screenshot comparison, full verification, and the final sidechat commit/push.
+  - Added the visible top-right sidechat control; opening sidechat hides the inspector so the right panel matches the reference side-by-side shape, while the inspector can still be reopened manually.
+  - Mounted `SideChatPanel` in desktop resizable panels and mobile stacked layout.
+  - Kept each sidechat tab/window isolated with its own draft, optimistic local transcript, in-flight state, and Codex `threadId`; sidechat threads are filtered out of main task tabs/history and main-chat `ChatPanel` turns.
+  - Preserved main-thread focus while `thread/started`, `turn/started`, deltas, and completions stream over the shared websocket.
+  - Added a `preserveText` mode to `composerInputToUserInput` and used it only for sidechat so `/goal ...`, `/status ...`, and other command-shaped input are forwarded as exact text without a browser allow-list or rewrite.
+  - Documented that sidechat is fully isolated from the main thread and that TUI-only commands still require app-server support for TUI-specific behavior.
+  - Extended the Playwright mock websocket to generate unique thread IDs and emit turn notifications for separate sidechat threads.
+  - Added Playwright coverage for opening sidechat, creating extra tabs/windows, sending multiple `/goal` messages plus another slash-shaped command, proving unique `threadId`s and transcript isolation.
+  - Captured and inspected `snapshot/sidechat-workbench.png` against `snapshot/sidechat/屏幕截图 2026-07-18 153125.png` and the other sidechat references; the tab strip, fixed `+`, close controls, right-panel surface, and bottom composer now match the intended structure.
+  - Verification passed:
+    - `pnpm typecheck`
+    - `pnpm --filter @codex-ui/web build`
+    - `pnpm check:codex-config-schema`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
+    - `pnpm test:e2e` (16/16 Chromium tests)
 
 - Audited the "complete all settings" goal against the current Settings implementation.
 - Added Playwright coverage that reads `apps/web/src/state/codexConfigSchema.json`, asserts the bundled Codex schema still has 93 top-level settings, recursively expands schema properties, opens Settings -> All config, and searches every generated keyPath to prove each setting is visible in the UI.

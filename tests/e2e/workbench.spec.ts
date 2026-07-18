@@ -120,6 +120,8 @@ test.beforeEach(async ({ page }) => {
 
   await page.addInitScript(() => {
     const outbound = ((window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound = []);
+    let threadStartCount = 0;
+    let turnStartCount = 0;
 
     class MockWebSocket extends EventTarget {
       public static readonly CONNECTING = 0;
@@ -230,6 +232,67 @@ test.beforeEach(async ({ page }) => {
           return;
         }
         const result = rpcResult(message.method ?? "", message.params);
+        if (message.method === "thread/start") {
+          const thread = (result as { thread?: { id?: string; preview?: string; status?: string } }).thread;
+          setTimeout(() => {
+            this.emit({ type: "rpc.result", id: message.id, result });
+            if (thread?.id) {
+              this.emit({
+                type: "codex.notification",
+                message: {
+                  method: "thread/started",
+                  params: { thread }
+                }
+              });
+            }
+          }, 0);
+          return;
+        }
+        if (message.method === "turn/start") {
+          const params = message.params as { threadId?: string; input?: Array<{ type?: string; text?: string }> } | undefined;
+          const threadId = params?.threadId ?? "thread-missing";
+          const turnIndex = ++turnStartCount;
+          const turnId = `turn-${turnIndex}`;
+          const itemId = `item-${turnIndex}`;
+          const inputText = params?.input?.find((entry) => entry.type === "text")?.text ?? "";
+          setTimeout(() => {
+            this.emit({ type: "rpc.result", id: message.id, result });
+            this.emit({
+              type: "codex.notification",
+              message: {
+                method: "turn/started",
+                params: {
+                  threadId,
+                  turn: { id: turnId, threadId, status: "inProgress" }
+                }
+              }
+            });
+            this.emit({
+              type: "codex.notification",
+              message: {
+                method: "item/agentMessage/delta",
+                params: {
+                  turnId,
+                  itemId,
+                  delta: `Accepted ${inputText}`
+                }
+              }
+            });
+            setTimeout(() => {
+              this.emit({
+                type: "codex.notification",
+                message: {
+                  method: "turn/completed",
+                  params: {
+                    threadId,
+                    turn: { id: turnId, threadId, status: "completed" }
+                  }
+                }
+              });
+            }, 250);
+          }, 0);
+          return;
+        }
         setTimeout(() => this.emit({ type: "rpc.result", id: message.id, result }), 0);
       }
 
@@ -409,8 +472,10 @@ test.beforeEach(async ({ page }) => {
               { id: "thread-2", preview: "Second task", status: "idle" }
             ]
           };
-        case "thread/start":
-          return { thread: { id: "thread-new", preview: "New mock thread", status: "idle" } };
+        case "thread/start": {
+          const id = `thread-new-${++threadStartCount}`;
+          return { thread: { id, preview: `New mock thread ${threadStartCount}`, status: "idle" } };
+        }
         case "turn/start":
           return {};
         case "mcpServerStatus/list":
@@ -722,6 +787,106 @@ test("supports drag and drop image attachments in the composer", async ({ page }
         message.params?.input?.some((input) => input.type === "text" && input.text === "Describe the dropped image") &&
         message.params?.input?.some((input) => input.type === "image" && input.detail === "auto" && input.url?.startsWith("data:image/png;base64,"))
     );
+  });
+});
+
+test("sidechat supports multiple isolated /goal windows and preserves slash command text", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Mock thread" }).click();
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "Open side chat" }).click();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Hide side chat" })).toBeVisible();
+  await expect(page.getByTestId("sidechat-panel")).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Side chat tabs" })).toBeVisible();
+
+  const transcript = page.getByTestId("sidechat-transcript");
+  const input = page.getByRole("textbox", { name: "Side chat message" });
+  const sendSideChat = page.getByRole("button", { name: "Send side chat message" });
+  const firstGoal = " /goal first side window  ";
+  const secondGoal = "/goal second side window";
+  const statusCommand = "/status preserve command shape";
+  const slashTexts = [firstGoal, secondGoal, statusCommand];
+
+  await input.fill(firstGoal);
+  await sendSideChat.click();
+  await expect(transcript.getByText("/goal first side window", { exact: true })).toBeVisible();
+
+  await page.getByLabel("New side chat").click();
+  await page.getByRole("menuitem", { name: /Side chat/ }).click();
+  await expect(transcript.getByText("/goal first side window", { exact: true })).toHaveCount(0);
+  await input.fill(secondGoal);
+  await sendSideChat.click();
+  await expect(transcript.getByText(secondGoal, { exact: true })).toBeVisible();
+
+  await page.getByLabel("New side chat").click();
+  await page.getByRole("menuitem", { name: /Side chat/ }).click();
+  await input.fill(statusCommand);
+  await sendSideChat.click();
+  await expect(transcript.getByText(statusCommand, { exact: true })).toBeVisible();
+
+  await page.waitForFunction((expectedTexts) => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { threadId?: string; input?: Array<{ type?: string; text?: string }> };
+        }>;
+      }
+    ).__codexUiOutbound ?? [];
+    const threadIds = expectedTexts.map((expectedText) => {
+      const message = messages.find(
+        (entry) =>
+          entry.type === "rpc" &&
+          entry.method === "turn/start" &&
+          entry.params?.input?.some((input) => input.type === "text" && input.text === expectedText)
+      );
+      return message?.params?.threadId;
+    });
+    return threadIds.every(Boolean) && new Set(threadIds).size === expectedTexts.length;
+  }, slashTexts);
+
+  const sidechatTurns = await page.evaluate((expectedTexts) => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { threadId?: string; input?: Array<{ type?: string; text?: string }> };
+        }>;
+      }
+    ).__codexUiOutbound ?? [];
+    return expectedTexts.map((expectedText) => {
+      const message = messages.find(
+        (entry) =>
+          entry.type === "rpc" &&
+          entry.method === "turn/start" &&
+          entry.params?.input?.some((input) => input.type === "text" && input.text === expectedText)
+      );
+      return {
+        text: expectedText,
+        threadId: message?.params?.threadId ?? null
+      };
+    });
+  }, slashTexts);
+
+  expect(sidechatTurns.map((turn) => turn.text)).toEqual(slashTexts);
+  expect(new Set(sidechatTurns.map((turn) => turn.threadId)).size).toBe(slashTexts.length);
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tablist", { name: "Task tabs" }).getByText("New mock thread")).toHaveCount(0);
+
+  await page.getByTestId("sidechat-tab-sidechat-1").click();
+  await expect(transcript.getByText("/goal first side window", { exact: true })).toBeVisible();
+  await expect(transcript.getByText(secondGoal, { exact: true })).toHaveCount(0);
+  await page.getByTestId("sidechat-tab-sidechat-2").click();
+  await expect(transcript.getByText(secondGoal, { exact: true })).toBeVisible();
+  await expect(transcript.getByText(statusCommand, { exact: true })).toHaveCount(0);
+
+  await page.screenshot({
+    path: "snapshot/sidechat-workbench.png",
+    fullPage: false
   });
 });
 

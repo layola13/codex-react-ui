@@ -564,11 +564,17 @@ export function threadReadToTurns(value: JsonValue): { thread: ThreadEntry | nul
   };
 }
 
-export function composerInputToUserInput(text: string, images: ComposerImageAttachment[], mentions: ComposerMention[] = []): JsonValue[] {
+export function composerInputToUserInput(
+  text: string,
+  images: ComposerImageAttachment[],
+  mentions: ComposerMention[] = [],
+  options: { preserveText?: boolean } = {}
+): JsonValue[] {
   const input: JsonValue[] = [];
   const trimmed = text.trim();
+  const textValue = options.preserveText ? text : trimmed;
   if (trimmed) {
-    input.push({ type: "text", text: trimmed, text_elements: [] });
+    input.push({ type: "text", text: textValue, text_elements: [] });
   }
   for (const mention of mentions) {
     if (trimmed.includes(mention.token)) {

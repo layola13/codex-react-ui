@@ -6,35 +6,34 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-1. Prove the "complete all settings" state:
-   - keep Settings -> Codex Engine backed by the bundled Codex JSON schema
-   - verify every bundled Codex schema setting keyPath is searchable and visible in All config
-   - keep relay providers in Settings -> Relay and secrets out of Codex config writes
-   - keep Appearance theme mode/plugin settings, Layout settings, Session settings, Plugins, Pet Dock, and Privacy groups available from the Settings drawer
-   - keep main composer image input aligned with Codex image handling, including drag-and-drop attachments and size-based browser guards rather than a 5-image count cap
-2. Finish the sidechat slice before claiming the broader UI goal is complete:
-   - wire the top-right sidechat control into the desktop and mobile layouts
-   - keep multiple sidechat tabs open at the same time, with each tab holding its own draft, visible transcript, and Codex `threadId`
-   - allow a turn in one sidechat tab to continue while another tab is selected and used
-   - keep sidechat notifications from stealing the main chat's selected thread
-   - pass slash commands and their arguments unchanged as Codex text input; do not implement a fragile UI-only allow-list
-   - explicitly test `/goal` and at least one additional command-shaped input, while documenting that Codex TUI-only commands may require an app-server mapping
-   - match the sidechat reference tab bar, close affordances, composer proportions, and right-panel surfaces
-3. Verify with commands and screenshots:
-   - `pnpm --filter @codex-ui/web typecheck`
+The sidechat slice is complete and verified.
+
+1. Settings/image/tooling regression scope stayed green:
+   - Settings -> Codex Engine remains backed by the bundled Codex JSON schema.
+   - Relay providers remain in Settings -> Relay and secrets remain out of Codex config writes.
+   - Main composer image input still uses Codex image data URLs with size-based browser guards.
+2. Sidechat behavior is implemented:
+   - top-right toolbar control opens the sidechat panel and hides the inspector to match the reference side-by-side layout
+   - desktop uses a resizable right-side panel; mobile uses a stacked sidechat panel
+   - multiple sidechat tabs/windows can stay open at once
+   - each sidechat tab owns its own draft, local transcript, in-flight state, and Codex `threadId`
+   - sidechat threads are filtered out of the main task tabs/history and main `ChatPanel`
+   - sidechat websocket notifications do not steal the selected main conversation
+   - `/goal ...`, `/status ...`, and other slash-command-shaped inputs are sent as exact Codex text input with no UI allow-list or rewrite
+   - TUI-only slash commands are documented as requiring app-server support for TUI-specific behavior
+3. Verification is complete:
+   - `pnpm typecheck`
    - `pnpm --filter @codex-ui/web build`
    - `pnpm check:codex-config-schema`
-   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting"`
-   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "supports drag and drop image attachments"`
    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
-   - `pnpm test:e2e`
-   - inspect `/root/projects/snapshot/07-right-companion-sidebar.png`
-   - inspect `/root/projects/snapshot/08-settings-appearance-theme-cards.png`
-   - inspect `/root/projects/snapshot/09-settings-relay-model-channels.png`
-   - inspect `/root/projects/snapshot/10-settings-relay-saved-channels.png`
-4. Capture and inspect a sidechat screenshot under `/root/projects/snapshot`, comparing it to `snapshot/sidechat/屏幕截图 2026-07-18 153125.png` and the other reference images in that folder.
-5. Update `tasks.md`, `progress.md`, and `current_plan.md` after each verified feature slice.
-6. Commit and push after verification. The sidechat commit must not be made until typecheck, build, focused sidechat E2E, full E2E, and screenshot inspection are all complete.
+   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
+   - `pnpm test:e2e` (16/16 Chromium tests)
+4. Screenshot evidence is complete:
+   - captured `snapshot/sidechat-workbench.png`
+   - inspected it against `snapshot/sidechat/屏幕截图 2026-07-18 153125.png` and the other sidechat reference images for the right panel, tab strip, fixed `+`, close controls, and bottom composer
+5. Release hygiene:
+   - `README.md`, `tasks.md`, `progress.md`, and `current_plan.md` describe the verified sidechat state
+   - the sidechat slice is ready to commit and push through the authenticated SSH remote
 
 ## Engineering Rules
 
@@ -47,7 +46,7 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-The next commit target is the completed sidechat slice:
+The next commit target is the verified sidechat slice:
 
 - independent multi-tab sidechat behavior is wired to Codex threads
 - main-chat focus remains stable while sidechat notifications stream
@@ -60,35 +59,17 @@ The next commit target is the completed sidechat slice:
 
 ## Latest Verification
 
+- `pnpm typecheck`
 - `pnpm check:codex-config-schema`
 - `pnpm --filter @codex-ui/web typecheck`
 - `pnpm --filter @codex-ui/web build`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting"`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "supports drag and drop image attachments"`
-- `pnpm test:e2e` (14/14 Chromium tests)
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
+- `pnpm test:e2e` (16/16 Chromium tests)
 
-These are the latest recorded broad checks, not proof that the current sidechat slice is complete. The sidechat-specific checks and screenshot comparison are still pending.
+The sidechat-specific checks and screenshot comparison are now complete.
 
 ## Detailed Remaining Work
 
-1. Source review and implementation audit:
-   - inspect the current `App.tsx` sidechat state and ensure every render path uses the active sidechat tab
-   - remove incomplete helpers or stale references introduced during the interrupted implementation
-   - confirm the sidechat panel is actually mounted behind the top-right control on desktop and on the mobile stacked layout
-   - confirm each tab starts at most one thread and subsequent prompts reuse that tab's thread
-2. Concurrency behavior:
-   - extend the mocked WebSocket to return unique thread IDs
-   - emit `thread/started`, `turn/started`, item delta, and `turn/completed` notifications for separate sidechat threads
-   - send from tab A, switch to tab B, send from tab B, then verify both request payloads and both transcripts remain isolated
-3. Slash commands:
-   - keep `/goal`, `/plan`, `/review`, `/status`, and unknown/custom command-shaped input as raw text in the request payload
-   - avoid claiming that the browser can execute every TUI-only command unless an app-server RPC exists for it
-   - document any commands that require an explicit app-server mapping instead of silently pretending they work
-4. Visual verification:
-   - run the dev/preview server as required by the existing Playwright harness
-   - capture desktop and mobile sidechat screenshots
-   - inspect for tab overflow, close-button hit areas, composer clipping, panel resize behavior, and theme contrast
-5. Release hygiene:
-   - update all three tracking documents after the feature is actually verified
-   - run the full test/build gate
-   - commit with a focused message and push to `origin/main`
+1. Commit the verified sidechat slice.
+2. Push `main` to `origin/main`.
