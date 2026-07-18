@@ -2,6 +2,15 @@
 
 ## Now
 
+- [ ] Add a main composer slash-command router for lightweight UI commands instead of only handling `/plugins`, `/mcp`, and `/hooks`.
+- [ ] Add `/fast` with a lightning badge near the composer/top status and prevent it from being sent as a normal Codex turn.
+- [ ] Add `/status` and `/stats` as a primary session/project stats surface, including token usage, model/provider, effort, permissions, active goal, and mode flags.
+- [ ] Add `/goal` support with a sticky top-of-chat goal bar that stays visible above the scrolling transcript; support setting, editing, pausing/resuming, and clearing the goal.
+- [ ] Add `/plan` mode with a visible planning symbol and state marker; route `/plan <text>` as a plan-mode prompt.
+- [ ] Route heavyweight slash commands such as `/theme`, `/pets`, `/statusline`, `/plugins`, `/mcp`, and `/hooks` into Settings instead of the right workspace.
+- [ ] Add Playwright coverage and screenshots for `/fast`, `/status` or `/stats`, sticky `/goal`, and `/plan` UI state.
+- [ ] Run typecheck, focused Playwright tests, full workbench e2e, build, and diff checks before committing the slash command slice.
+- [ ] Commit and push the slash command status/goal/fast/plan slice to `origin/main`.
 - [x] Add user theme plugin editing so saved themes can be adjusted and switched without recreating duplicates.
 - [x] Add user theme plugin JSON import/export for local theme portability.
 - [x] Verify theme edit/import/export/switching with Playwright and fresh screenshots.

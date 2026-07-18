@@ -2,6 +2,18 @@
 
 ## 2026-07-18
 
+- Slash command planning update:
+  - Audited current Web support against the local Codex TUI command list.
+  - Confirmed the main composer only intercepts exact `/plugins`, `/mcp`, and `/hooks`; other slash-shaped input currently falls through as normal Codex prompt text.
+  - Confirmed sidechat intentionally preserves slash-shaped text and sends it to isolated threads without browser-side parsing.
+  - Planned the next Web-owned command slice:
+    - `/fast` toggles fast mode and shows a lightning marker near the top bar/composer
+    - `/status` and `/stats` expose token/session/project stats, model/provider, reasoning effort, permission mode, goal, and mode flags
+    - `/goal` owns a sticky top-of-chat goal bar that stays visible above the transcript while supporting set/edit/pause/resume/clear
+    - `/plan` enables plan mode and shows a plan marker; `/plan <text>` sends the request in plan mode
+    - heavyweight commands such as `/theme`, `/pets`, `/statusline`, `/plugins`, `/mcp`, and `/hooks` route into Settings, not the right runtime workspace
+  - Updated `tasks.md` and `current_plan.md` to make the slash command status/goal/fast/plan slice the active plan.
+
 - Current status snapshot:
   - The long-running settings/theme/tooling/files/terminal/profile/audit/image-input scope remains green after separating Settings from the right runtime workspace.
   - The main right runtime workspace is hidden by default; the top-right split-view control opens Side chat, Browser, and Terminal only.
