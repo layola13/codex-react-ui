@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-07-18
+
+- Started the Stitch/Material Kit visual alignment slice.
+- Reviewed the referenced Stitch HTML/screenshots under `snapshot/参考/stitch_react_mui_interface_design`, with `codex_1` as the primary layout reference and the rest used for shared tokens.
+- Confirmed recurring reference traits: `surface-container` color layering, translucent panels, compact left navigation, rounded-lg/xl/full controls, Plus Jakarta Sans/Manrope/JetBrains Mono typography, and low-contrast outlines.
+- Confirmed Playwright is available through `pnpm exec playwright --version`; browser runtime validation and screenshot comparison are still pending.
+- Began migrating the workbench shell toward a centered translucent MUI workbench container with safer viewport padding, atmospheric surface background, and theme-aware panel layers.
+- Completed a Material Kit-style theme architecture under `apps/web/src/theme/`, including provider, create-theme entry point, core palette/typography/components/shadows, and MUI `customShadows` type augmentation.
+- Reworked the main Codex workbench into a translucent rounded shell with a compact top bar, horizontal task strip, left conversation rail, fluid chat panel, right inspector, and theme-aware composer surface.
+- Restyled the major panels to match the Stitch references: compact sidebar list items, subtle surface-container layering, low-contrast outlines, 8px component radius, and Plus Jakarta Sans/Manrope/JetBrains Mono typography.
+- Added Playwright screenshot coverage for `Atmospheric Codex` and `Official Black` theme switching in addition to desktop and mobile workbench baselines.
+- Ran `pnpm exec playwright install chromium`; Chromium runtime is installed.
+- Verified the visual/theme slice:
+  - `pnpm --filter @codex-ui/web typecheck`
+  - `pnpm --filter @codex-ui/web build`
+  - `pnpm test:e2e` (13/13 Chromium tests)
+- Visually inspected generated screenshots against `snapshot/参考/stitch_react_mui_interface_design/codex_1/screen.png`; the Atmospheric Codex theme now matches the reference direction with deep green primary controls, pale green surfaces, translucent rounded panels, compact navigation, and low-contrast outlines while preserving the existing Codex workbench feature set.
+- Created local commit `Align workbench theme with Stitch references`.
+- Confirmed the local SSH key authenticates to GitHub as `layola13`; pushed `main` through the SSH remote URL after HTTPS push lacked username/token credentials.
+
 ## 2026-07-16
 
 - Created an independent monorepo at `/root/projects/codex-react-ui`.

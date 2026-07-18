@@ -20,6 +20,7 @@ import {
   Typography,
   useMediaQuery
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import AddIcon from "@mui/icons-material/Add";
@@ -1069,7 +1070,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           gridTemplateRows: { xs: "auto minmax(360px, 1fr) auto", md: "minmax(0, 1fr) auto" },
           borderInline: { xs: 0, md: "1px solid" },
           borderColor: "divider",
-          bgcolor: "background.default"
+          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.72 : 0.56),
+          backdropFilter: "blur(20px)",
+          zIndex: 1
         }}
       >
         {state.engine.phase === "starting" && (
@@ -1079,7 +1082,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           </Box>
         )}
         <ChatPanel turns={state.turns} activeThreadId={state.activeThreadId} errors={state.errors} />
-        <Box sx={{ borderTop: "1px solid", borderColor: "divider" }}>
+        <Box
+          sx={{
+            borderTop: "1px solid",
+            borderColor: "divider",
+            bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.76)
+          }}
+        >
           <Composer
             cwd={cwd}
             permission={permission}
@@ -1162,14 +1171,53 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const showReasoningGlow = reasoningIndex === reasoningMax && reasoningMax > 0;
 
   return (
-    <Box sx={{ height: "100vh", display: "grid", gridTemplateRows: "56px 40px minmax(0, 1fr)" }}>
-      <AppBar position="static" color="inherit" elevation={0} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
-        <Toolbar variant="dense" sx={{ gap: 1, minHeight: 56, px: { xs: 1, sm: 1.5 } }}>
-          <PlayArrowIcon color="primary" />
-          <Typography variant="h6" sx={{ fontSize: 17, fontWeight: 800, display: { xs: "none", sm: "block" } }}>
+    <Box
+      sx={{
+        height: "100vh",
+        display: "grid",
+        gridTemplateRows: "56px minmax(0, 1fr)",
+        gap: { xs: 1, sm: 1.25, lg: 1.5 },
+        p: { xs: 1, sm: 1.5, lg: 2.5 },
+        position: "relative",
+        bgcolor: "background.default",
+        overflow: "hidden"
+      }}
+    >
+      {/* Immersive Atmospheric Gradient Background */}
+      <Box
+        sx={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 0,
+          pointerEvents: "none",
+          opacity: 0.45,
+          background: (theme) =>
+            [
+              `radial-gradient(ellipse at top right, ${alpha(theme.palette.primary.main, 0.16)}, transparent 72%)`,
+              `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.18)}, transparent 42%)`
+            ].join(", ")
+        }}
+      />
+      <AppBar
+        position="static"
+        color="inherit"
+        elevation={0}
+        sx={{
+          zIndex: 1,
+          borderRadius: { xs: 2, sm: 3 },
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.76 : 0.82),
+          backdropFilter: "blur(22px)",
+          boxShadow: (theme) => theme.customShadows?.z8
+        }}
+      >
+        <Toolbar variant="dense" sx={{ gap: { xs: 0.75, sm: 1 }, minHeight: 54, px: { xs: 1, sm: 1.5, lg: 2 }, overflow: "hidden" }}>
+          <PlayArrowIcon color="primary" sx={{ display: { xs: "none", sm: "block" } }} />
+          <Typography component="h1" variant="h6" sx={{ fontSize: 17, fontWeight: 800, display: { xs: "none", sm: "block" } }}>
             Codex
           </Typography>
-          <FormControl size="small" sx={{ minWidth: { xs: 148, sm: 220 }, maxWidth: { xs: 180, sm: 300 } }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 136, sm: 220 }, maxWidth: { xs: 148, sm: 300 } }}>
             <InputLabel>Model</InputLabel>
             <Select value={selectedModel} label="Model" onChange={(event) => setSelectedModel(event.target.value)}>
               {composerModels.map((entry) => {
@@ -1190,6 +1238,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               onClick={(event) => setReasoningAnchor(event.currentTarget)}
               sx={{
                 flex: "0 0 auto",
+                minWidth: { xs: 88, sm: 112 },
+                px: { xs: 0.75, sm: 2 },
+                "& .MuiButton-startIcon": { mr: { xs: 0.5, sm: 1 } },
                 boxShadow: showReasoningGlow ? "0 0 0 3px rgba(97, 243, 243, 0.18), 0 0 22px rgba(97, 243, 243, 0.35)" : undefined
               }}
             >
@@ -1197,21 +1248,23 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             </Button>
           </Tooltip>
           <Box sx={{ flex: 1, minWidth: 0 }} />
-          <Tooltip title={leftPanelVisible ? "Hide history panel" : "Show history panel"}>
-            <IconButton size="small" onClick={() => setLeftPanelVisible((visible) => !visible)}>
-              <ViewSidebarIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={inspectorVisible ? "Hide inspector panel" : "Show inspector panel"}>
-            <IconButton size="small" onClick={() => setInspectorVisible((visible) => !visible)}>
-              <ViewColumnIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Chip size="small" color={statusColor} label={state.engine.phase} />
+          <Box sx={{ display: { xs: "none", md: "contents" } }}>
+            <Tooltip title={leftPanelVisible ? "Hide history panel" : "Show history panel"}>
+              <IconButton size="small" onClick={() => setLeftPanelVisible((visible) => !visible)}>
+                <ViewSidebarIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={inspectorVisible ? "Hide inspector panel" : "Show inspector panel"}>
+              <IconButton size="small" onClick={() => setInspectorVisible((visible) => !visible)}>
+                <ViewColumnIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
           <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
             {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
           </Typography>
-          <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadBasics()}>
+          <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadBasics()} sx={{ display: { xs: "none", md: "inline-flex" } }}>
             Refresh
           </Button>
           <Tooltip title="Open settings">
@@ -1222,119 +1275,86 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         </Toolbar>
       </AppBar>
       <Box
-        role="tablist"
-        aria-label="Task tabs"
         sx={{
-          display: "flex",
-          alignItems: "stretch",
-          gap: 0.5,
-          overflowX: "auto",
-          overflowY: "hidden",
-          px: 1,
-          bgcolor: "background.paper",
-          borderBottom: "1px solid",
-          borderColor: "divider"
+          minHeight: 0,
+          overflow: "hidden",
+          display: "grid",
+          gridTemplateRows: "42px minmax(0, 1fr)",
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: { xs: 2, sm: 3 },
+          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.8),
+          backdropFilter: "blur(24px)",
+          boxShadow: (theme) => theme.customShadows?.card,
+          zIndex: 1
         }}
       >
-        <Button
-          role="tab"
-          aria-selected={state.activeThreadId === null}
-          size="small"
-          startIcon={<AddIcon />}
-          onClick={() => selectTaskTab(null)}
+        <Box
+          role="tablist"
+          aria-label="Task tabs"
           sx={{
-            my: 0.5,
-            flex: "0 0 auto",
-            borderRadius: 1,
-            color: state.activeThreadId === null ? "primary.main" : "text.secondary",
-            bgcolor: state.activeThreadId === null ? "action.selected" : "transparent"
+            display: "flex",
+            alignItems: "stretch",
+            gap: 0.75,
+            overflowX: "auto",
+            overflowY: "hidden",
+            px: { xs: 1, sm: 1.5 },
+            bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.62 : 0.72),
+            borderBottom: "1px solid",
+            borderColor: "divider"
           }}
         >
-          New task
-        </Button>
-        {taskTabs.map((thread) => {
-          const active = state.activeThreadId === thread.id;
-          return (
-            <Button
-              key={thread.id}
-              role="tab"
-              aria-selected={active}
-              size="small"
-              startIcon={<ChatBubbleOutlineIcon />}
-              onClick={() => selectTaskTab(thread.id)}
-              sx={{
-                my: 0.5,
-                px: 1.25,
-                flex: "0 0 auto",
-                maxWidth: 220,
-                justifyContent: "flex-start",
-                borderRadius: 1,
-                color: active ? "primary.main" : "text.secondary",
-                bgcolor: active ? "action.selected" : "transparent",
-                border: "1px solid",
-                borderColor: active ? "primary.main" : "transparent",
-                "& .MuiButton-startIcon": { mr: 0.75 }
-              }}
-            >
-              <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {thread.preview || thread.id}
-              </Box>
-            </Button>
-          );
-        })}
-      </Box>
-      <Popover
-        open={Boolean(reasoningAnchor)}
-        anchorEl={reasoningAnchor}
-        onClose={() => setReasoningAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-        PaperProps={{ sx: { width: 320, p: 2, mt: 0.75 } }}
-      >
-        <Stack spacing={1.5}>
-          <Stack direction="row" alignItems="center" spacing={1}>
-            <TuneIcon fontSize="small" color={showReasoningGlow ? "primary" : "inherit"} />
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                Reasoning strength
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Sent as `turn/start.effort`
-              </Typography>
-            </Box>
-            <Chip size="small" label={selectedReasoning?.label ?? reasoningEffort} color={showReasoningGlow ? "primary" : "default"} />
-          </Stack>
-          <Slider
-            value={reasoningIndex}
-            min={0}
-            max={reasoningMax}
-            step={1}
-            marks={reasoningOptions.map((option, index) => ({ value: index, label: option.label }))}
-            onChange={(_, value) => {
-              const index = Array.isArray(value) ? value[0] : value;
-              const next = reasoningOptions[index];
-              if (next) {
-                setReasoningEffort(next.value);
-              }
-            }}
+          <Button
+            role="tab"
+            aria-selected={state.activeThreadId === null}
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => selectTaskTab(null)}
             sx={{
-              mx: 1,
-              ...(showReasoningGlow
-                ? {
-                    "& .MuiSlider-thumb": {
-                      boxShadow: "0 0 0 8px rgba(97, 243, 243, 0.12), 0 0 24px rgba(97, 243, 243, 0.42)"
-                    }
-                  }
-                : {})
+              my: 0.625,
+              px: 1.25,
+              flex: "0 0 auto",
+              borderRadius: 1.5,
+              color: state.activeThreadId === null ? "primary.main" : "text.secondary",
+              bgcolor: state.activeThreadId === null ? "action.selected" : "transparent",
+              border: "1px solid",
+              borderColor: state.activeThreadId === null ? "primary.main" : "transparent"
             }}
-          />
-          <Typography variant="body2" color="text.secondary">
-            {selectedReasoning?.description ?? "Adjust model reasoning effort for the next turn."}
-          </Typography>
-        </Stack>
-      </Popover>
-
-      <Box sx={{ minHeight: 0, overflow: desktopLayout ? "hidden" : "auto" }}>
+          >
+            New task
+          </Button>
+          {taskTabs.map((thread) => {
+            const active = state.activeThreadId === thread.id;
+            return (
+              <Button
+                key={thread.id}
+                role="tab"
+                aria-selected={active}
+                size="small"
+                startIcon={<ChatBubbleOutlineIcon />}
+                onClick={() => selectTaskTab(thread.id)}
+                sx={{
+                  my: 0.625,
+                  px: 1.25,
+                  flex: "0 0 auto",
+                  maxWidth: 220,
+                  justifyContent: "flex-start",
+                  borderRadius: 1.5,
+                  color: active ? "primary.main" : "text.secondary",
+                  bgcolor: active ? "action.selected" : "transparent",
+                  border: "1px solid",
+                  borderColor: active ? "primary.main" : "transparent",
+                  "& .MuiButton-startIcon": { mr: 0.75 }
+                }}
+              >
+                <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {thread.preview || thread.id}
+                </Box>
+              </Button>
+            );
+          })}
+        </Box>
+        <Box sx={{ minHeight: 0, overflow: desktopLayout ? "hidden" : "auto" }}>
         {desktopLayout ? (
           <Box sx={{ height: "100%", minHeight: 0 }}>
           <PanelGroup
@@ -1391,7 +1411,58 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             {inspectorVisible && renderInspector()}
           </Box>
         )}
+        </Box>
       </Box>
+      <Popover
+        open={Boolean(reasoningAnchor)}
+        anchorEl={reasoningAnchor}
+        onClose={() => setReasoningAnchor(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        PaperProps={{ sx: { width: 320, p: 2, mt: 0.75 } }}
+      >
+        <Stack spacing={1.5}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <TuneIcon fontSize="small" color={showReasoningGlow ? "primary" : "inherit"} />
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                Reasoning strength
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Sent as `turn/start.effort`
+              </Typography>
+            </Box>
+            <Chip size="small" label={selectedReasoning?.label ?? reasoningEffort} color={showReasoningGlow ? "primary" : "default"} />
+          </Stack>
+          <Slider
+            value={reasoningIndex}
+            min={0}
+            max={reasoningMax}
+            step={1}
+            marks={reasoningOptions.map((option, index) => ({ value: index, label: option.label }))}
+            onChange={(_, value) => {
+              const index = Array.isArray(value) ? value[0] : value;
+              const next = reasoningOptions[index];
+              if (next) {
+                setReasoningEffort(next.value);
+              }
+            }}
+            sx={{
+              mx: 1,
+              ...(showReasoningGlow
+                ? {
+                    "& .MuiSlider-thumb": {
+                      boxShadow: "0 0 0 8px rgba(97, 243, 243, 0.12), 0 0 24px rgba(97, 243, 243, 0.42)"
+                    }
+                  }
+                : {})
+            }}
+          />
+          <Typography variant="body2" color="text.secondary">
+            {selectedReasoning?.description ?? "Adjust model reasoning effort for the next turn."}
+          </Typography>
+        </Stack>
+      </Popover>
       <SettingsDrawer
         open={settingsOpen}
         themeMode={themeMode}

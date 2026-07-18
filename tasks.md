@@ -2,6 +2,12 @@
 
 ## Now
 
+- [x] Align the main workbench layout, surfaces, typography, and theme architecture with `snapshot/参考/stitch_react_mui_interface_design/*` and `/root/projects/material-kit-react`.
+- [x] Verify the revised UI with Playwright desktop/mobile screenshots against the Stitch reference images, especially `codex_1/screen.png`.
+- [x] Verify built-in and custom theme switching still works after the theme architecture refactor.
+- [x] Update `tasks.md`, `progress.md`, and `current_plan.md` after each completed feature slice.
+- [x] Commit after the full visual/theme slice passes build and screenshot verification.
+- [x] Push the visual/theme slice after GitHub credentials or an authenticated remote are available.
 - [x] Upgrade the workbench shell to a MUI desktop-style layout with Blender/VSCode-like draggable, collapsible panel boundaries.
 - [x] Add a Settings entry point with multiple setting groups for appearance, layout, model behavior, relay providers, plugins, privacy, and pet dock customization.
 - [x] Support official default Light and Black themes, with a reserved theme-plugin install/switch surface for customer customization.

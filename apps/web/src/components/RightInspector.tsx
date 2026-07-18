@@ -23,6 +23,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DescriptionIcon from "@mui/icons-material/Description";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -163,15 +164,27 @@ export function RightInspector({
         minWidth: 0,
         minHeight: 0,
         display: "grid",
-        gridTemplateRows: { xs: "auto auto", md: "auto minmax(0, 1fr)" }
+        gridTemplateRows: { xs: "auto auto", md: "auto minmax(0, 1fr)" },
+        bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.46 : 0.38)
       }}
     >
-      <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
+      <Tabs
+        value={tab}
+        onChange={(_, value) => setTab(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{
+          px: 1,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.64)
+        }}
+      >
         <Tab label="Config" />
         <Tab label="Tools" />
         <Tab label="Files" />
       </Tabs>
-      <Box sx={{ overflow: "auto", p: 1.5 }}>
+      <Box sx={{ overflow: "auto", p: { xs: 1.25, sm: 1.5 } }}>
         {tab === 0 && (
           <ConfigTab
             account={account}

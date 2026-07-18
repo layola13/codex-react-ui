@@ -6,22 +6,17 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-1. Keep the repository under Git from this point forward.
-2. Commit completed feature slices after typecheck/build verification.
-3. Finish the core user loop:
-   - select or create a thread
-   - load history
-   - compose text/image input
-   - select model/provider
-   - choose permissions
-   - send a turn
-   - render messages, tool calls, command output, diffs, approvals
-4. Expand right-side configuration:
-   - provider/key management is implemented with keyring persistence and model alias resolution
-   - MCP servers list/reload, OAuth login, resource preview, and direct tool-call forms are implemented
-   - Skills list/enable/disable, extra roots, and local markdown preview are implemented
-   - Plugins list/install/uninstall, installed-only mention picker, detail views, remote skill preview, app/auth handling, and composer mentions are implemented
-   - Monaco-backed file explorer/editor and terminal/process controls are implemented
+1. Complete the Stitch/Material Kit visual alignment:
+   - use all Stitch reference folders for shared visual tokens and `codex_1/screen.png` as the primary layout target
+   - keep the current Codex workbench features while adopting translucent surface containers, compact navigation, MUI theme layering, and reference typography
+   - preserve light/black/Atmospheric/Sakura/local/custom theme switching
+2. Verify with commands and screenshots:
+   - `pnpm --filter @codex-ui/web typecheck`
+   - `pnpm --filter @codex-ui/web build`
+   - Playwright desktop and mobile screenshots, compared with the Stitch reference style
+   - explicit theme switching screenshot coverage
+3. Update `tasks.md`, `progress.md`, and `current_plan.md` after each completed feature slice.
+4. Commit and push after the full visual/theme slice is verified.
 
 ## Engineering Rules
 
@@ -34,4 +29,11 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Verification completed on 2026-07-17: typecheck, build, and Playwright e2e are green after installing the local workspace deps and Chromium host libraries.
+Stitch/Material Kit workbench visual alignment is verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
+
+## Latest Verification
+
+- `pnpm exec playwright install chromium`
+- `pnpm --filter @codex-ui/web typecheck`
+- `pnpm --filter @codex-ui/web build`
+- `pnpm test:e2e` (13/13 Chromium tests)

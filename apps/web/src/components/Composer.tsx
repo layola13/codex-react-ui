@@ -16,6 +16,7 @@ import {
 import SendIcon from "@mui/icons-material/Send";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
+import { alpha } from "@mui/material/styles";
 import { DANGER_CONFIRMATION, permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
 import { dangerousConfirmationMatches, type ComposerImageAttachment, type ComposerMention } from "../state/codexClient";
 
@@ -62,7 +63,13 @@ export function Composer({
   }, [onMentionConsumed, pendingMention]);
 
   return (
-    <Box sx={{ p: 1.5, bgcolor: "background.paper" }}>
+    <Box
+      sx={{
+        p: { xs: 1.25, sm: 1.5 },
+        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.64 : 0.72),
+        backdropFilter: "blur(18px)"
+      }}
+    >
       <Stack spacing={1.25}>
         <Stack direction={{ xs: "column", lg: "row" }} spacing={1}>
           <TextField size="small" label="Workspace cwd" value={cwd} onChange={(event) => onCwdChange(event.target.value)} sx={{ minWidth: 260, flex: 1 }} />
@@ -99,6 +106,18 @@ export function Composer({
           value={text}
           onChange={(event) => setText(event.target.value)}
           disabled={disabled}
+          sx={{
+            "& .MuiOutlinedInput-root": {
+              borderRadius: 3,
+              alignItems: "flex-start",
+              px: 1.5,
+              py: 1
+            },
+            "& textarea": {
+              fontSize: 15,
+              lineHeight: 1.65
+            }
+          }}
         />
         {images.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ overflowX: "auto", pb: 0.5 }}>

@@ -1014,6 +1014,28 @@ test("matches desktop and mobile workbench screenshots", async ({ page }) => {
     fullPage: false
   });
 
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Appearance settings").click();
+  await page.getByLabel("Skin theme").click();
+  await page.getByRole("option", { name: "Atmospheric Codex" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "atmospheric-codex");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page).toHaveScreenshot("workbench-atmospheric-theme.png", {
+    animations: "disabled",
+    fullPage: false
+  });
+
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Appearance settings").click();
+  await page.getByLabel("Skin theme").click();
+  await page.getByRole("option", { name: "Official Black" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page).toHaveScreenshot("workbench-official-black-theme.png", {
+    animations: "disabled",
+    fullPage: false
+  });
+
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Conversations" })).toBeVisible();

@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CssBaseline, ThemeProvider } from "@mui/material";
 import { App } from "./App";
-import { createCodexTheme, isThemeId, type ThemeMode, type ThemePlugin } from "./theme";
+import { ThemeProvider, isThemeId, type ThemeMode, type ThemePlugin } from "./theme";
 
 const THEME_STORAGE_KEY = "codex-react-ui.theme-mode";
 const CUSTOM_THEMES_KEY = "codex-react-ui.custom-theme-plugins";
@@ -46,7 +45,6 @@ function Root() {
     if (stored === "light") return "official-light";
     return isThemeId(stored, customs) ? stored : "official-light";
   });
-  const theme = useMemo(() => createCodexTheme(themeMode, customThemePlugins), [themeMode, customThemePlugins]);
 
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, themeMode);
@@ -58,8 +56,7 @@ function Root() {
   }, [customThemePlugins]);
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <ThemeProvider themeMode={themeMode} customThemePlugins={customThemePlugins}>
       <App
         themeMode={themeMode}
         customThemePlugins={customThemePlugins}

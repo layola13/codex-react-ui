@@ -1,4 +1,5 @@
 import { Alert, Box, Chip, Paper, Stack, Typography } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
@@ -15,13 +16,21 @@ type Props = {
 export function ChatPanel({ turns, activeThreadId, errors }: Props) {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : turns;
   return (
-    <Box sx={{ minHeight: 0, overflow: "auto", p: 2.5 }}>
-      <Stack spacing={1.5}>
+    <Box sx={{ minHeight: 0, overflow: "auto", p: { xs: 1.5, sm: 2.5, lg: 3 } }}>
+      <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
         {errors.map((error, index) => (
           error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null
         ))}
         {visibleTurns.length === 0 && (
-          <Paper variant="outlined" sx={{ p: 3, borderRadius: 1 }}>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: { xs: 2, sm: 3 },
+              borderRadius: 1,
+              bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.74),
+              boxShadow: (theme) => theme.customShadows?.card
+            }}
+          >
             <Typography variant="h6" sx={{ fontSize: 18, fontWeight: 750 }}>
               Ready for a Codex task
             </Typography>
@@ -31,7 +40,16 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
           </Paper>
         )}
         {visibleTurns.map((turn) => (
-          <Paper key={turn.id} variant="outlined" sx={{ p: 1.5, borderRadius: 1 }}>
+          <Paper
+            key={turn.id}
+            variant="outlined"
+            sx={{
+              p: 1.5,
+              borderRadius: 1,
+              bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.72),
+              boxShadow: (theme) => theme.customShadows?.z4
+            }}
+          >
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
               <Chip size="small" label={turn.status} color={turn.status === "failed" ? "error" : "default"} />
               <Typography variant="caption" color="text.secondary">
@@ -44,13 +62,14 @@ export function ChatPanel({ turns, activeThreadId, errors }: Props) {
                   key={item.id}
                   variant="outlined"
                   sx={{
-                    p: 1.25,
+                    p: 1.35,
+                    borderRadius: 1,
                     bgcolor:
                       item.type === "agentMessage"
-                        ? "background.paper"
+                        ? (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.86)
                         : item.type === "userMessage"
-                          ? "action.hover"
-                          : "background.default"
+                          ? "action.selected"
+                          : (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.66 : 0.6)
                   }}
                 >
                   <Stack direction="row" alignItems="center" spacing={1}>
