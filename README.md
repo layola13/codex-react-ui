@@ -13,6 +13,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Settings -> Codex Plugins manages real Codex plugin marketplaces, installed plugin mentions, hooks, plugin app auth state, and MCP server inventory without placeholder content.
 - Main composer UI commands `/plugins`, `/mcp`, and `/hooks` open the corresponding Settings plugin views instead of starting a Codex turn.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
+- User theme plugins with editable preview colors, uploaded background images, optional hero reuse, and JSON import/export.
 
 ## Development
 
@@ -78,6 +79,19 @@ Then the bridge restarts `codex app-server` so the selected provider and any in-
 ## UI Profiles
 
 The Config tab can export and import UI profiles as JSON. Profiles include provider metadata and env-key references, but never include API keys or key previews. Importing a profile merges providers by id and preserves any matching local keyring or in-memory credential state already present on this machine.
+
+## User Theme Plugins
+
+User-defined themes are managed from Settings, not from the right workspace panel. Open Settings -> Appearance -> Theme plugins, then create a custom theme or edit an existing user theme.
+
+To replace the workbench background:
+
+1. Click the image picker in the custom theme editor.
+2. Select a `png`, `jpg`, `webp`, or `gif` image up to 6 MiB.
+3. Enable `Use background as hero` if the main empty-state hero should reuse the same image.
+4. Save the theme, then select it from the theme plugin list.
+
+The uploaded image is stored in the user theme as `assets.appBackgroundImage`. When hero reuse is enabled, the same image is also written to `assets.heroImage`. Custom theme plugins can be exported as JSON and imported on another machine from the same Theme plugins view.
 
 ## Dangerous Permission Audit
 
