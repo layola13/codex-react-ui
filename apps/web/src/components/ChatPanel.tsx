@@ -22,7 +22,7 @@ import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PersonIcon from "@mui/icons-material/Person";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
-import type { ThemePlugin } from "../theme";
+import { themeVisualTuning, type ThemePlugin } from "../theme";
 import { MarkdownMessage } from "./MarkdownMessage";
 
 type AgentSession = {
@@ -713,6 +713,7 @@ function DefaultWorkbenchEmpty({
       : safeThemeAssetUrl(activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage);
   const cornerImage = safeThemeAssetUrl(activeThemePlugin?.assets?.cornerImage);
   const richDecorations = activeThemePlugin?.layout?.decorationIntensity === "rich";
+  const themeTuning = themeVisualTuning(activeThemePlugin);
   return (
     <Box data-testid="default-workbench-empty" sx={{ minHeight: { xs: 440, md: 560 }, display: "grid", alignItems: "center" }}>
       <Box
@@ -722,14 +723,15 @@ function DefaultWorkbenchEmpty({
           border: "1px solid",
           borderColor: "divider",
           borderRadius: 2,
-          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.78),
+          bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.workspaceSurfaceOpacity),
           boxShadow: (theme) => theme.customShadows?.card,
           px: { xs: 2, sm: 3, md: 4 },
           py: { xs: 3, md: 4 },
           backgroundImage: heroImage
             ? (theme) =>
                 [
-                  `linear-gradient(90deg, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.88 : 0.82)} 0%, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.64)} 56%, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.5 : 0.42)} 100%)`,
+                  `linear-gradient(90deg, ${alpha(theme.palette.background.paper, Math.min(0.9, themeTuning.heroOverlayOpacity + 0.14))} 0%, ${alpha(theme.palette.background.paper, themeTuning.heroOverlayOpacity)} 48%, ${alpha(theme.palette.background.paper, Math.max(0, themeTuning.heroOverlayOpacity * 0.28))} 100%)`,
+                  `radial-gradient(circle at 12% 24%, ${alpha(themeTuning.toneColor, themeTuning.toneOpacity)}, transparent 42%)`,
                   `url("${heroImage}")`
                 ].join(", ")
             : (theme) =>
@@ -751,7 +753,7 @@ function DefaultWorkbenchEmpty({
               pointerEvents: "none",
               backgroundImage:
                 "radial-gradient(circle at 12% 32%, rgba(255,255,255,0.52) 0 2px, transparent 3px), radial-gradient(circle at 72% 18%, rgba(255,255,255,0.46) 0 2px, transparent 3px)",
-              opacity: 0.72
+              opacity: Math.min(0.72, themeTuning.toneOpacity + 0.28)
             }}
           />
         )}
@@ -791,7 +793,7 @@ function DefaultWorkbenchEmpty({
                   textAlign: "left",
                   p: 1.5,
                   borderRadius: 1,
-                  bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.68 : 0.82),
+                  bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity),
                   borderColor: "divider",
                   "&:hover": {
                     borderColor: "primary.main",

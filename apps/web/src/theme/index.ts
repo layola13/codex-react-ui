@@ -5,6 +5,7 @@ export * from "./types";
 export * from "./theme-config";
 export * from "./create-theme";
 export * from "./theme-provider";
+export * from "./visual-tuning";
 
 export function installedThemePluginDefaults(): ThemeId[] {
   return themePlugins.filter((plugin) => plugin.installedByDefault).map((plugin) => plugin.id);

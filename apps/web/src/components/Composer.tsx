@@ -23,7 +23,7 @@ import FlagIcon from "@mui/icons-material/Flag";
 import { alpha } from "@mui/material/styles";
 import { permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
 import type { ComposerImageAttachment, ComposerMention } from "../state/codexClient";
-import type { ThemePlugin } from "../theme";
+import { themeVisualTuning, type ThemePlugin } from "../theme";
 
 type Props = {
   cwd: string;
@@ -99,6 +99,7 @@ export function Composer({
   const composerBackdrop = safeThemeAssetUrl(
     activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage
   );
+  const themeTuning = themeVisualTuning(activeThemePlugin);
 
   return (
     <Box
@@ -138,17 +139,17 @@ export function Composer({
       }}
       sx={{
         p: { xs: 1.25, sm: 1.5 },
-        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.64 : 0.72),
+        bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity),
         backgroundImage: composerBackdrop
           ? (theme) =>
               [
-                `linear-gradient(135deg, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.88)}, ${alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.92)})`,
+                `linear-gradient(135deg, ${alpha(theme.palette.background.paper, Math.min(0.9, themeTuning.heroOverlayOpacity + 0.12))}, ${alpha(theme.palette.background.paper, themeTuning.heroOverlayOpacity)})`,
                 `url("${composerBackdrop}")`
               ].join(", ")
           : undefined,
         backgroundSize: composerBackdrop ? "cover" : undefined,
         backgroundPosition: composerBackdrop ? "center" : undefined,
-        backdropFilter: "blur(18px)",
+        backdropFilter: `blur(${themeTuning.blurStrength}px)`,
         outline: dragActive ? "2px solid" : "0 solid",
         outlineColor: "primary.main",
         outlineOffset: dragActive ? -4 : 0,

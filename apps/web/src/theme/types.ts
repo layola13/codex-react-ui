@@ -11,6 +11,16 @@ export type BuiltinThemeId =
 export type ThemeId = BuiltinThemeId | (string & {});
 export type ThemeMode = ThemeId | "system";
 
+export type ThemeBackgroundScene = {
+  renderer: "canvas" | "three";
+  preset: "aurora" | "particles" | "orbit";
+  color?: string;
+  secondaryColor?: string;
+  speed?: number;
+  density?: number;
+  opacity?: number;
+};
+
 export type ThemePlugin = {
   id: ThemeId;
   name: string;
@@ -25,6 +35,7 @@ export type ThemePlugin = {
   dark?: boolean;
   assets?: {
     appBackgroundImage?: string;
+    appBackgroundVideo?: string;
     heroImage?: string;
     cornerImage?: string;
     petImage?: string;
@@ -33,6 +44,16 @@ export type ThemePlugin = {
     heroEnabled?: boolean;
     petEnabled?: boolean;
     decorationIntensity?: "none" | "subtle" | "rich";
+    backgroundLayerOpacity?: number;
+    backgroundOverlayOpacity?: number;
+    effectsLayerOpacity?: number;
+    workspaceSurfaceOpacity?: number;
+    heroOverlayOpacity?: number;
+    panelSurfaceOpacity?: number;
+    blurStrength?: number;
+    toneColor?: string;
+    toneOpacity?: number;
+    backgroundScene?: ThemeBackgroundScene;
   };
 };
 

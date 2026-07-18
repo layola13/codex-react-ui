@@ -94,6 +94,7 @@ import {
 import { Composer } from "./components/Composer";
 import { NewChatButton } from "./components/NewChatButton";
 import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
+import { ThemeBackgroundMedia } from "./components/ThemeBackgroundMedia";
 import { RightWorkspacePanel, type RightWorkspaceTab } from "./components/RightWorkspacePanel";
 import { SettingsDrawer, type ReasoningOption, type SettingsSectionId } from "./components/SettingsDrawer";
 import type { CodexPluginSettingsTab } from "./components/CodexPluginSettingsPanel";
@@ -106,7 +107,7 @@ import {
   type CodexConfigFieldKey,
   type CodexUserConfigView
 } from "./state/codexConfigSettings";
-import { installedThemePluginDefaults, isThemeId, themePlugins, type ThemeId, type ThemeMode, type ThemePlugin } from "./theme";
+import { installedThemePluginDefaults, isThemeId, themePlugins, themeVisualTuning, type ThemeId, type ThemeMode, type ThemePlugin } from "./theme";
 
 const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
@@ -1612,6 +1613,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   );
   const activeThemePlugin = allThemePlugins.find((plugin) => plugin.id === themeMode) ?? null;
   const shellBackgroundImage = safeThemeAssetUrl(activeThemePlugin?.assets?.appBackgroundImage);
+  const shellBackgroundVideo = safeThemeVideoUrl(activeThemePlugin?.assets?.appBackgroundVideo);
+  const backgroundScene = activeThemePlugin?.layout?.backgroundScene;
+  const themeTuning = themeVisualTuning(activeThemePlugin);
   const petImage = safeThemeAssetUrl(activeThemePlugin?.assets?.petImage);
   const showThemePet = Boolean(petImage && activeThemePlugin?.layout?.petEnabled !== false);
 
@@ -1630,8 +1634,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           gridTemplateRows: { xs: "auto minmax(360px, 1fr) auto", md: "minmax(0, 1fr) auto" },
           borderInline: { xs: 0, md: "1px solid" },
           borderColor: "divider",
-          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.72 : 0.56),
-          backdropFilter: "blur(20px)",
+          bgcolor: (theme) => alpha(theme.palette.background.default, themeTuning.workspaceSurfaceOpacity),
+          backdropFilter: `blur(${themeTuning.blurStrength}px)`,
           zIndex: 1,
           position: "relative"
         }}
@@ -1672,7 +1676,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               overflow: "hidden",
               border: "1px solid",
               borderColor: "divider",
-              bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.88),
+              bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity),
               boxShadow: (theme) => theme.customShadows?.z8,
               pointerEvents: "none",
               display: { xs: "none", sm: "block" },
@@ -1686,7 +1690,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           sx={{
             borderTop: "1px solid",
             borderColor: "divider",
-            bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.76)
+            bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity)
           }}
         >
           <Composer
@@ -1802,30 +1806,24 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         p: { xs: 1, sm: 1.5, lg: 2.5 },
         position: "relative",
         bgcolor: "background.default",
-        backgroundImage: shellBackgroundImage
-          ? (theme) =>
-              [
-                `linear-gradient(135deg, ${alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.86 : 0.72)}, ${alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.72 : 0.78)})`,
-                `url("${shellBackgroundImage}")`
-              ].join(", ")
-          : undefined,
-        backgroundSize: shellBackgroundImage ? "cover" : undefined,
-        backgroundPosition: shellBackgroundImage ? "center" : undefined,
         overflow: "hidden"
       }}
     >
-      {/* Immersive Atmospheric Gradient Background */}
+      {(shellBackgroundImage || shellBackgroundVideo || backgroundScene) && (
+        <ThemeBackgroundMedia imageUrl={shellBackgroundImage} videoUrl={shellBackgroundVideo} scene={backgroundScene} tuning={themeTuning} />
+      )}
       <Box
+        data-testid="theme-background-effects"
         sx={{
           position: "absolute",
           inset: 0,
           zIndex: 0,
           pointerEvents: "none",
-          opacity: 0.45,
+          backdropFilter: themeTuning.effectsLayerOpacity > 0 ? `blur(${themeTuning.blurStrength * themeTuning.effectsLayerOpacity}px)` : "none",
           background: (theme) =>
             [
-              `radial-gradient(ellipse at top right, ${alpha(theme.palette.primary.main, 0.16)}, transparent 72%)`,
-              `linear-gradient(135deg, ${alpha(theme.palette.background.paper, 0.18)}, transparent 42%)`
+              `radial-gradient(ellipse at top right, ${alpha(themeTuning.toneColor, themeTuning.toneOpacity)}, transparent 68%)`,
+              `linear-gradient(135deg, ${alpha(theme.palette.background.default, themeTuning.backgroundOverlayOpacity)}, ${alpha(theme.palette.background.default, Math.max(0, themeTuning.backgroundOverlayOpacity - 0.05))})`
             ].join(", ")
         }}
       />
@@ -1838,8 +1836,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           borderRadius: { xs: 2, sm: 3 },
           border: "1px solid",
           borderColor: "divider",
-          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.76 : 0.82),
-          backdropFilter: "blur(22px)",
+          bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity),
+          backdropFilter: `blur(${themeTuning.blurStrength}px)`,
           boxShadow: (theme) => theme.customShadows?.z8
         }}
       >
@@ -1982,11 +1980,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           border: "1px solid",
           borderColor: "divider",
           borderRadius: { xs: 2, sm: 3 },
-          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.7 : 0.8),
-          backdropFilter: "blur(24px)",
+          bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.workspaceSurfaceOpacity),
+          backdropFilter: `blur(${themeTuning.blurStrength}px)`,
           boxShadow: (theme) => theme.customShadows?.card,
           zIndex: 1
         }}
+        data-testid="workbench-shell"
       >
         <Box
           role="tablist"
@@ -1998,7 +1997,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             overflowX: "auto",
             overflowY: "hidden",
             px: { xs: 1, sm: 1.5 },
-            bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.62 : 0.72),
+            bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity),
             borderBottom: "1px solid",
             borderColor: "divider"
           }}
@@ -2745,6 +2744,17 @@ function safeThemeAssetUrl(value?: string): string | undefined {
     return undefined;
   }
   if (trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/")) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+function safeThemeVideoUrl(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || /["'()\\]/.test(trimmed)) {
+    return undefined;
+  }
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:video/")) {
     return trimmed;
   }
   return undefined;

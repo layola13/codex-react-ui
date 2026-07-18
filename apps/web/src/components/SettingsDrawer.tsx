@@ -64,7 +64,20 @@ import {
   type CodexUserConfigView,
   type DynamicCodexConfigField
 } from "../state/codexConfigSettings";
-import { themePlugins, type ThemeId, type ThemeMode, type ThemePlugin } from "../theme";
+import {
+  REFERENCE_BACKGROUND_TUNING,
+  clampThemeBlur,
+  clampThemePercent,
+  isHexColor,
+  percentToUnit,
+  themePlugins,
+  themeVisualTuning,
+  unitToPercent,
+  type ThemeBackgroundScene,
+  type ThemeId,
+  type ThemeMode,
+  type ThemePlugin
+} from "../theme";
 import type {
   FsDirectoryEntry,
   McpResourceContentEntry,
@@ -1976,37 +1989,43 @@ function CustomThemePluginEditor({
   const [secondary, setSecondary] = useState("#F59E0B");
   const [background, setBackground] = useState("#F8FAFC");
   const [appBackgroundImage, setAppBackgroundImage] = useState("");
+  const [appBackgroundVideo, setAppBackgroundVideo] = useState("");
   const [heroImage, setHeroImage] = useState("");
   const [cornerImage, setCornerImage] = useState("");
   const [petImage, setPetImage] = useState("");
   const [petEnabled, setPetEnabled] = useState(true);
   const [decorationIntensity, setDecorationIntensity] = useState<"none" | "subtle" | "rich">("subtle");
   const [useBackgroundAsHero, setUseBackgroundAsHero] = useState(true);
+  const [backgroundLayerOpacity, setBackgroundLayerOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.backgroundLayerOpacity));
+  const [backgroundOverlayOpacity, setBackgroundOverlayOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.backgroundOverlayOpacity));
+  const [effectsLayerOpacity, setEffectsLayerOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.effectsLayerOpacity));
+  const [workspaceSurfaceOpacity, setWorkspaceSurfaceOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.workspaceSurfaceOpacity));
+  const [heroOverlayOpacity, setHeroOverlayOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.heroOverlayOpacity));
+  const [panelSurfaceOpacity, setPanelSurfaceOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.panelSurfaceOpacity));
+  const [blurStrength, setBlurStrength] = useState(REFERENCE_BACKGROUND_TUNING.blurStrength);
+  const [toneColor, setToneColor] = useState(REFERENCE_BACKGROUND_TUNING.toneColor);
+  const [toneOpacity, setToneOpacity] = useState(unitToPercent(REFERENCE_BACKGROUND_TUNING.toneOpacity));
+  const [sceneRenderer, setSceneRenderer] = useState<"none" | "canvas" | "three">("none");
+  const [scenePreset, setScenePreset] = useState<ThemeBackgroundScene["preset"]>("aurora");
+  const [sceneColor, setSceneColor] = useState(REFERENCE_BACKGROUND_TUNING.toneColor);
+  const [sceneSecondaryColor, setSceneSecondaryColor] = useState("#F8B4C4");
+  const [sceneSpeed, setSceneSpeed] = useState(0.65);
+  const [sceneDensity, setSceneDensity] = useState(55);
+  const [sceneOpacity, setSceneOpacity] = useState(54);
   const [dark, setDark] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const backgroundFileRef = useRef<HTMLInputElement | null>(null);
+  const videoFileRef = useRef<HTMLInputElement | null>(null);
   const themeImportRef = useRef<HTMLInputElement | null>(null);
-  const safeBackgroundPreview = isSafeThemeAssetUrl(appBackgroundImage) ? appBackgroundImage.trim() : "";
+  const safeBackgroundPreview = isSafeThemeImageUrl(appBackgroundImage) ? appBackgroundImage.trim() : "";
+  const safeVideoPreview = isSafeThemeVideoUrl(appBackgroundVideo) ? appBackgroundVideo.trim() : "";
   const editing = Boolean(editingPlugin);
 
   useEffect(() => {
     if (!editingPlugin) {
       return;
     }
-    setName(editingPlugin.name);
-    setDescription(editingPlugin.description);
-    setPrimary(editingPlugin.preview.primary);
-    setSecondary(editingPlugin.preview.secondary);
-    setBackground(editingPlugin.preview.background);
-    setAppBackgroundImage(editingPlugin.assets?.appBackgroundImage ?? "");
-    setHeroImage(editingPlugin.assets?.heroImage ?? "");
-    setCornerImage(editingPlugin.assets?.cornerImage ?? "");
-    setPetImage(editingPlugin.assets?.petImage ?? "");
-    setPetEnabled(editingPlugin.layout?.petEnabled !== false);
-    setUseBackgroundAsHero(editingPlugin.layout?.heroEnabled !== false);
-    setDecorationIntensity(editingPlugin.layout?.decorationIntensity ?? "subtle");
-    setDark(Boolean(editingPlugin.dark));
-    setError(null);
+    loadThemeDraft(editingPlugin);
   }, [editingPlugin]);
 
   function resetDraft() {
@@ -2016,12 +2035,29 @@ function CustomThemePluginEditor({
     setSecondary("#F59E0B");
     setBackground("#F8FAFC");
     setAppBackgroundImage("");
+    setAppBackgroundVideo("");
     setHeroImage("");
     setCornerImage("");
     setPetImage("");
     setPetEnabled(true);
     setUseBackgroundAsHero(true);
     setDecorationIntensity("subtle");
+    setBackgroundLayerOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.backgroundLayerOpacity));
+    setBackgroundOverlayOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.backgroundOverlayOpacity));
+    setEffectsLayerOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.effectsLayerOpacity));
+    setWorkspaceSurfaceOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.workspaceSurfaceOpacity));
+    setHeroOverlayOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.heroOverlayOpacity));
+    setPanelSurfaceOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.panelSurfaceOpacity));
+    setBlurStrength(REFERENCE_BACKGROUND_TUNING.blurStrength);
+    setToneColor(REFERENCE_BACKGROUND_TUNING.toneColor);
+    setToneOpacity(unitToPercent(REFERENCE_BACKGROUND_TUNING.toneOpacity));
+    setSceneRenderer("none");
+    setScenePreset("aurora");
+    setSceneColor(REFERENCE_BACKGROUND_TUNING.toneColor);
+    setSceneSecondaryColor("#F8B4C4");
+    setSceneSpeed(0.65);
+    setSceneDensity(55);
+    setSceneOpacity(54);
     setDark(false);
     setError(null);
   }
@@ -2032,13 +2068,21 @@ function CustomThemePluginEditor({
       setError("Theme name is required.");
       return null;
     }
-    if (![primary, secondary, background].every((value) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.trim()))) {
+    if (![primary, secondary, background].every((value) => isHexColor(value.trim()))) {
       setError("Primary, secondary, and background must be hex colors.");
       return null;
     }
-    const mediaFields = [appBackgroundImage, heroImage, cornerImage, petImage].map((value) => value.trim()).filter(Boolean);
-    if (!mediaFields.every(isSafeThemeAssetUrl)) {
-      setError("Theme media must be http(s), blob, or data:image URLs.");
+    const imageFields = [appBackgroundImage, heroImage, cornerImage, petImage].map((value) => value.trim()).filter(Boolean);
+    if (!imageFields.every(isSafeThemeImageUrl)) {
+      setError("Theme image media must be http(s), blob, or data:image URLs.");
+      return null;
+    }
+    if (appBackgroundVideo.trim() && !isSafeThemeVideoUrl(appBackgroundVideo)) {
+      setError("Theme video background must be http(s), blob, or data:video URLs.");
+      return null;
+    }
+    if (![toneColor, sceneColor, sceneSecondaryColor].every((value) => isHexColor(value.trim()))) {
+      setError("Theme tone and scene colors must be hex colors.");
       return null;
     }
     const slug = trimmed
@@ -2049,10 +2093,23 @@ function CustomThemePluginEditor({
     const id = editingPlugin?.id ?? (`user-${slug || "theme"}-${Math.random().toString(36).slice(2, 7)}` as ThemeId);
     const assets = removeEmptyThemeAssets({
       appBackgroundImage: appBackgroundImage.trim(),
+      appBackgroundVideo: appBackgroundVideo.trim(),
       heroImage: heroImage.trim(),
       cornerImage: cornerImage.trim(),
       petImage: petImage.trim()
     });
+    const backgroundScene =
+      sceneRenderer === "none"
+        ? undefined
+        : {
+            renderer: sceneRenderer,
+            preset: scenePreset,
+            color: sceneColor.trim(),
+            secondaryColor: sceneSecondaryColor.trim(),
+            speed: clampDecimal(sceneSpeed, 0.65, 0.1, 3),
+            density: percentToUnit(sceneDensity),
+            opacity: percentToUnit(sceneOpacity)
+          };
     setError(null);
     return {
       id,
@@ -2070,7 +2127,17 @@ function CustomThemePluginEditor({
       layout: {
         heroEnabled: Boolean(heroImage.trim()) || (useBackgroundAsHero && Boolean(appBackgroundImage.trim())),
         petEnabled,
-        decorationIntensity
+        decorationIntensity,
+        backgroundLayerOpacity: percentToUnit(backgroundLayerOpacity),
+        backgroundOverlayOpacity: percentToUnit(backgroundOverlayOpacity),
+        effectsLayerOpacity: percentToUnit(effectsLayerOpacity),
+        workspaceSurfaceOpacity: percentToUnit(workspaceSurfaceOpacity),
+        heroOverlayOpacity: percentToUnit(heroOverlayOpacity),
+        panelSurfaceOpacity: percentToUnit(panelSurfaceOpacity),
+        blurStrength: clampThemeBlur(blurStrength),
+        toneColor: toneColor.trim(),
+        toneOpacity: percentToUnit(toneOpacity),
+        backgroundScene
       }
     };
   }
@@ -2082,12 +2149,31 @@ function CustomThemePluginEditor({
     setSecondary(plugin.preview.secondary);
     setBackground(plugin.preview.background);
     setAppBackgroundImage(plugin.assets?.appBackgroundImage ?? "");
+    setAppBackgroundVideo(plugin.assets?.appBackgroundVideo ?? "");
     setHeroImage(plugin.assets?.heroImage ?? "");
     setCornerImage(plugin.assets?.cornerImage ?? "");
     setPetImage(plugin.assets?.petImage ?? "");
     setPetEnabled(plugin.layout?.petEnabled !== false);
     setUseBackgroundAsHero(plugin.layout?.heroEnabled !== false);
     setDecorationIntensity(plugin.layout?.decorationIntensity ?? "subtle");
+    const tuning = themeVisualTuning(plugin);
+    setBackgroundLayerOpacity(unitToPercent(tuning.backgroundLayerOpacity));
+    setBackgroundOverlayOpacity(unitToPercent(tuning.backgroundOverlayOpacity));
+    setEffectsLayerOpacity(unitToPercent(tuning.effectsLayerOpacity));
+    setWorkspaceSurfaceOpacity(unitToPercent(tuning.workspaceSurfaceOpacity));
+    setHeroOverlayOpacity(unitToPercent(tuning.heroOverlayOpacity));
+    setPanelSurfaceOpacity(unitToPercent(tuning.panelSurfaceOpacity));
+    setBlurStrength(tuning.blurStrength);
+    setToneColor(tuning.toneColor);
+    setToneOpacity(unitToPercent(tuning.toneOpacity));
+    const scene = plugin.layout?.backgroundScene;
+    setSceneRenderer(scene?.renderer ?? "none");
+    setScenePreset(scene?.preset ?? "aurora");
+    setSceneColor(scene?.color && isHexColor(scene.color) ? scene.color : tuning.toneColor);
+    setSceneSecondaryColor(scene?.secondaryColor && isHexColor(scene.secondaryColor) ? scene.secondaryColor : "#F8B4C4");
+    setSceneSpeed(clampDecimal(scene?.speed, 0.65, 0.1, 3));
+    setSceneDensity(unitToPercent(scene?.density ?? 0.55));
+    setSceneOpacity(unitToPercent(scene?.opacity ?? 0.54));
     setDark(Boolean(plugin.dark));
     setError(null);
   }
