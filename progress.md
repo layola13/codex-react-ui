@@ -8,7 +8,7 @@
   - Sidechat reference assets remain under `snapshot/sidechat/`; the fresh implementation screenshot is `snapshot/sidechat-workbench.png`.
   - `/root/projects/material-kit-react/README.md` was rechecked during the slice; the sidechat UI stays on the existing Minimal UI / MUI surface language rather than introducing a separate visual system.
 - Current repository/verification facts:
-  - The sidechat implementation has passed the current pre-commit verification gate.
+  - The sidechat implementation has passed verification and is pushed to `origin/main`.
   - `pnpm test:e2e` now runs 16 Chromium tests, including the focused sidechat regression.
   - The Codex code index was rebuilt at `/root/projects/codex/.code_index` with the Rust engine: 3448 modules, 23596 functions, and 336100 edges.
 - Completed feature areas that should not be regressed:
@@ -34,6 +34,7 @@
     - `pnpm check:codex-config-schema`
     - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
     - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat|matches desktop and mobile workbench screenshots"`
     - `pnpm test:e2e` (16/16 Chromium tests)
 
 - Audited the "complete all settings" goal against the current Settings implementation.

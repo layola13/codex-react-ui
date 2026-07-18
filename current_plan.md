@@ -33,7 +33,7 @@ The sidechat slice is complete and verified.
    - inspected it against `snapshot/sidechat/屏幕截图 2026-07-18 153125.png` and the other sidechat reference images for the right panel, tab strip, fixed `+`, close controls, and bottom composer
 5. Release hygiene:
    - `README.md`, `tasks.md`, `progress.md`, and `current_plan.md` describe the verified sidechat state
-   - the sidechat slice is ready to commit and push through the authenticated SSH remote
+   - the sidechat slice has been committed and pushed to `origin/main`
 
 ## Engineering Rules
 
@@ -44,18 +44,18 @@ The sidechat slice is complete and verified.
 - Resolve provider model aliases before writing Codex config or starting turns, including short chained aliases such as `codex -> gpt-5.5 -> grok-4.5`.
 - Generated Codex protocol files should be regenerated from the local Codex binary, not edited by hand.
 
-## Next Commit Target
+## Current Baseline
 
-The next commit target is the verified sidechat slice:
+The verified sidechat slice is now the current baseline:
 
 - independent multi-tab sidechat behavior is wired to Codex threads
 - main-chat focus remains stable while sidechat notifications stream
 - slash-command input is preserved and tested
 - desktop/mobile layout behavior is verified
-- sidechat screenshots are saved under `/root/projects/snapshot`
+- sidechat screenshot evidence is saved at `snapshot/sidechat-workbench.png`
 - existing settings/theme/tooling/image tests remain green
 - `tasks.md`, `progress.md`, and `current_plan.md` describe the verified state
-- the commit is pushed through the authenticated SSH remote URL
+- the commits are pushed to `origin/main`
 
 ## Latest Verification
 
@@ -65,11 +65,11 @@ The next commit target is the verified sidechat slice:
 - `pnpm --filter @codex-ui/web build`
 - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat"`
 - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema setting|supports drag and drop image attachments|sidechat"`
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "sidechat|matches desktop and mobile workbench screenshots"`
 - `pnpm test:e2e` (16/16 Chromium tests)
 
 The sidechat-specific checks and screenshot comparison are now complete.
 
 ## Detailed Remaining Work
 
-1. Commit the verified sidechat slice.
-2. Push `main` to `origin/main`.
+No remaining sidechat work is tracked for this slice.

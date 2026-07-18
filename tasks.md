@@ -53,7 +53,7 @@
   - [x] keep slash commands such as `/goal` flowing through Codex input handling without UI blocking or rewriting
   - [x] decide and document whether sidechat messages should reuse the main thread focus or remain fully isolated
   - [x] add Playwright coverage for opening sidechat, creating extra tabs, and sending a `/goal` message
-  - [x] capture a fresh screenshot to `/root/projects/snapshot` and compare it with the reference sidechat image
+  - [x] capture a fresh screenshot at `snapshot/sidechat-workbench.png` and compare it with the reference sidechat images
   - [x] run `typecheck`, `build`, `test:e2e`, and the focused sidechat regression tests after the implementation stabilizes
   - [x] commit and push the sidechat slice once verification is green
 
