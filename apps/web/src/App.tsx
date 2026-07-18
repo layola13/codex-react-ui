@@ -29,7 +29,10 @@ import { alpha } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import AddIcon from "@mui/icons-material/Add";
+import AssessmentIcon from "@mui/icons-material/Assessment";
+import BoltIcon from "@mui/icons-material/Bolt";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
+import ChecklistIcon from "@mui/icons-material/Checklist";
 import SettingsIcon from "@mui/icons-material/Settings";
 import TuneIcon from "@mui/icons-material/Tune";
 import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
@@ -79,7 +82,15 @@ import {
   type TerminalSession
 } from "./state/codexClient";
 import { HistorySidebar } from "./components/HistorySidebar";
-import { ChatPanel } from "./components/ChatPanel";
+import {
+  ChatPanel,
+  type GoalBannerState,
+  type GoalStatus,
+  type ThreadTokenUsageState,
+  type TokenUsageBreakdown,
+  type WorkbenchModeState,
+  type WorkbenchStatsState
+} from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { NewChatButton } from "./components/NewChatButton";
 import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
@@ -116,6 +127,13 @@ type DangerDialogIntent = {
   source: "new-chat" | "permission";
   nextPermission: PermissionPresetId;
 };
+
+type ComposerSlashCommand =
+  | { type: "settings"; section: SettingsSectionId; pluginTab?: CodexPluginSettingsTab }
+  | { type: "fast"; enabled?: boolean }
+  | { type: "stats"; scope: "status" | "stats" }
+  | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string }
+  | { type: "plan"; enabled?: boolean; prompt?: string };
 
 type Action =
   | { type: "connected"; connected: boolean }
@@ -212,6 +230,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [reasoningEffort, setReasoningEffort] = useState("medium");
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
   const [cwd, setCwd] = useState("/root/projects");
+  const [fastModeEnabled, setFastModeEnabled] = useState(false);
+  const [planModeEnabled, setPlanModeEnabled] = useState(false);
+  const [statsPanelScope, setStatsPanelScope] = useState<"status" | "stats" | null>(null);
+  const [threadGoals, setThreadGoals] = useState<Record<string, GoalBannerState>>({});
+  const [threadTokenUsage, setThreadTokenUsage] = useState<Record<string, ThreadTokenUsageState>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("codex");
   const [settingsPluginTab, setSettingsPluginTab] = useState<CodexPluginSettingsTab>("marketplace");
@@ -578,6 +601,32 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             appendTerminalOutput(processId, decodeBase64Text(deltaBase64));
           }
         }
+        if (message.message.method === "thread/tokenUsage/updated") {
+          const params = asRecord(message.message.params);
+          const threadId = stringValue(params.threadId);
+          const usage = parseThreadTokenUsage(params.tokenUsage);
+          if (threadId && usage) {
+            setThreadTokenUsage((current) => ({ ...current, [threadId]: usage }));
+          }
+        }
+        if (message.message.method === "thread/goal/updated") {
+          const params = asRecord(message.message.params);
+          const goal = parseGoal(asRecord(params.goal));
+          if (goal) {
+            setThreadGoals((current) => ({ ...current, [goal.threadId]: goal }));
+          }
+        }
+        if (message.message.method === "thread/goal/cleared") {
+          const params = asRecord(message.message.params);
+          const threadId = stringValue(params.threadId);
+          if (threadId) {
+            setThreadGoals((current) => {
+              const next = { ...current };
+              delete next[threadId];
+              return next;
+            });
+          }
+        }
         if (message.message.method === "skills/changed") {
           void loadTooling({ forceSkillReload: true });
         }
@@ -672,6 +721,27 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
   }, [reasoningEffort, reasoningOptions]);
 
+  const loadThreadGoal = useCallback(
+    async (threadId: string) => {
+      try {
+        const result = await client.rpc("thread/goal/get", { threadId });
+        const goal = parseGoal(asRecord(asRecord(result).goal));
+        setThreadGoals((current) => {
+          const next = { ...current };
+          if (goal) {
+            next[threadId] = goal;
+          } else {
+            delete next[threadId];
+          }
+          return next;
+        });
+      } catch {
+        // Older app-server builds may not expose goal reads; keep the local banner state.
+      }
+    },
+    [client]
+  );
+
   const loadThread = useCallback(
     async (threadId: string) => {
       dispatch({ type: "activeThread", threadId });
@@ -679,11 +749,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const result = await client.rpc("thread/read", { threadId, includeTurns: true });
         const loaded = threadReadToTurns(result);
         dispatch({ type: "threadLoaded", thread: loaded.thread, turns: loaded.turns });
+        void loadThreadGoal(threadId);
       } catch (error) {
         dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
       }
     },
-    [client]
+    [client, loadThreadGoal]
   );
 
   const loadThreadIntoCache = useCallback(
@@ -787,51 +858,53 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
   }, [loadAuditEvents, state.token]);
 
-  const sendPrompt = useCallback(
-    async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
-      const uiCommand = composerUiSlashCommand(text, images, mentions);
-      if (uiCommand) {
-        openSettings("plugins", uiCommand);
-        return;
-      }
+  const ensureActiveThread = useCallback(async (): Promise<string> => {
+    if (state.activeThreadId) {
+      return state.activeThreadId;
+    }
+    const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+    const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+    const startParams: Record<string, JsonValue> = {
+      cwd,
+      sandbox: permissionOverrides.sandbox,
+      approvalPolicy: permissionOverrides.approvalPolicy,
+      sessionStartSource: "startup"
+    };
+    if (effectiveModel) {
+      startParams.model = effectiveModel;
+    }
+    const threadResult = await client.rpc("thread/start", startParams);
+    const thread = asRecord(asRecord(threadResult).thread);
+    const threadId = stringValue(thread.id);
+    if (!threadId) {
+      throw new Error("Codex did not return a thread id");
+    }
+    dispatch({ type: "activeThread", threadId });
+    return threadId;
+  }, [activeProviderId, client, cwd, permission, selectedModel, state.activeThreadId, state.providers]);
+
+  const startCodexTurn = useCallback(
+    async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[], options: { preserveText?: boolean; forceEffort?: string } = {}) => {
       if (permission === "dangerBypass" && !dangerBypassConfirmed) {
         setDangerDialogIntent({ source: "permission", nextPermission: "dangerBypass" });
         setDangerDialogAcknowledged(false);
         return;
       }
-      const input = composerInputToUserInput(text, images, mentions);
+      const input = composerInputToUserInput(text, images, mentions, { preserveText: options.preserveText });
       if (input.length === 0) {
         return;
       }
       try {
-        let threadId = state.activeThreadId;
+        const threadId = await ensureActiveThread();
         const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
         const permissionOverrides = permissionToTurnOverrides(permission, cwd);
-        if (!threadId) {
-          const startParams: Record<string, JsonValue> = {
-            cwd,
-            sandbox: permissionOverrides.sandbox,
-            approvalPolicy: permissionOverrides.approvalPolicy,
-            sessionStartSource: "startup"
-          };
-          if (effectiveModel) {
-            startParams.model = effectiveModel;
-          }
-          const threadResult = await client.rpc("thread/start", startParams);
-          const thread = asRecord(asRecord(threadResult).thread);
-          threadId = typeof thread.id === "string" ? thread.id : null;
-          dispatch({ type: "activeThread", threadId });
-        }
-        if (!threadId) {
-          throw new Error("Codex did not return a thread id");
-        }
         const turnParams: Record<string, JsonValue> = {
           threadId,
           input,
           cwd,
           sandboxPolicy: permissionOverrides.sandboxPolicy,
           approvalPolicy: permissionOverrides.approvalPolicy,
-          effort: reasoningEffort
+          effort: options.forceEffort ?? (fastModeEnabled ? fastReasoningEffort(reasoningOptions, reasoningEffort) : reasoningEffort)
         };
         if (effectiveModel) {
           turnParams.model = effectiveModel;
@@ -849,14 +922,150 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       client,
       cwd,
       dangerBypassConfirmed,
+      ensureActiveThread,
+      fastModeEnabled,
       loadAuditEvents,
-      openSettings,
       permission,
       reasoningEffort,
+      reasoningOptions,
       selectedModel,
-      state.activeThreadId,
       state.providers
     ]
+  );
+
+  const setGoalForActiveThread = useCallback(
+    async (objective: string) => {
+      if (permission === "dangerBypass" && !dangerBypassConfirmed) {
+        setDangerDialogIntent({ source: "permission", nextPermission: "dangerBypass" });
+        setDangerDialogAcknowledged(false);
+        return;
+      }
+      const normalized = objective.trim();
+      if (!normalized) {
+        dispatch({ type: "error", message: "Usage: /goal <objective>" });
+        return;
+      }
+      try {
+        const threadId = await ensureActiveThread();
+        const optimisticGoal = buildLocalGoal(threadId, normalized, "active", threadGoals[threadId]);
+        setThreadGoals((current) => ({ ...current, [threadId]: optimisticGoal }));
+        const result = await client.rpc("thread/goal/set", { threadId, objective: normalized, status: "active" });
+        const goal = parseGoal(asRecord(asRecord(result).goal));
+        if (goal) {
+          setThreadGoals((current) => ({ ...current, [threadId]: goal }));
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Goal set", error) });
+      }
+    },
+    [client, dangerBypassConfirmed, ensureActiveThread, permission, threadGoals]
+  );
+
+  const setActiveGoalStatus = useCallback(
+    async (status: GoalStatus) => {
+      const threadId = state.activeThreadId;
+      if (!threadId) {
+        dispatch({ type: "error", message: "Select or start a conversation before changing goal status" });
+        return;
+      }
+      const existing = threadGoals[threadId];
+      if (!existing) {
+        dispatch({ type: "error", message: "No goal is active for this conversation" });
+        return;
+      }
+      try {
+        setThreadGoals((current) => ({ ...current, [threadId]: buildLocalGoal(threadId, existing.objective, status, existing) }));
+        const result = await client.rpc("thread/goal/set", { threadId, status });
+        const goal = parseGoal(asRecord(asRecord(result).goal));
+        if (goal) {
+          setThreadGoals((current) => ({ ...current, [threadId]: goal }));
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Goal status", error) });
+      }
+    },
+    [client, state.activeThreadId, threadGoals]
+  );
+
+  const clearActiveGoal = useCallback(async () => {
+    const threadId = state.activeThreadId;
+    if (!threadId) {
+      dispatch({ type: "error", message: "Select or start a conversation before clearing a goal" });
+      return;
+    }
+    try {
+      setThreadGoals((current) => {
+        const next = { ...current };
+        delete next[threadId];
+        return next;
+      });
+      await client.rpc("thread/goal/clear", { threadId });
+    } catch (error) {
+      dispatch({ type: "error", message: errorMessage("Goal clear", error) });
+    }
+  }, [client, state.activeThreadId]);
+
+  const handleComposerSlashCommand = useCallback(
+    async (command: ComposerSlashCommand) => {
+      switch (command.type) {
+        case "settings":
+          openSettings(command.section, command.pluginTab ?? "marketplace");
+          return;
+        case "fast":
+          setFastModeEnabled((current) => command.enabled ?? !current);
+          return;
+        case "stats":
+          setStatsPanelScope(command.scope);
+          return;
+        case "goal":
+          if (command.action === "set") {
+            await setGoalForActiveThread(command.objective);
+            return;
+          }
+          if (command.action === "clear") {
+            await clearActiveGoal();
+            return;
+          }
+          if (command.action === "pause") {
+            await setActiveGoalStatus("paused");
+            return;
+          }
+          if (command.action === "resume") {
+            await setActiveGoalStatus("active");
+            return;
+          }
+          if (command.action === "complete") {
+            await setActiveGoalStatus("complete");
+            return;
+          }
+          if (command.action === "edit") {
+            const existing = state.activeThreadId ? threadGoals[state.activeThreadId] : null;
+            setComposerSuggestion({ id: `goal-edit-${Date.now()}`, text: existing ? `/goal ${existing.objective}` : "/goal " });
+            return;
+          }
+          setStatsPanelScope("status");
+          return;
+        case "plan":
+          setPlanModeEnabled(command.enabled ?? true);
+          if (command.prompt) {
+            await startCodexTurn(command.prompt, [], []);
+          }
+          return;
+      }
+    },
+    [clearActiveGoal, openSettings, setActiveGoalStatus, setGoalForActiveThread, startCodexTurn, state.activeThreadId, threadGoals]
+  );
+
+  const sendPrompt = useCallback(
+    async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
+      const slashCommand = parseComposerSlashCommand(text, images, mentions);
+      if (slashCommand) {
+        await handleComposerSlashCommand(slashCommand);
+        return;
+      }
+      await startCodexTurn(text, images, mentions);
+    },
+    [handleComposerSlashCommand, startCodexTurn]
   );
 
   const addSideChatTab = useCallback(() => {
@@ -1438,9 +1647,17 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           threads={nonSideChatThreads}
           activeThreadId={state.activeThreadId}
           errors={state.errors}
+          goal={activeGoal}
+          stats={statsState}
+          statsOpen={Boolean(statsPanelScope)}
+          modes={modeState}
           activeThemePlugin={activeThemePlugin}
           onPromptSelect={usePromptSuggestion}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
+          onStatsClose={() => setStatsPanelScope(null)}
+          onGoalEdit={() => setComposerSuggestion({ id: `goal-edit-${Date.now()}`, text: activeGoal ? `/goal ${activeGoal.objective}` : "/goal " })}
+          onGoalStatusChange={(status) => void setActiveGoalStatus(status)}
+          onGoalClear={() => void clearActiveGoal()}
         />
         {showThemePet && (
           <Box
@@ -1479,6 +1696,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             pendingMention={pendingMention}
             suggestedPrompt={composerSuggestion}
             activeThemePlugin={activeThemePlugin}
+            modeBadges={modeState}
             dangerBypassConfirmed={dangerBypassConfirmed}
             onCwdChange={setCwd}
             onPermissionChange={requestPermissionChange}
@@ -1537,6 +1755,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const nonSideChatThreads = state.threads.filter((thread) => !sideChatThreadIds.has(thread.id));
   const mainThreads = nonSideChatThreads.filter((thread) => !thread.parentThreadId);
   const mainTurns = state.turns.filter((turn) => !sideChatThreadIds.has(turn.threadId));
+  const activeGoal = state.activeThreadId ? threadGoals[state.activeThreadId] ?? null : null;
+  const modeState: WorkbenchModeState = {
+    fast: fastModeEnabled,
+    plan: planModeEnabled,
+    goalActive: Boolean(activeGoal)
+  };
   const taskTabs = mainThreads.slice(0, 12);
   const reasoningIndex = Math.max(0, reasoningOptions.findIndex((option) => option.value === reasoningEffort));
   const selectedReasoning = reasoningOptions[reasoningIndex] ?? reasoningOptions[0];
@@ -1544,6 +1768,27 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const showReasoningGlow = reasoningIndex === reasoningMax && reasoningMax > 0;
   const sideChatPermissionLabel = permission === "dangerBypass" ? "Bypass approvals" : "Ask for approval";
   const effectiveSelectedModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+  const activeProvider = state.providers.find((provider) => provider.id === activeProviderId);
+  const permissionLabel = permissionPresets.find((preset) => preset.id === permission)?.label ?? permission;
+  const activeThreadTurns = state.activeThreadId ? mainTurns.filter((turn) => turn.threadId === state.activeThreadId) : [];
+  const activeThreadUsage = state.activeThreadId ? threadTokenUsage[state.activeThreadId] : undefined;
+  const projectUsage = sumTokenBreakdowns(Object.values(threadTokenUsage).map((usage) => usage.total));
+  const statsState: WorkbenchStatsState = {
+    scope: statsPanelScope ?? "status",
+    activeThreadId: state.activeThreadId,
+    model: effectiveSelectedModel,
+    provider: activeProvider?.name ?? activeProvider?.id ?? "default",
+    reasoningEffort: fastModeEnabled ? `${reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort))} (Fast)` : reasoningLabel(reasoningEffort),
+    permissionLabel,
+    sessionTurns: activeThreadTurns.length,
+    sessionItems: activeThreadTurns.reduce((total, turn) => total + turn.items.length, 0),
+    projectThreads: mainThreads.length,
+    projectTurns: mainTurns.length,
+    threadUsage: activeThreadUsage,
+    projectUsage,
+    goal: activeGoal,
+    modes: modeState
+  };
   const dangerBackendPreview = buildDangerBackendPreview(cwd, effectiveSelectedModel, reasoningEffort);
   const dangerDialogPreset = permissionPresets.find((preset) => preset.id === dangerDialogIntent?.nextPermission);
 
@@ -1649,6 +1894,30 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               {selectedReasoning?.label ?? reasoningEffort}
             </Button>
           </Tooltip>
+          {fastModeEnabled && (
+            <Tooltip title={`Fast mode uses ${reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort))} effort for new turns`}>
+              <Chip
+                size="small"
+                color="warning"
+                icon={<BoltIcon />}
+                label="Fast"
+                data-testid="topbar-fast-badge"
+                sx={{ display: { xs: "none", sm: "inline-flex" }, fontWeight: 800 }}
+              />
+            </Tooltip>
+          )}
+          {planModeEnabled && (
+            <Tooltip title="Plan mode is active">
+              <Chip
+                size="small"
+                color="primary"
+                icon={<ChecklistIcon />}
+                label="Plan"
+                data-testid="topbar-plan-badge"
+                sx={{ display: { xs: "none", sm: "inline-flex" }, fontWeight: 800 }}
+              />
+            </Tooltip>
+          )}
           <Box sx={{ display: { xs: "none", lg: "block" }, flex: "0 0 auto" }}>
             <NewChatButton currentPermission={permission} onNew={requestNewSession} />
           </Box>
@@ -1685,6 +1954,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               />
             </Tooltip>
           )}
+          <Tooltip title="Open session stats">
+            <IconButton size="small" onClick={() => setStatsPanelScope("status")} aria-label="Open session stats">
+              <AssessmentIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
           <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
             {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
@@ -2103,24 +2377,103 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   );
 }
 
-function composerUiSlashCommand(
+function parseComposerSlashCommand(
   text: string,
   images: ComposerImageAttachment[],
   mentions: ComposerMention[]
-): CodexPluginSettingsTab | null {
+): ComposerSlashCommand | null {
   if (images.length > 0 || mentions.length > 0) {
     return null;
   }
-  switch (text.trim().toLowerCase()) {
-    case "/plugins":
-      return "marketplace";
-    case "/mcp":
-      return "mcp";
-    case "/hooks":
-      return "hooks";
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return null;
+  }
+  const match = /^\/([a-zA-Z][\w-]*)(?:\s+([\s\S]*))?$/.exec(trimmed);
+  if (!match) {
+    return null;
+  }
+  const name = match[1]?.toLowerCase() ?? "";
+  const rest = match[2]?.trim() ?? "";
+  switch (name) {
+    case "plugins":
+      return { type: "settings", section: "plugins", pluginTab: "marketplace" };
+    case "mcp":
+      return rest.toLowerCase() === "verbose"
+        ? { type: "settings", section: "plugins", pluginTab: "mcp" }
+        : { type: "settings", section: "plugins", pluginTab: "mcp" };
+    case "hooks":
+      return { type: "settings", section: "plugins", pluginTab: "hooks" };
+    case "apps":
+      return { type: "settings", section: "plugins", pluginTab: "apps" };
+    case "skills":
+      return { type: "settings", section: "skills" };
+    case "model":
+    case "permissions":
+    case "debug-config":
+      return { type: "settings", section: "codex" };
+    case "theme":
+      return { type: "settings", section: "appearance" };
+    case "pets":
+    case "pet":
+      return { type: "settings", section: "pet" };
+    case "title":
+    case "statusline":
+      return { type: "settings", section: "layout" };
+    case "fast":
+      return { type: "fast", enabled: parseOptionalBoolean(rest) };
+    case "status":
+      return { type: "stats", scope: "status" };
+    case "stats":
+    case "usage":
+      return { type: "stats", scope: "stats" };
+    case "goal": {
+      const normalized = rest.toLowerCase();
+      if (!rest) {
+        return { type: "goal", action: "show", objective: "" };
+      }
+      if (normalized === "clear") {
+        return { type: "goal", action: "clear", objective: "" };
+      }
+      if (normalized === "pause") {
+        return { type: "goal", action: "pause", objective: "" };
+      }
+      if (normalized === "resume") {
+        return { type: "goal", action: "resume", objective: "" };
+      }
+      if (normalized === "complete" || normalized === "done") {
+        return { type: "goal", action: "complete", objective: "" };
+      }
+      if (normalized === "edit") {
+        return { type: "goal", action: "edit", objective: "" };
+      }
+      return { type: "goal", action: "set", objective: rest };
+    }
+    case "plan":
+      if (!rest) {
+        return { type: "plan", enabled: true };
+      }
+      if (["off", "disable", "disabled"].includes(rest.toLowerCase())) {
+        return { type: "plan", enabled: false };
+      }
+      return { type: "plan", enabled: true, prompt: rest };
     default:
       return null;
   }
+}
+
+function parseOptionalBoolean(value: string): boolean | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (["on", "true", "enable", "enabled"].includes(normalized)) {
+    return true;
+  }
+  if (["off", "false", "disable", "disabled"].includes(normalized)) {
+    return false;
+  }
+  return undefined;
 }
 
 function readStoredBoolean(key: string, fallback: boolean): boolean {
@@ -2194,6 +2547,113 @@ function reasoningLabel(value: string): string {
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function parseGoal(goal: Record<string, unknown>): GoalBannerState | null {
+  const threadId = stringValue(goal.threadId);
+  const objective = stringValue(goal.objective);
+  if (!threadId || !objective) {
+    return null;
+  }
+  return {
+    threadId,
+    objective,
+    status: parseGoalStatus(goal.status),
+    tokenBudget: numberValue(goal.tokenBudget) ?? null,
+    tokensUsed: numberValue(goal.tokensUsed),
+    timeUsedSeconds: numberValue(goal.timeUsedSeconds)
+  };
+}
+
+function parseGoalStatus(value: unknown): GoalStatus {
+  switch (value) {
+    case "active":
+    case "paused":
+    case "blocked":
+    case "usageLimited":
+    case "budgetLimited":
+    case "complete":
+      return value;
+    default:
+      return "active";
+  }
+}
+
+function buildLocalGoal(threadId: string, objective: string, status: GoalStatus, existing?: GoalBannerState): GoalBannerState {
+  return {
+    threadId,
+    objective,
+    status,
+    tokenBudget: existing?.tokenBudget ?? null,
+    tokensUsed: existing?.tokensUsed ?? 0,
+    timeUsedSeconds: existing?.timeUsedSeconds ?? 0
+  };
+}
+
+function parseThreadTokenUsage(value: unknown): ThreadTokenUsageState | null {
+  const usage = asRecord(value);
+  const total = parseTokenBreakdown(usage.total);
+  const last = parseTokenBreakdown(usage.last);
+  if (!total || !last) {
+    return null;
+  }
+  return {
+    total,
+    last,
+    modelContextWindow: numberValue(usage.modelContextWindow) ?? null
+  };
+}
+
+function parseTokenBreakdown(value: unknown): TokenUsageBreakdown | null {
+  const record = asRecord(value);
+  const totalTokens = numberValue(record.totalTokens);
+  if (totalTokens == null) {
+    return null;
+  }
+  return {
+    totalTokens,
+    inputTokens: numberValue(record.inputTokens) ?? 0,
+    cachedInputTokens: numberValue(record.cachedInputTokens) ?? 0,
+    cacheWriteInputTokens: numberValue(record.cacheWriteInputTokens) ?? 0,
+    outputTokens: numberValue(record.outputTokens) ?? 0,
+    reasoningOutputTokens: numberValue(record.reasoningOutputTokens) ?? 0
+  };
+}
+
+function sumTokenBreakdowns(values: TokenUsageBreakdown[]): TokenUsageBreakdown | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  return values.reduce<TokenUsageBreakdown>(
+    (total, usage) => ({
+      totalTokens: total.totalTokens + usage.totalTokens,
+      inputTokens: total.inputTokens + usage.inputTokens,
+      cachedInputTokens: total.cachedInputTokens + usage.cachedInputTokens,
+      cacheWriteInputTokens: total.cacheWriteInputTokens + usage.cacheWriteInputTokens,
+      outputTokens: total.outputTokens + usage.outputTokens,
+      reasoningOutputTokens: total.reasoningOutputTokens + usage.reasoningOutputTokens
+    }),
+    {
+      totalTokens: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      outputTokens: 0,
+      reasoningOutputTokens: 0
+    }
+  );
+}
+
+function fastReasoningEffort(options: ReasoningOption[], current: string): string {
+  return options[0]?.value ?? (current === "minimal" ? "minimal" : "low");
 }
 
 function normalizeThreads(value: unknown[]): ClientState["threads"] {

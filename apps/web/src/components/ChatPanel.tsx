@@ -2,17 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Avatar, Badge, Box, Button, Chip, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import BoltIcon from "@mui/icons-material/Bolt";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import BuildIcon from "@mui/icons-material/Build";
+import ChecklistIcon from "@mui/icons-material/Checklist";
 import CloseIcon from "@mui/icons-material/Close";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import EditIcon from "@mui/icons-material/Edit";
+import FlagIcon from "@mui/icons-material/Flag";
 import ForumIcon from "@mui/icons-material/Forum";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
+import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PersonIcon from "@mui/icons-material/Person";
+import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
 import type { ThemePlugin } from "../theme";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -27,14 +35,71 @@ type AgentSession = {
   loaded: boolean;
 };
 
+export type GoalStatus = "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete";
+
+export type GoalBannerState = {
+  threadId: string;
+  objective: string;
+  status: GoalStatus;
+  tokenBudget?: number | null;
+  tokensUsed?: number;
+  timeUsedSeconds?: number;
+};
+
+export type TokenUsageBreakdown = {
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+};
+
+export type ThreadTokenUsageState = {
+  total: TokenUsageBreakdown;
+  last: TokenUsageBreakdown;
+  modelContextWindow?: number | null;
+};
+
+export type WorkbenchStatsState = {
+  scope: "status" | "stats";
+  activeThreadId: string | null;
+  model: string;
+  provider: string;
+  reasoningEffort: string;
+  permissionLabel: string;
+  sessionTurns: number;
+  sessionItems: number;
+  projectThreads: number;
+  projectTurns: number;
+  threadUsage?: ThreadTokenUsageState;
+  projectUsage?: TokenUsageBreakdown;
+  goal?: GoalBannerState | null;
+  modes: WorkbenchModeState;
+};
+
+export type WorkbenchModeState = {
+  fast: boolean;
+  plan: boolean;
+  goalActive: boolean;
+};
+
 type Props = {
   turns: WorkbenchTurn[];
   threads?: ThreadEntry[];
   activeThreadId: string | null;
   errors: string[];
+  goal?: GoalBannerState | null;
+  stats?: WorkbenchStatsState | null;
+  statsOpen?: boolean;
+  modes?: WorkbenchModeState;
   activeThemePlugin?: ThemePlugin | null;
   onPromptSelect?: (text: string) => void;
   onAgentThreadSelect?: (threadId: string) => void;
+  onStatsClose?: () => void;
+  onGoalEdit?: () => void;
+  onGoalStatusChange?: (status: GoalStatus) => void;
+  onGoalClear?: () => void;
 };
 
 const emptyPromptCards = [
@@ -68,7 +133,23 @@ const emptyPromptCards = [
   }
 ] as const;
 
-export function ChatPanel({ turns, threads = [], activeThreadId, errors, activeThemePlugin, onPromptSelect, onAgentThreadSelect }: Props) {
+export function ChatPanel({
+  turns,
+  threads = [],
+  activeThreadId,
+  errors,
+  goal,
+  stats,
+  statsOpen = false,
+  modes = { fast: false, plan: false, goalActive: false },
+  activeThemePlugin,
+  onPromptSelect,
+  onAgentThreadSelect,
+  onStatsClose,
+  onGoalEdit,
+  onGoalStatusChange,
+  onGoalClear
+}: Props) {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [closedAgentIds, setClosedAgentIds] = useState<string[]>([]);
   const [acknowledgedAgentIds, setAcknowledgedAgentIds] = useState<string[]>([]);
@@ -93,6 +174,7 @@ export function ChatPanel({ turns, threads = [], activeThreadId, errors, activeT
     ? agentConversationTurns(turns, activeThreadId, selectedAgent)
     : mainConversationTurns(turns, activeThreadId);
   const hasParallelAgents = visibleAgents.length > 0;
+  const showTopStatus = Boolean(goal || statsOpen || modes.fast || modes.plan);
 
   function selectAgent(agent: AgentSession) {
     setSelectedAgentId(agent.id);
@@ -130,6 +212,19 @@ export function ChatPanel({ turns, threads = [], activeThreadId, errors, activeT
           onCloseAgent={closeAgent}
         />
       )}
+      <Box sx={{ minHeight: 0, display: "grid", gridTemplateRows: showTopStatus ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)" }}>
+        {showTopStatus && (
+          <ChatTopStatusSurface
+            goal={goal}
+            stats={stats}
+            statsOpen={statsOpen}
+            modes={modes}
+            onStatsClose={onStatsClose}
+            onGoalEdit={onGoalEdit}
+            onGoalStatusChange={onGoalStatusChange}
+            onGoalClear={onGoalClear}
+          />
+        )}
       <Box sx={{ minHeight: 0, overflow: "auto", p: { xs: 1.5, sm: 2.5, lg: 3 } }}>
         <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
           {errors.map((error, index) => (
@@ -163,8 +258,254 @@ export function ChatPanel({ turns, threads = [], activeThreadId, errors, activeT
           ))}
         </Stack>
       </Box>
+      </Box>
     </Box>
   );
+}
+
+function ChatTopStatusSurface({
+  goal,
+  stats,
+  statsOpen,
+  modes,
+  onStatsClose,
+  onGoalEdit,
+  onGoalStatusChange,
+  onGoalClear
+}: {
+  goal?: GoalBannerState | null;
+  stats?: WorkbenchStatsState | null;
+  statsOpen: boolean;
+  modes: WorkbenchModeState;
+  onStatsClose?: () => void;
+  onGoalEdit?: () => void;
+  onGoalStatusChange?: (status: GoalStatus) => void;
+  onGoalClear?: () => void;
+}) {
+  return (
+    <Box
+      data-testid="chat-top-status-surface"
+      sx={{
+        borderBottom: "1px solid",
+        borderColor: "divider",
+        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.82),
+        backdropFilter: "blur(18px)",
+        px: { xs: 1, sm: 1.5, lg: 2 },
+        py: 1
+      }}
+    >
+      <Stack spacing={1} sx={{ maxWidth: 1120, mx: "auto" }}>
+        {goal && (
+          <GoalBanner
+            goal={goal}
+            onEdit={onGoalEdit}
+            onStatusChange={onGoalStatusChange}
+            onClear={onGoalClear}
+          />
+        )}
+        {(modes.fast || modes.plan) && (
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
+            {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label="Fast" data-testid="fast-mode-badge" />}
+            {modes.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label="Plan" data-testid="plan-mode-badge" />}
+          </Stack>
+        )}
+        {statsOpen && stats && <StatsPanel stats={stats} onClose={onStatsClose} />}
+      </Stack>
+    </Box>
+  );
+}
+
+function GoalBanner({
+  goal,
+  onEdit,
+  onStatusChange,
+  onClear
+}: {
+  goal: GoalBannerState;
+  onEdit?: () => void;
+  onStatusChange?: (status: GoalStatus) => void;
+  onClear?: () => void;
+}) {
+  const paused = goal.status === "paused";
+  const complete = goal.status === "complete";
+  return (
+    <Paper
+      data-testid="sticky-goal-bar"
+      variant="outlined"
+      sx={{
+        p: 1,
+        borderRadius: 1,
+        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.84 : 0.9)
+      }}
+    >
+      <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "stretch", md: "center" }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+          <FlagIcon fontSize="small" color={complete ? "success" : paused ? "disabled" : "primary"} />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontWeight: 800, textTransform: "uppercase" }}>
+              Goal
+            </Typography>
+            <Typography sx={{ fontWeight: 750, overflowWrap: "anywhere", lineHeight: 1.35 }}>{goal.objective}</Typography>
+          </Box>
+        </Stack>
+        <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Chip size="small" label={goalStatusLabel(goal.status)} color={complete ? "success" : paused ? "default" : "primary"} />
+          {typeof goal.tokensUsed === "number" && <Chip size="small" variant="outlined" label={`${formatNumber(goal.tokensUsed)} tokens`} />}
+          {goal.tokenBudget != null && <Chip size="small" variant="outlined" label={`${formatNumber(goal.tokenBudget)} budget`} />}
+          {typeof goal.timeUsedSeconds === "number" && goal.timeUsedSeconds > 0 && (
+            <Chip size="small" variant="outlined" label={formatDuration(goal.timeUsedSeconds)} />
+          )}
+          <Tooltip title="Edit goal">
+            <IconButton size="small" aria-label="Edit goal" onClick={onEdit}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={paused ? "Resume goal" : "Pause goal"}>
+            <IconButton
+              size="small"
+              aria-label={paused ? "Resume goal" : "Pause goal"}
+              onClick={() => onStatusChange?.(paused ? "active" : "paused")}
+              disabled={complete}
+            >
+              {paused ? <PlayCircleIcon fontSize="small" /> : <PauseCircleIcon fontSize="small" />}
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Clear goal">
+            <IconButton size="small" aria-label="Clear goal" onClick={onClear}>
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+function StatsPanel({ stats, onClose }: { stats: WorkbenchStatsState; onClose?: () => void }) {
+  return (
+    <Paper
+      data-testid="slash-stats-panel"
+      variant="outlined"
+      sx={{
+        p: 1.25,
+        borderRadius: 1,
+        bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.68 : 0.74)
+      }}
+    >
+      <Stack spacing={1.25}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <AssessmentIcon fontSize="small" color="primary" />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+              {stats.scope === "stats" ? "Project Stats" : "Session Status"}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+              {stats.activeThreadId ? `Thread ${stats.activeThreadId}` : "No active thread yet"}
+            </Typography>
+          </Box>
+          <Button size="small" onClick={onClose}>
+            Close
+          </Button>
+        </Stack>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" },
+            gap: 0.75
+          }}
+        >
+          <StatsMetric label="Thread tokens" value={formatTokenValue(stats.threadUsage?.total.totalTokens)} />
+          <StatsMetric label="Project tokens" value={formatTokenValue(stats.projectUsage?.totalTokens)} />
+          <StatsMetric label="Thread turns" value={formatNumber(stats.sessionTurns)} />
+          <StatsMetric label="Project turns" value={formatNumber(stats.projectTurns)} />
+          <StatsMetric label="Model" value={stats.model || "Engine default"} compact />
+          <StatsMetric label="Provider" value={stats.provider || "default"} compact />
+          <StatsMetric label="Reasoning" value={stats.reasoningEffort} compact />
+          <StatsMetric label="Permissions" value={stats.permissionLabel} compact />
+        </Box>
+        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+          <Chip size="small" label={stats.modes.fast ? "Fast on" : "Fast off"} color={stats.modes.fast ? "warning" : "default"} icon={<BoltIcon />} />
+          <Chip size="small" label={stats.modes.plan ? "Plan on" : "Plan off"} color={stats.modes.plan ? "primary" : "default"} icon={<ChecklistIcon />} />
+          <Chip size="small" label={stats.goal ? `Goal ${goalStatusLabel(stats.goal.status)}` : "No goal"} />
+          <Chip size="small" label={`${formatNumber(stats.projectThreads)} threads indexed`} />
+          <Chip size="small" label={`${formatNumber(stats.sessionItems)} items in thread`} />
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+}
+
+function StatsMetric({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+  return (
+    <Box
+      sx={{
+        minWidth: 0,
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+        bgcolor: "background.paper",
+        p: 0.85
+      }}
+    >
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontWeight: 700 }}>
+        {label}
+      </Typography>
+      <Typography
+        title={value}
+        sx={{
+          fontWeight: compact ? 700 : 850,
+          fontSize: compact ? 13 : 18,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }}
+      >
+        {value}
+      </Typography>
+    </Box>
+  );
+}
+
+function goalStatusLabel(status: GoalStatus): string {
+  switch (status) {
+    case "active":
+      return "Active";
+    case "paused":
+      return "Paused";
+    case "blocked":
+      return "Blocked";
+    case "usageLimited":
+      return "Usage limited";
+    case "budgetLimited":
+      return "Budget limited";
+    case "complete":
+      return "Complete";
+    default:
+      return status;
+  }
+}
+
+function formatTokenValue(value?: number): string {
+  return typeof value === "number" ? formatNumber(value) : "waiting for usage";
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatDuration(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  if (minutes <= 0) {
+    return `${remainingSeconds}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours <= 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${hours}h ${remainingMinutes}m`;
 }
 
 function ParallelAgentsRail({

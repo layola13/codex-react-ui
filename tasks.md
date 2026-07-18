@@ -2,15 +2,15 @@
 
 ## Now
 
-- [ ] Add a main composer slash-command router for lightweight UI commands instead of only handling `/plugins`, `/mcp`, and `/hooks`.
-- [ ] Add `/fast` with a lightning badge near the composer/top status and prevent it from being sent as a normal Codex turn.
-- [ ] Add `/status` and `/stats` as a primary session/project stats surface, including token usage, model/provider, effort, permissions, active goal, and mode flags.
-- [ ] Add `/goal` support with a sticky top-of-chat goal bar that stays visible above the scrolling transcript; support setting, editing, pausing/resuming, and clearing the goal.
-- [ ] Add `/plan` mode with a visible planning symbol and state marker; route `/plan <text>` as a plan-mode prompt.
-- [ ] Route heavyweight slash commands such as `/theme`, `/pets`, `/statusline`, `/plugins`, `/mcp`, and `/hooks` into Settings instead of the right workspace.
-- [ ] Add Playwright coverage and screenshots for `/fast`, `/status` or `/stats`, sticky `/goal`, and `/plan` UI state.
-- [ ] Run typecheck, focused Playwright tests, full workbench e2e, build, and diff checks before committing the slash command slice.
-- [ ] Commit and push the slash command status/goal/fast/plan slice to `origin/main`.
+- [x] Add a main composer slash-command router for lightweight UI commands instead of only handling `/plugins`, `/mcp`, and `/hooks`.
+- [x] Add `/fast` with a lightning badge near the composer/top status and prevent it from being sent as a normal Codex turn.
+- [x] Add `/status`, `/stats`, and `/usage` as primary session/project stats surfaces, including token usage, model/provider, effort, permissions, active goal, and mode flags.
+- [x] Add `/goal` support with a sticky top-of-chat goal bar that stays visible above the scrolling transcript; support setting, editing, pausing/resuming, completing, and clearing the goal.
+- [x] Add `/plan` mode with a visible planning symbol and state marker; route `/plan <text>` as a plan-mode prompt.
+- [x] Route heavyweight slash commands such as `/theme`, `/pets`, `/statusline`, `/plugins`, `/mcp`, and `/hooks` into Settings instead of the right workspace.
+- [x] Add Playwright coverage and screenshots for `/fast`, `/status` or `/stats`, sticky `/goal`, `/usage`, and `/plan` UI state.
+- [x] Run typecheck, focused Playwright tests, full workbench e2e, build, and diff checks before committing the slash command slice.
+- [x] Commit and push the slash command status/goal/fast/plan slice to `origin/main`.
 - [x] Add user theme plugin editing so saved themes can be adjusted and switched without recreating duplicates.
 - [x] Add user theme plugin JSON import/export for local theme portability.
 - [x] Verify theme edit/import/export/switching with Playwright and fresh screenshots.
@@ -92,6 +92,7 @@
 - [x] Add terminal/process controls for command execution and PTY interaction.
 - [x] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.
 - [x] Keep the sidechat slice small enough to land without regressing the existing settings/theme/tooling workbench.
+- [ ] Decide parity strategy for remaining TUI-only slash commands such as `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new`: add Web-native affordances where app-server support exists, otherwise document them as normal prompt text or future backend work.
 
 ## Later
 

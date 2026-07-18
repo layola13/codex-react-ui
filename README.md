@@ -11,7 +11,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Third-party provider metadata: base URL, native models, model aliases, API key preview, save, and activate.
 - Provider activation writes Codex config via `config/batchWrite` and restarts app-server so temporary API-key env vars are available.
 - Settings -> Codex Plugins manages real Codex plugin marketplaces, installed plugin mentions, hooks, plugin app auth state, and MCP server inventory without placeholder content.
-- Main composer UI commands `/plugins`, `/mcp`, and `/hooks` open the corresponding Settings plugin views instead of starting a Codex turn.
+- Main composer UI commands `/fast`, `/status`, `/stats`, `/usage`, `/goal`, and `/plan` are handled by the browser before `turn/start`; Settings-oriented commands open Settings instead of the right workspace.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
 - User theme plugins with editable preview colors, uploaded background images, optional hero reuse, and JSON import/export.
 
@@ -92,6 +92,17 @@ To replace the workbench background:
 4. Save the theme, then select it from the theme plugin list.
 
 The uploaded image is stored in the user theme as `assets.appBackgroundImage`. When hero reuse is enabled, the same image is also written to `assets.heroImage`. Custom theme plugins can be exported as JSON and imported on another machine from the same Theme plugins view.
+
+## Main Slash Commands
+
+The main composer intercepts lightweight UI commands before they become Codex turns:
+
+- `/fast`, `/fast on`, and `/fast off` toggle fast mode. When active, new main-chat turns use the lowest available reasoning effort and show lightning badges in the top bar and composer.
+- `/status` opens the session status panel. `/stats` and `/usage` open the project stats panel. These panels show token usage, model/provider, reasoning effort, permission mode, active goal, active modes, thread count, and turn/item counts.
+- `/goal <objective>` sets the active thread goal. `/goal`, `/goal edit`, `/goal pause`, `/goal resume`, `/goal complete`, and `/goal clear` manage the sticky goal bar shown above the scrolling transcript.
+- `/plan` turns on plan mode. `/plan off` disables it. `/plan <prompt>` turns on plan mode and sends `<prompt>` as the Codex turn text, without sending the `/plan` prefix.
+
+Settings-oriented commands stay out of the right runtime workspace. `/plugins`, `/mcp`, `/hooks`, `/apps`, `/skills`, `/theme`, `/pet`, `/pets`, `/statusline`, `/title`, `/model`, `/permissions`, and `/debug-config` open the relevant Settings section. Sidechat inputs are intentionally not parsed by the browser, so slash-shaped sidechat text is sent to that sidechat thread exactly as typed.
 
 ## Dangerous Permission Audit
 

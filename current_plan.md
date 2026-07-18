@@ -4,18 +4,18 @@
 
 Build a local-first React + MUI facade for Codex CLI where Codex remains the execution engine and the browser UI manages configuration, conversation history, prompts, permissions, providers, tools, MCP, Skills, and Plugins.
 
-## Immediate Slice
+## Completed Slice
 
-Implement the main-composer slash command router and first-class status surfaces for the commands the web workbench must own directly.
+Implemented the main-composer slash command router and first-class status surfaces for the commands the web workbench owns directly.
 
 1. Route lightweight slash commands in the browser before `turn/start`:
    - `/fast` toggles fast mode and shows a lightning status badge near the top bar and composer
-   - `/status` and `/stats` open a primary stats surface with token usage, model/provider, reasoning effort, permission mode, active goal, and mode flags
+   - `/status`, `/stats`, and `/usage` open primary status/stats surfaces with token usage, model/provider, reasoning effort, permission mode, active goal, and mode flags
    - `/goal` sets, edits, pauses/resumes, clears, and displays the current objective
    - `/plan` enables plan mode, shows a plan marker, and lets `/plan <text>` send a plan-mode prompt
 2. Keep heavyweight settings commands in Settings:
    - `/plugins`, `/mcp`, and `/hooks` keep opening Settings -> Codex Plugins tabs
-   - `/theme`, `/pets`, and `/statusline` route to Settings sections instead of the right runtime workspace
+   - `/theme`, `/pets`, `/statusline`, `/title`, `/model`, `/permissions`, and `/debug-config` route to Settings sections instead of the right runtime workspace
 3. Preserve layout ownership:
    - right runtime workspace stays hidden by default and remains for Side chat, Browser, and Terminal only
    - Settings content remains in Settings
@@ -41,26 +41,21 @@ The verified baseline for this landing target is:
 - top-right split-view control opens the runtime workspace with Side chat, Browser, and Terminal
 - all settings and management surfaces live in Settings, including plugins, MCP, hooks, skills, workspace files, profile import/export, and dangerous audit records
 - `/plugins`, `/mcp`, and `/hooks` open Settings views and do not start a Codex turn
-- other slash commands are not yet fully web-routed; they currently fall through as normal prompt text unless this slice handles them
+- remaining TUI-only slash commands are intentionally not claimed as full Web parity unless this repo has a Web-native affordance or app-server RPC for them
 
 ## Latest Verification
 
-- Last completed pushed baseline:
-  - `392a0f9 Add user theme background switching`
-  - `72c15e5 chore: checkpoint README 2026-07-18T14:47:56Z`
-- Last completed verification before this new slash-command slice:
+- Slash-command status/goal/fast/plan verification:
   - `pnpm --filter @codex-ui/web typecheck`
-  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "user theme|uploaded background"`
   - `pnpm exec playwright test tests/e2e/workbench.spec.ts`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "fast status goal and plan"`
   - `pnpm --filter @codex-ui/web build`
+  - screenshot evidence: `snapshot/slash-command-status-goal-plan.png`
 
-The slash-command status/goal/fast/plan slice is now in progress and still needs implementation verification.
+The slash-command status/goal/fast/plan slice is implemented and verified.
 
-## Detailed Remaining Work
+## Remaining Slash Command Work
 
-1. Build the slash command router and command parser.
-2. Implement `/fast`, `/status`/`/stats`, `/goal`, and `/plan`.
-3. Route heavyweight commands to Settings.
-4. Add Playwright coverage and screenshots.
-5. Update README/task/progress docs.
-6. Commit and push the slice to `origin/main`.
+1. Decide which remaining TUI-only commands should get Web-native equivalents.
+2. Add app-server-backed behavior before claiming full parity for commands such as `/rename`, `/review`, `/diff`, `/compact`, `/resume`, and `/new`.
+3. Keep sidechat slash-shaped input unparsed so sidechat remains an isolated Codex thread surface.

@@ -122,6 +122,7 @@ test.beforeEach(async ({ page }) => {
     const outbound = ((window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound = []);
     let threadStartCount = 0;
     let turnStartCount = 0;
+    let tokenTotal = 0;
 
     class MockWebSocket extends EventTarget {
       public static readonly CONNECTING = 0;
@@ -436,6 +437,36 @@ test.beforeEach(async ({ page }) => {
               }
             });
             setTimeout(() => {
+              tokenTotal += 1234;
+              this.emit({
+                type: "codex.notification",
+                message: {
+                  method: "thread/tokenUsage/updated",
+                  params: {
+                    threadId,
+                    turnId,
+                    tokenUsage: {
+                      total: {
+                        totalTokens: tokenTotal,
+                        inputTokens: Math.round(tokenTotal * 0.5),
+                        cachedInputTokens: 100,
+                        cacheWriteInputTokens: 20,
+                        outputTokens: Math.round(tokenTotal * 0.35),
+                        reasoningOutputTokens: Math.round(tokenTotal * 0.15)
+                      },
+                      last: {
+                        totalTokens: 1234,
+                        inputTokens: 617,
+                        cachedInputTokens: 100,
+                        cacheWriteInputTokens: 20,
+                        outputTokens: 432,
+                        reasoningOutputTokens: 185
+                      },
+                      modelContextWindow: 128000
+                    }
+                  }
+                }
+              });
               this.emit({
                 type: "codex.notification",
                 message: {
@@ -468,6 +499,19 @@ test.beforeEach(async ({ page }) => {
     }
 
     let skillExtraRoots: string[] = [];
+    const threadGoals: Record<
+      string,
+      {
+        threadId: string;
+        objective: string;
+        status: "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete";
+        tokenBudget: number | null;
+        tokensUsed: number;
+        timeUsedSeconds: number;
+        createdAt: number;
+        updatedAt: number;
+      }
+    > = {};
     const virtualFiles: Record<string, string> = {
       "/root/projects/README.md": "# Mock Project\n\nEditable from Playwright.\n",
       "/root/projects/src/App.tsx": "export const value = 1;\n"
@@ -632,6 +676,33 @@ test.beforeEach(async ({ page }) => {
         case "thread/start": {
           const id = `thread-new-${++threadStartCount}`;
           return { thread: { id, preview: `New mock thread ${threadStartCount}`, status: "idle" } };
+        }
+        case "thread/goal/set": {
+          const goalParams = params as { threadId?: string; objective?: string | null; status?: "active" | "paused" | "blocked" | "usageLimited" | "budgetLimited" | "complete" | null; tokenBudget?: number | null } | undefined;
+          const threadId = goalParams?.threadId ?? "thread-missing";
+          const existing = threadGoals[threadId];
+          const now = Math.floor(Date.now() / 1000);
+          const goal = {
+            threadId,
+            objective: goalParams?.objective ?? existing?.objective ?? "Mock goal",
+            status: goalParams?.status ?? existing?.status ?? "active",
+            tokenBudget: goalParams && "tokenBudget" in goalParams ? goalParams.tokenBudget ?? null : existing?.tokenBudget ?? null,
+            tokensUsed: existing?.tokensUsed ?? 0,
+            timeUsedSeconds: existing?.timeUsedSeconds ?? 0,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now
+          };
+          threadGoals[threadId] = goal;
+          return { goal };
+        }
+        case "thread/goal/get": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "";
+          return { goal: threadGoals[threadId] ?? null };
+        }
+        case "thread/goal/clear": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "";
+          delete threadGoals[threadId];
+          return { cleared: true };
         }
         case "turn/start":
           return {};
@@ -1287,6 +1358,82 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
 
   await page.screenshot({
     path: "snapshot/sidechat-workbench.png",
+    fullPage: false
+  });
+});
+
+test("routes main slash commands to fast status goal and plan UI", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+
+  const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
+  const send = page.getByRole("button", { name: "Send" });
+  await expect(page.getByText("mock-codex")).toBeVisible();
+  await expect(composer).toBeEnabled();
+
+  await page.evaluate(() => {
+    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
+  });
+  await composer.fill("/fast");
+  await send.click();
+  await expect(page.getByTestId("topbar-fast-badge")).toBeVisible();
+  await expect(page.getByTestId("composer-fast-badge")).toBeVisible();
+  let outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
+  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
+
+  await composer.fill("fast mode turn");
+  await send.click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { effort?: string; input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) =>
+        message.method === "turn/start" &&
+        message.params?.effort === "low" &&
+        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "fast mode turn")
+    );
+  });
+
+  await composer.fill("/goal keep slash command status visible");
+  await send.click();
+  await expect(page.getByTestId("sticky-goal-bar")).toContainText("keep slash command status visible");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { objective?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/goal/set" && message.params?.objective === "keep slash command status visible");
+  });
+  await expect(page.getByTestId("composer-goal-badge")).toBeVisible();
+
+  await composer.fill("/plan inspect slash router states");
+  await send.click();
+  await expect(page.getByTestId("topbar-plan-badge")).toBeVisible();
+  await expect(page.getByTestId("composer-plan-badge")).toBeVisible();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { effort?: string; input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) =>
+        message.method === "turn/start" &&
+        message.params?.effort === "low" &&
+        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "inspect slash router states")
+    );
+  });
+  outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ text?: string }> } }> }).__codexUiOutbound ?? []);
+  expect(outbound.some((message) => message.method === "turn/start" && message.params?.input?.some((entry) => entry.text === "/plan inspect slash router states"))).toBe(false);
+
+  await composer.fill("/usage");
+  await send.click();
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Project Stats");
+
+  await composer.fill("/status");
+  await send.click();
+  await expect(page.getByTestId("slash-stats-panel")).toBeVisible();
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Session Status");
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Thread tokens");
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("2,468");
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Fast on");
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Plan on");
+  await expect(page.getByTestId("slash-stats-panel")).toContainText("Goal Active");
+
+  await page.screenshot({
+    path: "snapshot/slash-command-status-goal-plan.png",
     fullPage: false
   });
 });

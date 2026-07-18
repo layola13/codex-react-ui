@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   FormControl,
   IconButton,
   InputLabel,
@@ -16,6 +17,9 @@ import {
 import SendIcon from "@mui/icons-material/Send";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
+import BoltIcon from "@mui/icons-material/Bolt";
+import ChecklistIcon from "@mui/icons-material/Checklist";
+import FlagIcon from "@mui/icons-material/Flag";
 import { alpha } from "@mui/material/styles";
 import { permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
 import type { ComposerImageAttachment, ComposerMention } from "../state/codexClient";
@@ -28,6 +32,11 @@ type Props = {
   pendingMention: ComposerMention | null;
   suggestedPrompt?: { id: string; text: string } | null;
   activeThemePlugin?: ThemePlugin | null;
+  modeBadges?: {
+    fast: boolean;
+    plan: boolean;
+    goalActive: boolean;
+  };
   dangerBypassConfirmed: boolean;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
@@ -47,6 +56,7 @@ export function Composer({
   pendingMention,
   suggestedPrompt,
   activeThemePlugin,
+  modeBadges = { fast: false, plan: false, goalActive: false },
   dangerBypassConfirmed,
   onCwdChange,
   onPermissionChange,
@@ -168,6 +178,13 @@ export function Composer({
           <Alert severity="warning" onClose={() => setImageError("")}>
             {imageError}
           </Alert>
+        )}
+        {(modeBadges.fast || modeBadges.plan || modeBadges.goalActive) && (
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="composer-command-badges">
+            {modeBadges.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label="Fast" data-testid="composer-fast-badge" />}
+            {modeBadges.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label="Plan" data-testid="composer-plan-badge" />}
+            {modeBadges.goalActive && <Chip size="small" color="success" variant="outlined" icon={<FlagIcon />} label="Goal active" data-testid="composer-goal-badge" />}
+          </Stack>
         )}
         <TextField
           multiline

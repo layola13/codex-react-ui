@@ -2,6 +2,20 @@
 
 ## 2026-07-18
 
+- Slash command status/goal/fast/plan implementation:
+  - Added a main composer slash-command router for browser-owned commands while keeping sidechat slash-shaped input unparsed and isolated.
+  - Implemented `/fast` with lightning badges in the top bar, chat status strip, and composer; fast mode lowers new main-chat turns to the lowest available reasoning effort.
+  - Implemented `/status`, `/stats`, and `/usage` with a token/session/project stats panel showing thread/project token totals, model/provider, reasoning effort, permission mode, active modes, goal status, thread counts, and turn/item counts.
+  - Implemented `/goal` backed by `thread/goal/set`, `thread/goal/get`, and `thread/goal/clear`, with a sticky top-of-chat goal bar supporting edit, pause/resume, complete, and clear controls.
+  - Implemented `/plan` with a visible plan marker; `/plan <text>` sends only `<text>` as the Codex turn text.
+  - Routed Settings-heavy commands into Settings instead of the right runtime workspace: `/plugins`, `/mcp`, `/hooks`, `/apps`, `/skills`, `/theme`, `/pet`, `/pets`, `/statusline`, `/title`, `/model`, `/permissions`, and `/debug-config`.
+  - Added Playwright coverage for the slash-command flow and captured `snapshot/slash-command-status-goal-plan.png`.
+  - Verification passed:
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "fast status goal and plan"`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts`
+    - `pnpm --filter @codex-ui/web build`
+
 - Slash command planning update:
   - Audited current Web support against the local Codex TUI command list.
   - Confirmed the main composer only intercepts exact `/plugins`, `/mcp`, and `/hooks`; other slash-shaped input currently falls through as normal Codex prompt text.
