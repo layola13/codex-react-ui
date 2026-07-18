@@ -14,6 +14,7 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 2. Verify with commands and screenshots:
    - `pnpm --filter @codex-ui/web typecheck`
    - `pnpm --filter @codex-ui/web build`
+   - `pnpm check:codex-config-schema`
    - `pnpm exec playwright install chromium`
    - `pnpm test:e2e`
    - inspect updated Settings screenshots for layout regressions and theme consistency
@@ -36,6 +37,7 @@ Dynamic schema-backed Codex config Settings UI is verified, committed locally, a
 ## Latest Verification
 
 - `pnpm exec playwright install chromium`
+- `pnpm check:codex-config-schema`
 - `pnpm --filter @codex-ui/web typecheck`
 - `pnpm --filter @codex-ui/web build`
 - `pnpm test:e2e` (13/13 Chromium tests)

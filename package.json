@@ -11,7 +11,9 @@
     "typecheck": "pnpm -r typecheck",
     "test:e2e": "playwright test",
     "start": "pnpm --filter @codex-ui/server start",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "check:codex-config-schema": "node scripts/sync-codex-config-schema.mjs",
+    "sync:codex-config-schema": "node scripts/sync-codex-config-schema.mjs --write"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
