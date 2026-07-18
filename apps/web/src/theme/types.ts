@@ -8,7 +8,7 @@ export type BuiltinThemeId =
   | "sakura-pink";
 
 export type ThemeId = BuiltinThemeId | (string & {});
-export type ThemeMode = ThemeId;
+export type ThemeMode = ThemeId | "system";
 
 export type ThemePlugin = {
   id: ThemeId;

@@ -32,12 +32,13 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SaveIcon from "@mui/icons-material/Save";
 import SecurityIcon from "@mui/icons-material/Security";
-import ExtensionIcon from "@mui/icons-material/Extension";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import SmartToyIcon from "@mui/icons-material/SmartToy";
+import ForumIcon from "@mui/icons-material/Forum";
+import PersonIcon from "@mui/icons-material/Person";
 import type { DangerousPermissionAuditEvent, JsonValue, ProviderConfig } from "@codex-ui/shared";
 import type {
-  ModelEntry,
   McpResourceContentEntry,
   PluginAppEntry,
   FsDirectoryEntry,
@@ -55,7 +56,6 @@ loader.config({ monaco });
 
 type Props = {
   account: JsonValue | null;
-  models: ModelEntry[];
   providers: ProviderConfig[];
   activeThreadId: string | null;
   pendingRequests: PendingServerRequest[];
@@ -76,8 +76,6 @@ type Props = {
   onFilesPanelLayoutChange?: (layout: Record<string, number>) => void;
   auditEvents: DangerousPermissionAuditEvent[];
   onAnswerRequest: (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => void;
-  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
-  onActivateProvider: (providerId: string, model?: string) => void;
   onExportProfile: () => Promise<void>;
   onImportProfile: (file: File) => Promise<number>;
   onReloadAuditEvents: () => Promise<void>;
@@ -108,7 +106,6 @@ export function RightInspector({
   filesPanelLayout,
   onFilesPanelLayoutChange,
   account,
-  models,
   providers,
   activeThreadId,
   pendingRequests,
@@ -127,8 +124,6 @@ export function RightInspector({
   terminalSessions,
   auditEvents,
   onAnswerRequest,
-  onSaveProvider,
-  onActivateProvider,
   onExportProfile,
   onImportProfile,
   onReloadAuditEvents,
@@ -188,10 +183,7 @@ export function RightInspector({
         {tab === 0 && (
           <ConfigTab
             account={account}
-            models={models}
             providers={providers}
-            onSaveProvider={onSaveProvider}
-            onActivateProvider={onActivateProvider}
             onExportProfile={onExportProfile}
             onImportProfile={onImportProfile}
             auditEvents={auditEvents}
@@ -252,29 +244,80 @@ export function RightInspector({
 
 function ConfigTab({
   account,
-  models,
   providers,
-  onSaveProvider,
-  onActivateProvider,
   onExportProfile,
   onImportProfile,
   auditEvents,
   onReloadAuditEvents
 }: {
   account: JsonValue | null;
-  models: ModelEntry[];
   providers: ProviderConfig[];
-  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
-  onActivateProvider: (providerId: string, model?: string) => void;
   onExportProfile: () => Promise<void>;
   onImportProfile: (file: File) => Promise<number>;
   auditEvents: DangerousPermissionAuditEvent[];
   onReloadAuditEvents: () => Promise<void>;
 }) {
-  const [providerModels, setProviderModels] = useState<Record<string, string>>({});
-
   return (
     <Stack spacing={1.5}>
+      <CompanionPanel providers={providers} auditCount={auditEvents.length} />
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 1.5,
+          background: (theme) =>
+            theme.palette.mode === "dark"
+              ? "linear-gradient(180deg, rgba(14,22,34,0.96), rgba(9,14,22,0.98))"
+              : "linear-gradient(180deg, rgba(235,247,255,0.95), rgba(255,255,255,0.98))"
+        }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <ForumIcon fontSize="small" color="primary" />
+          <Typography variant="subtitle2" sx={{ fontWeight: 800, flex: 1 }}>
+            My contacts
+          </Typography>
+          <Chip size="small" label="2/8" />
+        </Stack>
+        <Stack spacing={1}>
+          {[
+            { name: "Codex 小蓝", status: "online", detail: "Code review, docs, bug fixing" },
+            { name: "Workspace Twin", status: "ready", detail: `${providers.length} relay channel${providers.length === 1 ? "" : "s"} configured` }
+          ].map((friend) => (
+            <Stack
+              key={friend.name}
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{ p: 1, border: "1px solid", borderColor: "divider", borderRadius: 1, bgcolor: "background.paper" }}
+            >
+              <Box
+                sx={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 1,
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
+                  boxShadow: "0 8px 18px rgba(24,119,242,0.18)"
+                }}
+              >
+                <PersonIcon fontSize="small" />
+              </Box>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="body2" sx={{ fontWeight: 750 }}>
+                  {friend.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                  {friend.detail}
+                </Typography>
+              </Box>
+              <Chip size="small" label={friend.status} color={friend.status === "online" ? "success" : "primary"} variant="outlined" />
+            </Stack>
+          ))}
+        </Stack>
+      </Paper>
+      <ProfilePanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
+      <AuditPanel events={auditEvents} onReload={onReloadAuditEvents} />
       <Paper variant="outlined" sx={{ p: 1.5 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
           <SecurityIcon fontSize="small" />
@@ -286,65 +329,90 @@ function ConfigTab({
           {JSON.stringify(account, null, 2)}
         </Typography>
       </Paper>
-      <ProfilePanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
-      <AuditPanel events={auditEvents} onReload={onReloadAuditEvents} />
-      <ProviderForm models={models} onSaveProvider={onSaveProvider} />
-      <Paper variant="outlined" sx={{ p: 1.5 }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 750, mb: 1 }}>
-          Saved providers
-        </Typography>
-        <Stack spacing={1}>
-          {providers.length === 0 && <Typography color="text.secondary">No third-party relay configured yet.</Typography>}
-          {providers.map((provider) => {
-            const fallbackModels = provider.defaultModel ? [provider.defaultModel] : [];
-            const nativeModelOptions = provider.nativeModels.length > 0 ? provider.nativeModels : fallbackModels;
-            const modelOptions = [
-              ...provider.modelAliases.map((entry) => ({ value: entry.alias, label: `${entry.alias} -> ${entry.model}` })),
-              ...nativeModelOptions.map((model) => ({ value: model, label: model }))
-            ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.value === entry.value) === index);
-            const selectedModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
-            return (
-              <Paper key={provider.id} variant="outlined" sx={{ p: 1 }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography sx={{ fontWeight: 700, flex: 1 }}>{provider.name}</Typography>
-                  <Chip size="small" label={provider.apiKeyStorage ?? (provider.apiKeyRef ? "memory" : "no key")} color={provider.apiKeyStorage === "keyring" ? "success" : "default"} />
-                  <Chip size="small" label={provider.kind} />
-                </Stack>
-                <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
-                  {provider.baseUrl || "managed provider"} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
-                </Typography>
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                  <FormControl size="small" sx={{ flex: 1, minWidth: 0 }}>
-                    <InputLabel>Model</InputLabel>
-                    <Select
-                      value={selectedModel}
-                      label="Model"
-                      onChange={(event) =>
-                        setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))
-                      }
-                    >
-                      {modelOptions.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    startIcon={<PlayArrowIcon />}
-                    onClick={() => onActivateProvider(provider.id, selectedModel || undefined)}
-                  >
-                    Activate
-                  </Button>
-                </Stack>
-              </Paper>
-            );
-          })}
-        </Stack>
-      </Paper>
     </Stack>
+  );
+}
+
+function CompanionPanel({ providers, auditCount }: { providers: ProviderConfig[]; auditCount: number }) {
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        overflow: "hidden",
+        background: (theme) =>
+          theme.palette.mode === "dark"
+            ? "linear-gradient(180deg, rgba(24,38,66,0.94), rgba(9,14,22,0.98))"
+            : "linear-gradient(180deg, #EAF5FF, #FFFFFF)"
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+        <SmartToyIcon fontSize="small" color="primary" />
+        <Typography variant="subtitle2" sx={{ fontWeight: 850, flex: 1 }}>
+          Codex buddy
+        </Typography>
+        <Chip size="small" label="LV 07" color="warning" variant="outlined" />
+      </Stack>
+      <Box
+        sx={{
+          height: 170,
+          position: "relative",
+          display: "grid",
+          placeItems: "center",
+          overflow: "hidden",
+          background:
+            "radial-gradient(circle at 20% 18%, rgba(255,255,255,0.95), transparent 12%), radial-gradient(circle at 78% 24%, rgba(255,255,255,0.8), transparent 10%), linear-gradient(135deg, rgba(145,198,255,0.55), rgba(239,246,255,0.25))"
+        }}
+      >
+        <Box
+          sx={{
+            width: 98,
+            height: 98,
+            borderRadius: "34px 34px 28px 28px",
+            bgcolor: "#3B82F6",
+            border: "3px solid",
+            borderColor: "#1D4ED8",
+            position: "relative",
+            boxShadow: "0 18px 34px rgba(37,99,235,0.32)",
+            "&:before": {
+              content: '""',
+              position: "absolute",
+              left: 20,
+              right: 20,
+              top: 26,
+              height: 34,
+              borderRadius: 2,
+              bgcolor: "#0F172A"
+            },
+            "&:after": {
+              content: '">_"',
+              position: "absolute",
+              left: 34,
+              top: 31,
+              color: "#67E8F9",
+              fontFamily: "monospace",
+              fontSize: 24,
+              fontWeight: 800
+            }
+          }}
+        />
+      </Box>
+      <Box sx={{ p: 1.25 }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <Chip size="small" label="online" color="success" />
+          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+            Codex 小蓝
+          </Typography>
+        </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          代码有问题？找我。配置、插件、文件和终端状态都在这里盯着。
+        </Typography>
+        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+          <Chip size="small" label={`${providers.length} channels`} />
+          <Chip size="small" label={`${auditCount} audits`} color={auditCount ? "warning" : "default"} />
+          <Chip size="small" label="settings moved" color="primary" variant="outlined" />
+        </Stack>
+      </Box>
+    </Paper>
   );
 }
 
@@ -491,136 +559,11 @@ function ProfilePanel({
   );
 }
 
-function ProviderForm({
-  models,
-  onSaveProvider
-}: {
-  models: ModelEntry[];
-  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
-}) {
-  const [kind, setKind] = useState<ProviderConfig["kind"]>("responsesRelay");
-  const [name, setName] = useState("Responses Relay");
-  const [baseUrl, setBaseUrl] = useState("https://example.com/v1");
-  const [apiKey, setApiKey] = useState("");
-  const [nativeModels, setNativeModels] = useState("gpt-5.6-sol");
-  const [modelAliases, setModelAliases] = useState("codex=gpt-5.6-sol");
-  const defaultModel = useMemo(() => models[0]?.model ?? models[0]?.id ?? "gpt-5.6-sol", [models]);
-
-  return (
-    <Paper variant="outlined" sx={{ p: 1.5 }}>
-      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-        <ExtensionIcon fontSize="small" />
-        <Typography variant="subtitle2" sx={{ fontWeight: 750 }}>
-          Third-party relay
-        </Typography>
-      </Stack>
-      <Stack spacing={1}>
-        <FormControl size="small">
-          <InputLabel>Provider type</InputLabel>
-          <Select value={kind} label="Provider type" onChange={(event) => applyProviderTemplate(event.target.value as ProviderConfig["kind"])}>
-            <MenuItem value="chatgpt">ChatGPT official</MenuItem>
-            <MenuItem value="openai">OpenAI API key</MenuItem>
-            <MenuItem value="responsesRelay">Responses relay</MenuItem>
-            <MenuItem value="ollama">Ollama</MenuItem>
-            <MenuItem value="lmstudio">LM Studio</MenuItem>
-            <MenuItem value="bedrock">Bedrock experimental</MenuItem>
-          </Select>
-        </FormControl>
-        <TextField size="small" label="Display name" value={name} onChange={(event) => setName(event.target.value)} />
-        <TextField size="small" label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
-        <TextField size="small" label="API key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
-        <TextField
-          size="small"
-          label="Native models, comma-separated"
-          value={nativeModels}
-          onChange={(event) => setNativeModels(event.target.value)}
-        />
-        <TextField
-          size="small"
-          label="Model aliases, comma-separated alias=model"
-          value={modelAliases}
-          onChange={(event) => setModelAliases(event.target.value)}
-        />
-        <Button
-          startIcon={<SaveIcon />}
-          variant="outlined"
-          onClick={() => {
-            const nativeModelList = parseCsv(nativeModels);
-            onSaveProvider(
-              {
-                id: "",
-                kind,
-                name,
-                baseUrl: baseUrl || undefined,
-                defaultModel: nativeModelList[0] ?? defaultModel,
-                nativeModels: nativeModelList,
-                modelAliases: parseAliases(modelAliases),
-                createdAt: Date.now(),
-                updatedAt: Date.now()
-              },
-              apiKey || undefined
-            );
-          }}
-        >
-          Save provider
-        </Button>
-      </Stack>
-    </Paper>
-  );
-
-  function applyProviderTemplate(nextKind: ProviderConfig["kind"]): void {
-    setKind(nextKind);
-    const template = providerTemplate(nextKind);
-    setName(template.name);
-    setBaseUrl(template.baseUrl);
-    setNativeModels(template.nativeModels);
-    setModelAliases(template.modelAliases);
-  }
-}
-
-function providerTemplate(kind: ProviderConfig["kind"]): {
-  name: string;
-  baseUrl: string;
-  nativeModels: string;
-  modelAliases: string;
-} {
-  switch (kind) {
-    case "chatgpt":
-      return { name: "ChatGPT official", baseUrl: "", nativeModels: "gpt-5.6-sol,gpt-5.5", modelAliases: "codex=gpt-5.6-sol" };
-    case "openai":
-      return { name: "OpenAI API", baseUrl: "https://api.openai.com/v1", nativeModels: "gpt-5.6-sol,gpt-5.5", modelAliases: "codex=gpt-5.6-sol" };
-    case "ollama":
-      return { name: "Ollama local", baseUrl: "http://127.0.0.1:11434/v1", nativeModels: "gpt-oss:20b", modelAliases: "codex=gpt-oss:20b" };
-    case "lmstudio":
-      return { name: "LM Studio local", baseUrl: "http://127.0.0.1:1234/v1", nativeModels: "local-model", modelAliases: "codex=local-model" };
-    case "bedrock":
-      return { name: "Amazon Bedrock", baseUrl: "https://bedrock-mantle.us-east-1.api.aws/openai/v1", nativeModels: "openai.gpt-5.6-sol", modelAliases: "codex=openai.gpt-5.6-sol" };
-    case "responsesRelay":
-      return { name: "Responses Relay", baseUrl: "https://example.com/v1", nativeModels: "gpt-5.6-sol", modelAliases: "codex=gpt-5.6-sol" };
-  }
-}
-
-function parseCsv(value: string): string[] {
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
 function parseLines(value: string): string[] {
   return value
     .split(/\r?\n/)
     .map((entry) => entry.trim())
     .filter(Boolean);
-}
-
-function parseAliases(value: string): ProviderConfig["modelAliases"] {
-  return parseCsv(value)
-    .map((entry) => {
-      const [alias, model] = entry.split("=").map((part) => part.trim());
-      return alias && model ? { alias, model } : null;
-    })
-    .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
 }
 
 function toolCallKey(serverName: string, toolName: string): string {

@@ -2,6 +2,25 @@
 
 ## 2026-07-18
 
+- Moved third-party relay setup into Settings -> Relay:
+  - Added a reference-style `Model Channels` page with a left service-provider list and a right `Add Channel` form.
+  - Added saved-channel cards for provider kind, active/saved state, health, weight, supported model chips, model selection, and activation.
+  - Kept relay API keys out of Codex config; provider credentials still flow through provider save/keyring handling.
+- Added Settings -> Appearance theme mode cards for `System`, `Light`, and `Dark`, including real system-mode resolution through `prefers-color-scheme`.
+- Reworked the right inspector Config tab into a companion/status surface with `Codex buddy`, contacts, profile import/export, dangerous permission audit, and account state after moving relay settings into Settings.
+- Updated Playwright coverage for the new Settings relay flow, appearance cards, provider activation from Settings, and the right companion sidebar.
+- Captured and inspected the requested verification screenshots in `/root/projects/snapshot`:
+  - `07-right-companion-sidebar.png`
+  - `08-settings-appearance-theme-cards.png`
+  - `09-settings-relay-model-channels.png`
+  - `10-settings-relay-saved-channels.png`
+- Re-ran verification during the slice:
+  - `pnpm check:codex-config-schema`
+  - `pnpm --filter @codex-ui/web typecheck`
+  - `pnpm --filter @codex-ui/web build`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "captures relay settings saved channel cards"`
+  - `pnpm test:e2e` (13/13 Chromium tests)
+
 - Added full Codex config coverage in Settings by vendoring `/root/projects/codex/codex-rs/core/config.schema.json` into the web app as the dynamic field source.
 - Added `scripts/sync-codex-config-schema.mjs` with `pnpm check:codex-config-schema` and `pnpm sync:codex-config-schema` so the bundled UI schema can be verified or refreshed from the local Codex repo.
 - Verified the bundled UI schema matches `/root/projects/codex/codex-rs/core/config.schema.json`: 93 top-level settings, 0 missing keys, 0 extra keys.

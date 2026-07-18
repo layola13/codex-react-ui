@@ -559,7 +559,7 @@ test.beforeEach(async ({ page }) => {
 test("renders the workbench and tooling panels", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Codex", exact: true })).toBeVisible();
+  await expect(page.getByText("Codex buddy")).toBeVisible();
   await expect(page.getByText("mock-codex")).toBeVisible();
   await expect(page.getByRole("tab", { name: "New task" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Mock thread" })).toBeVisible();
@@ -594,6 +594,9 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   await expect(page.getByRole("combobox", { name: "Web search" })).toContainText("Cached");
   await page.getByLabel("Open Appearance settings").click();
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /System/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Light/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Dark/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Install" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Install" }).first().click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "dream-rose");
@@ -822,11 +825,14 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
 test("resolves chained provider aliases before starting a turn", async ({ page }) => {
   await page.goto("/");
 
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Relay settings").click();
   await expect(page.getByText("HubProxy Grok")).toBeVisible();
-  await expect(page.getByText("keyring")).toBeVisible();
+  await expect(page.getByText("key...ring")).toBeVisible();
   await expect(page.getByText("codex -> gpt-5.5")).toBeVisible();
 
   await page.getByRole("button", { name: "Activate" }).click();
+  await page.getByRole("button", { name: "Close settings" }).click();
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use the relay alias");
   await page.getByRole("button", { name: "Send" }).click();
 
@@ -896,6 +902,8 @@ test("exports and imports UI profiles without API keys", async ({ page }) => {
   });
 
   await expect(page.getByText("Imported 1 providers.")).toBeVisible();
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Relay settings").click();
   await expect(page.getByText("Imported Relay")).toBeVisible();
   await expect(page.getByText("https://relay.example.test/v1")).toBeVisible();
 });

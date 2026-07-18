@@ -15,6 +15,7 @@ import {
   ListItemIcon,
   ListItemText,
   MenuItem,
+  Radio,
   Select,
   Stack,
   Switch,
@@ -24,18 +25,30 @@ import {
 import type { JsonValue } from "@codex-ui/shared";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ColorLensIcon from "@mui/icons-material/ColorLens";
+import ComputerIcon from "@mui/icons-material/Computer";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DashboardCustomizeIcon from "@mui/icons-material/DashboardCustomize";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import MemoryIcon from "@mui/icons-material/Memory";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import PsychologyIcon from "@mui/icons-material/Psychology";
 import PetsIcon from "@mui/icons-material/Pets";
+import LightModeIcon from "@mui/icons-material/LightMode";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import SaveIcon from "@mui/icons-material/Save";
+import SearchIcon from "@mui/icons-material/Search";
 import SecurityIcon from "@mui/icons-material/Security";
 import SettingsSuggestIcon from "@mui/icons-material/SettingsSuggest";
 import StorageIcon from "@mui/icons-material/Storage";
+import TokenIcon from "@mui/icons-material/Token";
 import TuneIcon from "@mui/icons-material/Tune";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import ViewInArIcon from "@mui/icons-material/ViewInAr";
+import WavesIcon from "@mui/icons-material/Waves";
 import { permissionPresets, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
 import {
   CODEX_CONFIG_FIELD_META,
@@ -100,6 +113,8 @@ type Props = {
   onReloadCodexConfig: () => void;
   onCodexConfigFieldChange: (field: CodexConfigFieldKey, value: string) => void;
   onCodexConfigValueChange: (keyPath: string, value: JsonValue) => void;
+  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
+  onActivateProvider: (providerId: string, model?: string) => void;
 };
 
 const NAV_ITEMS: Array<{ id: SettingsSectionId; label: string; icon: ReactNode }> = [
@@ -146,7 +161,9 @@ export function SettingsDrawer({
   onReasoningEffortChange,
   onReloadCodexConfig,
   onCodexConfigFieldChange,
-  onCodexConfigValueChange
+  onCodexConfigValueChange,
+  onSaveProvider,
+  onActivateProvider
 }: Props) {
   const [section, setSection] = useState<SettingsSectionId>("codex");
   const [codexConfigMode, setCodexConfigMode] = useState<"quick" | "all">("quick");
@@ -390,6 +407,15 @@ export function SettingsDrawer({
 
             {section === "appearance" && (
               <SettingsSection icon={<ColorLensIcon fontSize="small" />} title="Appearance" subtitle="Official skins plus installable and user-defined theme plugins">
+                <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+                  <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 850 }}>
+                    Theme
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    Select your preferred color scheme.
+                  </Typography>
+                  <ThemeModeCards themeMode={themeMode} onThemeModeChange={onThemeModeChange} />
+                </Box>
                 <SettingRow title="Active skin" description="Official themes are always installed. Local/customer skins can be installed and switched here.">
                   <FormControl size="small" sx={{ minWidth: 180 }}>
                     <InputLabel>Skin</InputLabel>
@@ -399,6 +425,7 @@ export function SettingsDrawer({
                       inputProps={{ "aria-label": "Skin theme" }}
                       onChange={(event) => onThemeModeChange(event.target.value as ThemeMode)}
                     >
+                      <MenuItem value="system">System</MenuItem>
                       {allThemePlugins
                         .filter((plugin) => installedThemePluginIds.includes(plugin.id))
                         .map((plugin) => (
@@ -488,14 +515,14 @@ export function SettingsDrawer({
             )}
 
             {section === "relay" && (
-              <SettingsSection icon={<MemoryIcon fontSize="small" />} title="Third-Party Relay" subtitle="Provider activation stays separate from Codex config.toml">
-                <SettingRow title="Active provider" description={activeProvider?.baseUrl || "Official Codex provider or no relay activated."}>
-                  <Chip size="small" label={activeProvider?.name ?? "Official/default"} color={activeProvider ? "primary" : "default"} />
-                </SettingRow>
-                <SettingRow title="Saved providers" description="Provider API keys stay in keyring or process memory, not in UI profiles or Codex config.toml.">
-                  <Chip size="small" label={`${providers.length} configured`} />
-                </SettingRow>
-              </SettingsSection>
+              <RelaySettingsPanel
+                providers={providers}
+                activeProviderId={activeProviderId}
+                activeProvider={activeProvider}
+                selectedModel={selectedModel}
+                onSaveProvider={onSaveProvider}
+                onActivateProvider={onActivateProvider}
+              />
             )}
 
             {section === "plugins" && (
@@ -537,6 +564,479 @@ export function SettingsDrawer({
       </Box>
     </Drawer>
   );
+}
+
+type RelayTemplateId = "openai" | "deepseek" | "gemini" | "anthropic" | "moonshot" | "zhipu" | "minimax";
+
+const RELAY_PROVIDER_TEMPLATES: Array<{
+  id: RelayTemplateId;
+  label: string;
+  icon: ReactNode;
+  kind: ProviderConfig["kind"];
+  apiFormat: ProviderConfig["kind"];
+  baseUrl: string;
+  nativeModels: string;
+  modelAliases: string;
+}> = [
+  {
+    id: "openai",
+    label: "OpenAI",
+    icon: <TokenIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://api.openai.com/v1",
+    nativeModels: "gpt-5.6-sol,gpt-5.5",
+    modelAliases: "codex=gpt-5.6-sol"
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    icon: <SearchIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://api.deepseek.com/v1",
+    nativeModels: "deepseek-chat",
+    modelAliases: "codex=deepseek-chat"
+  },
+  {
+    id: "gemini",
+    label: "Gemini",
+    icon: <AutoAwesomeIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    nativeModels: "gemini-2.5-pro",
+    modelAliases: "codex=gemini-2.5-pro"
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    icon: <ViewInArIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://api.anthropic.com/v1",
+    nativeModels: "claude-opus-4-6",
+    modelAliases: "codex=claude-opus-4-6"
+  },
+  {
+    id: "moonshot",
+    label: "Moonshot",
+    icon: <DarkModeIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://api.moonshot.cn/v1",
+    nativeModels: "kimi-k2",
+    modelAliases: "codex=kimi-k2"
+  },
+  {
+    id: "zhipu",
+    label: "Zhipu",
+    icon: <PsychologyIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    nativeModels: "glm-4.5",
+    modelAliases: "codex=glm-4.5"
+  },
+  {
+    id: "minimax",
+    label: "Minimax",
+    icon: <WavesIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://api.minimax.chat/v1",
+    nativeModels: "minimax-m1",
+    modelAliases: "codex=minimax-m1"
+  }
+];
+
+const DEFAULT_RELAY_PROVIDER_TEMPLATE = RELAY_PROVIDER_TEMPLATES[0]!;
+
+function RelaySettingsPanel({
+  providers,
+  activeProviderId,
+  activeProvider,
+  selectedModel,
+  onSaveProvider,
+  onActivateProvider
+}: {
+  providers: ProviderConfig[];
+  activeProviderId: string | null;
+  activeProvider?: ProviderConfig;
+  selectedModel: string;
+  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
+  onActivateProvider: (providerId: string, model?: string) => void;
+}) {
+  const [templateId, setTemplateId] = useState<RelayTemplateId>("openai");
+  const template = RELAY_PROVIDER_TEMPLATES.find((entry) => entry.id === templateId) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
+  const [apiFormat, setApiFormat] = useState<ProviderConfig["kind"]>(template.apiFormat);
+  const [name, setName] = useState("My Channel");
+  const [baseUrl, setBaseUrl] = useState(template.baseUrl);
+  const [apiKey, setApiKey] = useState("");
+  const [nativeModels, setNativeModels] = useState(template.nativeModels);
+  const [modelAliases, setModelAliases] = useState(template.modelAliases);
+  const [providerModels, setProviderModels] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
+
+  const filteredProviders = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) {
+      return providers;
+    }
+    return providers.filter((provider) =>
+      [provider.name, provider.kind, provider.baseUrl, provider.defaultModel, ...provider.nativeModels]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [providers, search]);
+
+  const saveChannel = () => {
+    const nativeModelList = parseCsv(nativeModels);
+    const kind = apiFormat === "openai" ? "openai" : template.kind;
+    onSaveProvider(
+      {
+        id: "",
+        kind,
+        name: name.trim() || template.label,
+        baseUrl: baseUrl.trim() || undefined,
+        defaultModel: nativeModelList[0] ?? selectedModel,
+        nativeModels: nativeModelList,
+        modelAliases: parseAliases(modelAliases),
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      },
+      apiKey || undefined
+    );
+  };
+
+  return (
+    <SettingsSection icon={<MemoryIcon fontSize="small" />} title="Model Channels" subtitle="Create, save, and activate third-party relay providers from Settings">
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "230px minmax(0, 1fr)" },
+          minHeight: 430
+        }}
+      >
+        <Box sx={{ borderRight: { lg: "1px solid" }, borderBottom: { xs: "1px solid", lg: 0 }, borderColor: "divider", bgcolor: "background.default" }}>
+          <Box sx={{ px: 1.5, py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+              Service Provider
+            </Typography>
+          </Box>
+          <Stack spacing={1} sx={{ p: 1.25 }}>
+            {RELAY_PROVIDER_TEMPLATES.map((entry) => {
+              const selected = entry.id === templateId;
+              return (
+                <Button
+                  key={entry.id}
+                  color={selected ? "primary" : "inherit"}
+                  variant={selected ? "outlined" : "text"}
+                  onClick={() => {
+                    setTemplateId(entry.id);
+                    setApiFormat(entry.apiFormat);
+                    setName(entry.label === "OpenAI" ? "My Channel" : `${entry.label} Relay`);
+                    setBaseUrl(entry.baseUrl);
+                    setNativeModels(entry.nativeModels);
+                    setModelAliases(entry.modelAliases);
+                  }}
+                  startIcon={<Radio checked={selected} size="small" />}
+                  sx={{
+                    justifyContent: "flex-start",
+                    borderColor: selected ? "primary.main" : "divider",
+                    bgcolor: selected ? "action.selected" : "background.paper",
+                    py: 1.05,
+                    gap: 0.5,
+                    "& .MuiButton-startIcon": { mr: 0.5 }
+                  }}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                    {entry.icon}
+                    <Typography variant="body2" sx={{ fontWeight: selected ? 800 : 600 }}>
+                      {entry.label}
+                    </Typography>
+                  </Stack>
+                </Button>
+              );
+            })}
+          </Stack>
+        </Box>
+
+        <Box sx={{ p: { xs: 1.5, sm: 2 }, bgcolor: "background.paper" }}>
+          <Stack spacing={2}>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 850, color: "primary.main" }}>
+                  Add Channel
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Create a new AI model channel backed by a relay provider.
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                <Chip size="small" label={activeProvider?.name ?? "Official/default"} color={activeProvider ? "primary" : "default"} />
+                <Chip size="small" label={`${providers.length} saved`} variant="outlined" />
+              </Stack>
+            </Stack>
+
+            <Stack spacing={1.5}>
+              <RelayFormRow label="API Format">
+                <Stack spacing={1}>
+                  <FormControl size="small" sx={{ maxWidth: 360 }}>
+                    <InputLabel>API Format</InputLabel>
+                    <Select
+                      value={apiFormat}
+                      label="API Format"
+                      inputProps={{ "aria-label": "API Format" }}
+                      onChange={(event) => setApiFormat(event.target.value as ProviderConfig["kind"])}
+                    >
+                      <MenuItem value="responsesRelay">OpenAI (Responses relay)</MenuItem>
+                      <MenuItem value="openai">OpenAI API key</MenuItem>
+                      <MenuItem value="ollama">Ollama compatible</MenuItem>
+                      <MenuItem value="lmstudio">LM Studio compatible</MenuItem>
+                      <MenuItem value="bedrock">Bedrock experimental</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
+                    {["OpenAI (Responses)", "OpenAI (Chat Completions)", "OpenAI-compatible relay"].map((label, index) => (
+                      <FormControlLabel
+                        key={label}
+                        control={<Switch size="small" checked={index === 0 || apiFormat === "openai"} />}
+                        label={label}
+                        sx={{ mr: 0 }}
+                      />
+                    ))}
+                  </Stack>
+                </Stack>
+              </RelayFormRow>
+              <RelayFormRow label="Channel Name">
+                <TextField size="small" fullWidth label="Channel Name" value={name} onChange={(event) => setName(event.target.value)} inputProps={{ "aria-label": "Channel Name" }} />
+              </RelayFormRow>
+              <RelayFormRow label="Base URL">
+                <TextField size="small" fullWidth label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} inputProps={{ "aria-label": "Base URL" }} />
+              </RelayFormRow>
+              <RelayFormRow label="API Key">
+                <TextField size="small" fullWidth label="API Key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} inputProps={{ "aria-label": "Relay API key" }} />
+              </RelayFormRow>
+              <RelayFormRow label="Supported Models">
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Native models, comma-separated"
+                  value={nativeModels}
+                  onChange={(event) => setNativeModels(event.target.value)}
+                />
+              </RelayFormRow>
+              <RelayFormRow label="Model Aliases">
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Model aliases, comma-separated alias=model"
+                  value={modelAliases}
+                  onChange={(event) => setModelAliases(event.target.value)}
+                />
+              </RelayFormRow>
+              <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ pt: 0.5 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setName(template.label === "OpenAI" ? "My Channel" : `${template.label} Relay`);
+                    setBaseUrl(template.baseUrl);
+                    setNativeModels(template.nativeModels);
+                    setModelAliases(template.modelAliases);
+                    setApiKey("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="contained" startIcon={<SaveIcon />} onClick={saveChannel}>
+                  Create
+                </Button>
+              </Stack>
+            </Stack>
+          </Stack>
+        </Box>
+      </Box>
+
+      <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.default" }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ xs: "stretch", sm: "center" }} sx={{ p: 1.5 }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h6" sx={{ fontSize: 18, fontWeight: 850 }}>
+              Channels
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Saved relay providers, model aliases, activation state, and health.
+            </Typography>
+          </Box>
+          <TextField
+            size="small"
+            label="Search channels"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
+            sx={{ minWidth: { sm: 260 } }}
+          />
+        </Stack>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ px: 1.5, pb: 1.5 }}>
+          <Chip size="small" label={`All ${providers.length}`} color="primary" />
+          {Object.entries(providerCounts(providers)).map(([kind, count]) => (
+            <Chip key={kind} size="small" label={`${providerKindLabel(kind)} ${count}`} variant="outlined" />
+          ))}
+        </Stack>
+        <Stack spacing={1.25} sx={{ px: 1.5, pb: 1.5 }}>
+          {filteredProviders.length === 0 ? (
+            <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1, bgcolor: "background.paper" }}>
+              No relay channels saved yet.
+            </Typography>
+          ) : (
+            filteredProviders.map((provider) => {
+              const active = provider.id === activeProviderId;
+              const modelOptions = providerModelOptions(provider);
+              const selectedProviderModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
+              const visibleModels = modelOptions.slice(0, 4);
+              return (
+                <Box
+                  key={provider.id}
+                  sx={{
+                    p: 1.25,
+                    border: "1px solid",
+                    borderColor: active ? "primary.main" : "divider",
+                    borderRadius: 1,
+                    bgcolor: active ? "action.selected" : "background.paper",
+                    boxShadow: active ? "0 0 0 1px rgba(24,119,242,0.14)" : "none"
+                  }}
+                >
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "flex-start" }} justifyContent="space-between">
+                    <Box sx={{ minWidth: 0 }}>
+                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                        <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
+                          {provider.name}
+                        </Typography>
+                        <Chip size="small" label={active ? "active" : "saved"} color={active ? "primary" : "default"} />
+                        <Chip size="small" label={providerKindLabel(provider.kind)} variant="outlined" />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, overflowWrap: "anywhere" }}>
+                        {provider.baseUrl || "managed provider"} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexShrink: 0 }}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "success.main", boxShadow: "0 0 8px rgba(34,197,94,0.45)" }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+                        healthy
+                      </Typography>
+                      <Chip size="small" label="weight 0" variant="outlined" />
+                    </Stack>
+                  </Stack>
+
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+                    {visibleModels.map((option) => (
+                      <Chip key={option.value} size="small" label={option.value} variant="outlined" sx={{ maxWidth: "100%" }} />
+                    ))}
+                    {modelOptions.length > visibleModels.length && <Chip size="small" label={`+${modelOptions.length - visibleModels.length}`} variant="outlined" />}
+                  </Stack>
+
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }} sx={{ mt: 1.25 }}>
+                    <FormControl size="small" sx={{ flex: 1, minWidth: { xs: 0, sm: 180 } }}>
+                      <InputLabel>Model</InputLabel>
+                      <Select
+                        value={selectedProviderModel}
+                        label="Model"
+                        onChange={(event) => setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))}
+                      >
+                        {modelOptions.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button
+                      size="small"
+                      variant={active ? "outlined" : "contained"}
+                      startIcon={<PlayArrowIcon />}
+                      onClick={() => onActivateProvider(provider.id, selectedProviderModel || undefined)}
+                      sx={{ minWidth: { xs: "100%", sm: 132 } }}
+                    >
+                      Activate
+                    </Button>
+                  </Stack>
+                </Box>
+              );
+            })
+          )}
+        </Stack>
+      </Box>
+    </SettingsSection>
+  );
+}
+
+function RelayFormRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gridTemplateColumns: { xs: "1fr", md: "170px minmax(0, 1fr)" },
+        gap: { xs: 0.75, md: 2 },
+        alignItems: "start"
+      }}
+    >
+      <Typography variant="body2" sx={{ fontWeight: 700, pt: { md: 1 } }}>
+        {label}
+      </Typography>
+      <Box>{children}</Box>
+    </Box>
+  );
+}
+
+function providerModelOptions(provider: ProviderConfig): Array<{ value: string; label: string }> {
+  const fallbackModels = provider.defaultModel ? [provider.defaultModel] : [];
+  const nativeModelOptions = provider.nativeModels.length > 0 ? provider.nativeModels : fallbackModels;
+  return [
+    ...provider.modelAliases.map((entry) => ({ value: entry.alias, label: `${entry.alias} -> ${entry.model}` })),
+    ...nativeModelOptions.map((model) => ({ value: model, label: model }))
+  ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.value === entry.value) === index);
+}
+
+function providerCounts(providers: ProviderConfig[]): Record<string, number> {
+  return providers.reduce<Record<string, number>>((counts, provider) => {
+    counts[provider.kind] = (counts[provider.kind] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function providerKindLabel(kind: string): string {
+  switch (kind) {
+    case "responsesRelay":
+      return "Responses";
+    case "chatgpt":
+      return "ChatGPT";
+    case "openai":
+      return "OpenAI";
+    case "ollama":
+      return "Ollama";
+    case "lmstudio":
+      return "LM Studio";
+    case "bedrock":
+      return "Bedrock";
+    default:
+      return kind;
+  }
+}
+
+function parseCsv(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseAliases(value: string): ProviderConfig["modelAliases"] {
+  return parseCsv(value)
+    .map((entry) => {
+      const [alias, model] = entry.split("=").map((part) => part.trim());
+      return alias && model ? { alias, model } : null;
+    })
+    .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
 }
 
 function CodexConfigFieldRow({
@@ -846,6 +1346,106 @@ function SettingsSection({
   );
 }
 
+function ThemeModeCards({
+  themeMode,
+  onThemeModeChange
+}: {
+  themeMode: ThemeMode;
+  onThemeModeChange: (mode: ThemeMode) => void;
+}) {
+  const cards: Array<{
+    mode: ThemeMode;
+    label: string;
+    description: string;
+    icon: ReactNode;
+    swatches: string[];
+  }> = [
+    {
+      mode: "system",
+      label: "System",
+      description: "Follow OS light/dark preference.",
+      icon: <ComputerIcon fontSize="small" />,
+      swatches: ["#F8FAF5", "#FFFFFF", "#111827"]
+    },
+    {
+      mode: "official-light",
+      label: "Light",
+      description: "Bright VS Code-style workspace.",
+      icon: <LightModeIcon fontSize="small" />,
+      swatches: ["#FFFFFF", "#E5E7EB", "#1877F2"]
+    },
+    {
+      mode: "official-black",
+      label: "Dark",
+      description: "Black editor-style workspace.",
+      icon: <DarkModeIcon fontSize="small" />,
+      swatches: ["#070A0E", "#10161D", "#61F3F3"]
+    }
+  ];
+
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1.5 }}>
+      {cards.map((card) => {
+        const active =
+          themeMode === card.mode ||
+          (card.mode === "official-light" && themeMode === "atmospheric-codex") ||
+          (card.mode === "official-black" && themeMode === "studio-black-gold");
+        return (
+          <Button
+            key={card.mode}
+            variant="outlined"
+            color={active ? "primary" : "inherit"}
+            onClick={() => onThemeModeChange(card.mode)}
+            sx={{
+              p: 1,
+              minHeight: 132,
+              borderColor: active ? "primary.main" : "divider",
+              bgcolor: active ? "action.selected" : "background.default",
+              justifyContent: "stretch",
+              textAlign: "left"
+            }}
+          >
+            <Stack spacing={1} sx={{ width: "100%" }}>
+              <Box
+                sx={{
+                  height: 58,
+                  borderRadius: 1,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  overflow: "hidden",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1.45fr"
+                }}
+              >
+                <Box sx={{ bgcolor: card.swatches[0], borderRight: "1px solid", borderColor: "divider", p: 0.75 }}>
+                  <Box sx={{ height: 8, width: "70%", bgcolor: card.swatches[1], borderRadius: 0.5, mb: 0.75 }} />
+                  <Box sx={{ height: 7, width: "52%", bgcolor: card.swatches[2], opacity: 0.5, borderRadius: 0.5 }} />
+                </Box>
+                <Box sx={{ bgcolor: card.swatches[1], p: 0.75 }}>
+                  <Box sx={{ height: 10, width: "35%", bgcolor: card.swatches[2], borderRadius: 0.5, mb: 0.75 }} />
+                  <Box sx={{ height: 16, width: "100%", bgcolor: card.mode === "official-black" ? "#252A3A" : "#E5E7EB", borderRadius: 0.75 }} />
+                </Box>
+              </Box>
+              <Stack direction="row" spacing={0.75} alignItems="center">
+                {card.icon}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                    {card.label}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                    {card.description}
+                  </Typography>
+                </Box>
+                {active ? <CheckCircleIcon fontSize="small" color="primary" /> : <Radio size="small" checked={false} />}
+              </Stack>
+            </Stack>
+          </Button>
+        );
+      })}
+    </Box>
+  );
+}
+
 function ThemePluginManager({
   plugins,
   activeThemeId,
@@ -856,7 +1456,7 @@ function ThemePluginManager({
   onRemoveCustomThemePlugin
 }: {
   plugins: ThemePlugin[];
-  activeThemeId: ThemeId;
+  activeThemeId: ThemeMode;
   installedThemePluginIds: ThemeId[];
   onThemeModeChange: (mode: ThemeMode) => void;
   onInstallThemePlugin: (id: ThemeId) => void;

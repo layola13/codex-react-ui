@@ -41,6 +41,7 @@ function Root() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     const customs = readCustomThemePlugins();
+    if (stored === "system") return "system";
     if (stored === "black") return "official-black";
     if (stored === "light") return "official-light";
     return isThemeId(stored, customs) ? stored : "official-light";

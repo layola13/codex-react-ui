@@ -7,6 +7,10 @@
 - [x] Preserve Quick settings while adding searchable schema/runtime config coverage for nested objects, scalar fields, booleans, enums, and JSON map sections.
 - [x] Persist dynamic Codex config edits through `config/batchWrite` with `reloadUserConfig`, including nested key paths such as `history.max_bytes`.
 - [x] Verify the dynamic config UI with Playwright screenshot coverage and full e2e tests.
+- [x] Move third-party relay/channel configuration from the right inspector into Settings -> Relay, matching the Add Channel and saved-channel references.
+- [x] Add VS Code-like System/Light/Dark theme mode cards in Settings -> Appearance while preserving theme plugin switching.
+- [x] Replace the right inspector relay setup surface with a QQ-style Codex buddy/contacts/status sidebar.
+- [x] Re-run Playwright screenshot verification for the relay settings, appearance cards, right companion sidebar, and saved channel activation controls.
 - [x] Align the main workbench layout, surfaces, typography, and theme architecture with `snapshot/参考/stitch_react_mui_interface_design/*` and `/root/projects/material-kit-react`.
 - [x] Verify the revised UI with Playwright desktop/mobile screenshots against the Stitch reference images, especially `codex_1/screen.png`.
 - [x] Verify built-in and custom theme switching still works after the theme architecture refactor.

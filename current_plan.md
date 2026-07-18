@@ -6,18 +6,20 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-1. Support all Codex user config settings in the Settings UI:
-   - use `/root/projects/codex/codex-rs/core/config.schema.json` as the dynamic field source
-   - preserve compact Quick settings for common engine fields
-   - add searchable All config coverage for schema-derived fields and runtime keys returned by `config/read`
-   - write scalar, nested, and JSON values through `config/batchWrite` with `reloadUserConfig`
+1. Finish the Settings relocation and visual polish requested from the Stitch references:
+   - keep third-party relay/channel setup inside Settings -> Relay
+   - render saved providers as responsive channel cards with activation controls
+   - expose VS Code-like System/Light/Dark theme mode choices in Settings -> Appearance
+   - keep the right inspector focused on a companion/profile/audit surface now that relay settings moved
 2. Verify with commands and screenshots:
    - `pnpm --filter @codex-ui/web typecheck`
    - `pnpm --filter @codex-ui/web build`
    - `pnpm check:codex-config-schema`
-   - `pnpm exec playwright install chromium`
    - `pnpm test:e2e`
-   - inspect updated Settings screenshots for layout regressions and theme consistency
+   - inspect `/root/projects/snapshot/07-right-companion-sidebar.png`
+   - inspect `/root/projects/snapshot/08-settings-appearance-theme-cards.png`
+   - inspect `/root/projects/snapshot/09-settings-relay-model-channels.png`
+   - inspect `/root/projects/snapshot/10-settings-relay-saved-channels.png`
 3. Update `tasks.md`, `progress.md`, and `current_plan.md` after the completed feature slice.
 4. Commit and push after verification.
 
@@ -32,12 +34,12 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Dynamic schema-backed Codex config Settings UI is verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
+Settings relay relocation, theme mode cards, and right companion sidebar are verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
 
 ## Latest Verification
 
-- `pnpm exec playwright install chromium`
 - `pnpm check:codex-config-schema`
 - `pnpm --filter @codex-ui/web typecheck`
 - `pnpm --filter @codex-ui/web build`
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "captures relay settings saved channel cards"`
 - `pnpm test:e2e` (13/13 Chromium tests)

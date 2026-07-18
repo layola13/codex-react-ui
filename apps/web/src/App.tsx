@@ -8,7 +8,6 @@ import {
   CircularProgress,
   FormControl,
   IconButton,
-  InputLabel,
   MenuItem,
   Popover,
   Select,
@@ -1145,7 +1144,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           localStorage.setItem(UI_STORAGE_KEYS.filesPanelLayout, JSON.stringify(layout));
         }}
         account={state.account}
-        models={state.models}
         providers={state.providers}
         activeThreadId={state.activeThreadId}
         pendingRequests={state.pendingRequests}
@@ -1164,8 +1162,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         terminalSessions={terminalSessions}
         auditEvents={auditEvents}
         onAnswerRequest={answerRequest}
-        onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
-        onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
         onExportProfile={() => downloadProfile()}
         onImportProfile={(file) => uploadProfile(file)}
         onReloadAuditEvents={() => loadAuditEvents()}
@@ -1249,9 +1245,24 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           <Typography component="h1" variant="h6" sx={{ fontSize: 17, fontWeight: 800, display: { xs: "none", sm: "block" } }}>
             Codex
           </Typography>
-          <FormControl size="small" sx={{ minWidth: { xs: 136, sm: 220 }, maxWidth: { xs: 148, sm: 300 } }}>
-            <InputLabel>Model</InputLabel>
-            <Select value={selectedModel} label="Model" onChange={(event) => setSelectedModel(event.target.value)}>
+          <FormControl size="small" sx={{ minWidth: { xs: 148, sm: 236 }, maxWidth: { xs: 160, sm: 320 } }}>
+            <Select
+              value={selectedModel}
+              displayEmpty
+              inputProps={{ "aria-label": "Model" }}
+              renderValue={(value) => {
+                const selected = composerModels.find((entry) => (entry.model ?? entry.id ?? "") === value);
+                return selected?.displayName ?? value;
+              }}
+              onChange={(event) => setSelectedModel(event.target.value)}
+              sx={{
+                "& .MuiSelect-select": {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }
+              }}
+            >
               {composerModels.map((entry) => {
                 const value = entry.model ?? entry.id ?? "";
                 return (
@@ -1529,6 +1540,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onReloadCodexConfig={() => void loadCodexConfig()}
         onCodexConfigFieldChange={(field, value) => void writeCodexConfigField(field, value)}
         onCodexConfigValueChange={(keyPath, value) => void writeCodexConfigValue(keyPath, value)}
+        onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
+        onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
       />
       <Snackbar
         open={state.errors.length > 0}
