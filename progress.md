@@ -3,21 +3,23 @@
 ## 2026-07-18
 
 - Current status snapshot:
-  - The long-running settings/theme/tooling/files/terminal/profile/audit/image-input scope remains green.
+  - The long-running settings/theme/tooling/files/terminal/profile/audit/image-input scope remains green after separating Settings from the right runtime workspace.
+  - The main right runtime workspace is hidden by default; the top-right split-view control opens Side chat, Browser, and Terminal only.
+  - Settings now owns Codex Plugins, MCP, hooks, Skills, Workspace Files, UI profile import/export, and dangerous permission audit records.
   - Settings -> Codex Plugins now uses real Codex tooling data instead of placeholder chips: marketplace plugins, installed mentions, hooks, plugin app auth, MCP inventory, MCP resource/tool actions, and `/plugins` plus `/mcp` plus `/hooks` composer entry points are wired.
   - The sidechat slice is implemented and verified: top-right entry point, right-side panel, fixed `+` affordance, multiple independent tabs, stable main-chat focus, raw slash-command forwarding, Playwright coverage, and screenshot evidence.
   - Sidechat reference assets remain under `snapshot/sidechat/`; the fresh implementation screenshot is `snapshot/sidechat-workbench.png`.
   - `/root/projects/material-kit-react/README.md` was rechecked during the slice; the sidechat UI stays on the existing Minimal UI / MUI surface language rather than introducing a separate visual system.
 - Current repository/verification facts:
   - The sidechat implementation has passed verification and is pushed to `origin/main`.
-  - `pnpm test:e2e` now runs 16 Chromium tests, including the focused sidechat regression.
+  - `pnpm test:e2e` now runs 17 Chromium tests, including the focused sidechat and Codex plugin Settings regressions.
   - The Codex code index was rebuilt at `/root/projects/codex/.code_index` with the Rust engine: 3448 modules, 23596 functions, and 336100 edges.
 - Completed feature areas that should not be regressed:
   - schema-driven Settings -> All config with 93 top-level Codex settings and nested/runtime key support
   - relay/channel management in Settings -> Relay with secret-free provider metadata and keyring-backed credentials
   - Settings-hosted Codex plugin management with hooks, MCP server inventory, installed plugin mentions, plugin app auth state, and UI slash entry points
   - System/Light/Dark theme cards plus built-in/custom theme plugin switching
-  - draggable/resizable workbench panels, task tabs, right companion/status surface, pet dock settings, and Markdown chat rendering
+  - draggable/resizable workbench panels, task tabs, right runtime workspace, pet dock settings, and Markdown chat rendering
   - MCP, Skills, Plugins, plugin mentions, MCP OAuth/resources, direct MCP tool calls, files/editor, terminal/process controls, profile import/export, and dangerous-permission audits
   - main-composer image attachments, including drag-and-drop, mixed text/image input, data URL submission, and practical byte limits instead of an arbitrary five-image count cap
 - Codex plugin Settings implementation status:
@@ -30,9 +32,21 @@
     - `pnpm --filter @codex-ui/web typecheck`
     - `pnpm --filter @codex-ui/web build`
     - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "Codex plugins and MCP|uses installed-only plugin mentions|supports direct MCP tool calls"`
+    - `pnpm test:e2e` (17/17 Chromium tests)
+- Settings/right-workspace separation status:
+  - Removed the default right inspector from the main workbench layout.
+  - Added a hidden-by-default right runtime workspace with Side chat, Browser, and Terminal tabs, opened by the top-right split-view control.
+  - Moved Skills, Workspace Files, UI profile import/export, and dangerous permission audit records into Settings.
+  - Kept file browsing/editing through `fs/readDirectory`, `fs/readFile`, and `fs/writeFile` in Settings -> Workspace.
+  - Kept PTY command execution, stdin, resize, and terminate controls in the right runtime workspace Terminal tab.
+  - Refreshed Playwright screenshots for the default Settings drawer, right runtime workspace, themes, and Settings-hosted workspace files.
+  - Verification passed:
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm test:e2e` (17/17 Chromium tests)
+    - `pnpm --filter @codex-ui/web build`
 - Sidechat implementation status:
-  - Added the visible top-right sidechat control; opening sidechat hides the inspector so the right panel matches the reference side-by-side shape, while the inspector can still be reopened manually.
-  - Mounted `SideChatPanel` in desktop resizable panels and mobile stacked layout.
+  - Sidechat now opens inside the right runtime workspace instead of a standalone inspector-adjacent panel.
+  - Mounted `SideChatPanel` in the desktop right workspace and mobile stacked right workspace layout.
   - Kept each sidechat tab/window isolated with its own draft, optimistic local transcript, in-flight state, and Codex `threadId`; sidechat threads are filtered out of main task tabs/history and main-chat `ChatPanel` turns.
   - Preserved main-thread focus while `thread/started`, `turn/started`, deltas, and completions stream over the shared websocket.
   - Added a `preserveText` mode to `composerInputToUserInput` and used it only for sidechat so `/goal ...`, `/status ...`, and other command-shaped input are forwarded as exact text without a browser allow-list or rewrite.
@@ -186,7 +200,7 @@
 
 - Settings drawer now loads live Codex user config via `config/read` and persists curated fields through `config/batchWrite` with `reloadUserConfig` (model/review defaults, reasoning effort/summary, verbosity, service tier, approval policy, sandbox mode, web search, user instructions, developer instructions).
 - Theme plugins remain local-only (install/switch/remove/create/delete); never written into Codex config.toml; provider API keys stay out of config writes.
-- Desktop workbench panels stay resizable with localStorage layout persistence, including nested Files explorer/editor/terminal splits.
+- Desktop workbench panels stay resizable with localStorage layout persistence; Workspace Files keeps explorer/editor splits in Settings and Terminal lives in the right runtime workspace.
 - Playwright e2e covers Settings config load/edit/re-read, custom theme plugin creation, theme/config independence, and resizable Files panes; screenshots `snapshot/codex-ui-settings-open.png`, `snapshot/codex-ui-settings-appearance.png`, `snapshot/codex-ui-settings-layout.png`, and `snapshot/codex-ui-files-resizable.png`.
 
 ## Known Gaps

@@ -6,32 +6,23 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-The Codex plugin Settings slice is implemented and under final full-suite verification.
+The Settings/right-workspace separation slice is implemented and verified.
 
-1. Settings/image/tooling regression scope stayed green:
-   - Settings -> Codex Engine remains backed by the bundled Codex JSON schema.
-   - Relay providers remain in Settings -> Relay and secrets remain out of Codex config writes.
-   - Main composer image input still uses Codex image data URLs with size-based browser guards.
-2. Settings -> Codex Plugins is real, not placeholder:
-   - marketplace plugins render from `plugin/list`
-   - installed plugin mentions render from `plugin/installed`
-   - hooks render from `hooks/list`
-   - plugin detail, install/uninstall, app auth, skill preview, and mention insertion use existing app-server RPCs
-   - MCP inventory renders from `mcpServerStatus/list`
-   - MCP reload, OAuth, resource read, and direct tool-call controls are available in Settings
-   - theme plugin customization remains isolated in Appearance
-3. Slash command entry points are implemented:
-   - exact `/plugins` opens Settings -> Codex Plugins marketplace without sending `turn/start`
-   - exact `/mcp` opens the MCP tab without sending `turn/start`
-   - exact `/hooks` opens the Hooks tab without sending `turn/start`
-   - sidechat keeps its existing raw slash-command forwarding behavior
-4. Verification so far:
+1. The main right runtime workspace is hidden by default and opens only from the top-right split-view control:
+   - runtime tabs are `Side chat`, `Browser`, and `Terminal`
+   - Settings content no longer mounts in the main right sidebar
+   - sidechat still supports multiple isolated `/goal` windows and raw slash-command forwarding
+2. Settings now owns configuration and management surfaces:
+   - Codex Engine, Appearance, Layout, Session, Relay, Skills, Codex Plugins, Pet Dock, and Privacy stay inside the Settings drawer
+   - Codex Plugins includes marketplace, installed mentions, hooks, apps/auth, and MCP controls
+   - Workspace Files contains the file explorer/editor formerly hosted in the right inspector
+   - Privacy contains UI profile import/export and dangerous permission audit records
+3. Verification passed:
    - `pnpm --filter @codex-ui/web typecheck`
+   - `pnpm test:e2e` (17/17 Chromium tests)
    - `pnpm --filter @codex-ui/web build`
-   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "Codex plugins and MCP|uses installed-only plugin mentions|supports direct MCP tool calls"`
-5. Remaining release hygiene:
-   - run the full E2E suite after this slice
-   - commit and push after verification is green if this slice is accepted for landing
+4. Remaining release hygiene:
+   - commit and push this slice
 
 ## Engineering Rules
 
@@ -44,22 +35,21 @@ The Codex plugin Settings slice is implemented and under final full-suite verifi
 
 ## Current Baseline
 
-The verified sidechat slice remains the pushed baseline. The next landing target is the Codex plugin Settings slice:
+The verified baseline for this landing target is:
 
-- Settings -> Codex Plugins must contain no placeholder-only content
-- plugin marketplace, installed plugins, hooks, apps/auth, and MCP inventory must be backed by real app-server data
-- `/plugins`, `/mcp`, and `/hooks` must open Settings views and not start a Codex turn
-- existing right-inspector plugin/MCP workflows must remain green
+- default workbench has no right runtime panel
+- top-right split-view control opens the runtime workspace with Side chat, Browser, and Terminal
+- all settings and management surfaces live in Settings, including plugins, MCP, hooks, skills, workspace files, profile import/export, and dangerous audit records
+- `/plugins`, `/mcp`, and `/hooks` open Settings views and do not start a Codex turn
 
 ## Latest Verification
 
 - `pnpm --filter @codex-ui/web typecheck`
+- `pnpm test:e2e` (17/17 Chromium tests)
 - `pnpm --filter @codex-ui/web build`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "Codex plugins and MCP|uses installed-only plugin mentions|supports direct MCP tool calls"`
 
-Full-suite verification is pending for the Codex plugin Settings slice.
+Full-suite verification is complete for the Settings/right-workspace separation slice.
 
 ## Detailed Remaining Work
 
-1. Run full E2E.
-2. Commit and push the Codex plugin Settings slice if verification is green.
+1. Commit and push this slice.

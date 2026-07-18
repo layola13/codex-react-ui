@@ -735,20 +735,28 @@ test.beforeEach(async ({ page }) => {
 test("renders the workbench and tooling panels", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByText("Codex buddy")).toBeVisible();
   await expect(page.getByText("mock-codex")).toBeVisible();
   await expect(page.getByRole("tab", { name: "New task" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Mock thread" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Second task" })).toBeVisible();
+  await expect(page.getByTestId("right-workspace-panel")).toHaveCount(0);
 
-  await page.getByRole("tab", { name: "Tools" }).click();
-  await expect(page.getByRole("tab", { name: "MCP 1" })).toBeVisible();
+  await page.getByLabel("Open right workspace").click();
+  await expect(page.getByTestId("right-workspace-panel")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Side chat" }).first()).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Browser" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Terminal" })).toBeVisible();
+
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Plugins settings").click();
+  await page.getByRole("tab", { name: "MCP 1" }).click();
   await expect(page.getByText("mock-mcp")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Skills 1" }).click();
+  await page.getByLabel("Open Skills settings").click();
   await expect(page.getByText("mock-skill")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Plugins 2" }).click();
+  await page.getByLabel("Open Plugins settings").click();
+  await page.getByRole("tab", { name: "Marketplace 2" }).click();
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
 });
 
@@ -842,8 +850,9 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
   await page.getByRole("tab", { name: "Mock thread" }).click();
   await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "true");
 
-  await page.getByRole("button", { name: "Open side chat" }).click();
-  await expect(page.getByRole("banner").getByRole("button", { name: "Hide side chat" })).toBeVisible();
+  await page.getByRole("button", { name: "Open right workspace" }).click();
+  await expect(page.getByRole("button", { name: "Hide side chat" })).toBeVisible();
+  await expect(page.getByTestId("right-workspace-panel")).toBeVisible();
   await expect(page.getByTestId("sidechat-panel")).toBeVisible();
   await expect(page.getByRole("tablist", { name: "Side chat tabs" })).toBeVisible();
 
@@ -1132,7 +1141,8 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   });
 
   await page.getByLabel("Open Layout settings").click();
-  await expect(page.getByText("Nested pane splits")).toBeVisible();
+  await expect(page.getByText("Right workspace")).toBeVisible();
+  await expect(page.getByText("Toolbar controlled")).toBeVisible();
   await page.screenshot({
     path: "snapshot/codex-ui-settings-layout.png",
     fullPage: true
@@ -1183,7 +1193,8 @@ test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
   await page.goto("/");
 
   await page.getByRole("tab", { name: "Mock thread" }).click();
-  await page.getByRole("tab", { name: "Tools" }).click();
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Plugins settings").click();
   await page.getByRole("tab", { name: "MCP 1" }).click();
 
   await expect(page.getByRole("button", { name: "Call tool" })).toBeEnabled();
@@ -1280,6 +1291,8 @@ test("manages Codex plugins and MCP servers from Settings with slash command ent
 
 test("exports and imports UI profiles without API keys", async ({ page }) => {
   await page.goto("/");
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Privacy settings").click();
 
   await expect(page.getByText("UI profile")).toBeVisible();
   const [download] = await Promise.all([
@@ -1306,7 +1319,6 @@ test("exports and imports UI profiles without API keys", async ({ page }) => {
   });
 
   await expect(page.getByText("Imported 1 providers.")).toBeVisible();
-  await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Relay settings").click();
   await expect(page.getByText("Imported Relay")).toBeVisible();
   await expect(page.getByText("https://relay.example.test/v1")).toBeVisible();
@@ -1330,17 +1342,19 @@ test("shows dangerous permission audit records", async ({ page }) => {
   ];
 
   await page.goto("/");
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Privacy settings").click();
 
   await expect(page.getByText("Dangerous permission audit")).toBeVisible();
-  await expect(page.getByText("critical")).toBeVisible();
+  await expect(page.getByText("critical", { exact: true })).toBeVisible();
   await expect(page.getByText(/approvalPolicy=never/)).toBeVisible();
   await expect(page.getByText(/input 1 items/)).toBeVisible();
 });
 
 test("saves skill extra roots and previews local markdown", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Tools" }).click();
-  await page.getByRole("tab", { name: "Skills 1" }).click();
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Skills settings").click();
 
   const extraRoots = page.getByLabel("Extra roots");
   await extraRoots.fill("/root/projects/extra-skills\n/root/projects/more-skills");
@@ -1376,8 +1390,9 @@ test("saves skill extra roots and previews local markdown", async ({ page }) => 
 
 test("uses installed-only plugin mentions and shows plugin app auth state", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Tools" }).click();
-  await page.getByRole("tab", { name: "Plugins 2" }).click();
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Plugins settings").click();
+  await page.getByRole("tab", { name: "Installed 1" }).click();
 
   const installedPicker = page.getByRole("combobox").last();
   await expect(installedPicker).toHaveText(/Mock Plugin/);
@@ -1385,13 +1400,12 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
   await expect(page.getByRole("option", { name: "Mock Plugin" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Auth Plugin" })).toHaveCount(0);
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: "Auth Plugin" })).toBeVisible();
 
   await page.getByRole("button", { name: "Insert mention" }).click();
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
   await expect(composer).toHaveValue(/@mock-plugin/);
-  await page.getByRole("button", { name: "Send" }).focus();
-  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.getByRole("button", { name: "Send" }).click();
 
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { input?: Array<{ type?: string; path?: string }> } }> })
@@ -1404,6 +1418,10 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
     );
   });
 
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Plugins settings").click();
+  await page.getByRole("tab", { name: "Marketplace 2" }).click();
+  await expect(page.getByRole("heading", { name: "Auth Plugin" })).toBeVisible();
   await page.getByRole("button", { name: "Details" }).first().click();
   await expect(page.getByText("auth ON_USE")).toBeVisible();
   await expect(page.getByText("Mock Calendar").first()).toBeVisible();
@@ -1421,7 +1439,8 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
 
 test("browses and edits files through filesystem RPCs", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Files" }).click();
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Workspace settings").click();
 
   await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
   await page.getByRole("button", { name: "README.md" }).click();
@@ -1450,15 +1469,18 @@ test("browses and edits files through filesystem RPCs", async ({ page }) => {
   await expect(page.getByText("Saved").last()).toBeVisible();
 });
 
-test("keeps files explorer editor and terminal panes resizable", async ({ page }) => {
+test("keeps workspace files explorer and editor panes resizable", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Files" }).click();
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Workspace settings").click();
   await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Terminal" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Explorer" })).toBeVisible();
-  // Nested VS Code-style splits from react-resizable-panels expose data-group/data-panel attrs.
+  await expect(page.getByText("No file selected")).toBeVisible();
+  // Workspace file splits from react-resizable-panels expose data-group/data-panel attrs.
   await expect(page.locator("[data-group]").first()).toBeVisible();
   await expect(page.locator("[data-panel]").first()).toBeVisible();
+  await page.mouse.move(1120, 120);
+  await page.waitForTimeout(300);
   await page.screenshot({
     path: "snapshot/codex-ui-files-resizable.png",
     fullPage: true
@@ -1467,7 +1489,8 @@ test("keeps files explorer editor and terminal panes resizable", async ({ page }
 
 test("runs terminal commands with stdin resize and terminate controls", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "Files" }).click();
+  await page.getByLabel("Open right workspace").click();
+  await page.getByRole("tab", { name: "Terminal" }).click();
 
   await page.getByLabel("Command", { exact: true }).fill("printf terminal-ready");
   await page.getByRole("button", { name: "Run" }).click();
@@ -1509,13 +1532,27 @@ test("runs terminal commands with stdin resize and terminate controls", async ({
 test("matches desktop and mobile workbench screenshots", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
-  await page.getByRole("tab", { name: "Tools" }).click();
-  await page.getByRole("tab", { name: "Plugins 2" }).click();
+  await expect(page.getByTestId("right-workspace-panel")).toHaveCount(0);
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Plugins settings").click();
+  await page.getByRole("tab", { name: "Marketplace 2" }).click();
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
   await expect(page).toHaveScreenshot("workbench-desktop.png", {
     animations: "disabled",
     fullPage: false
   });
+
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await page.getByLabel("Open right workspace").click();
+  await expect(page.getByTestId("right-workspace-panel")).toBeVisible();
+  await page.mouse.move(900, 220);
+  await page.waitForTimeout(300);
+  await page.screenshot({
+    path: "snapshot/sidechat-workbench.png",
+    fullPage: true
+  });
+  await page.getByRole("banner").getByRole("button", { name: "Hide right workspace" }).click();
+  await expect(page.getByTestId("right-workspace-panel")).toHaveCount(0);
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();

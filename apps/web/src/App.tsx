@@ -74,7 +74,7 @@ import { HistorySidebar } from "./components/HistorySidebar";
 import { ChatPanel } from "./components/ChatPanel";
 import { Composer } from "./components/Composer";
 import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
-import { RightInspector } from "./components/RightInspector";
+import { RightWorkspacePanel, type RightWorkspaceTab } from "./components/RightWorkspacePanel";
 import { SettingsDrawer, type ReasoningOption, type SettingsSectionId } from "./components/SettingsDrawer";
 import type { CodexPluginSettingsTab } from "./components/CodexPluginSettingsPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
@@ -91,7 +91,6 @@ import { installedThemePluginDefaults, isThemeId, type ThemeId, type ThemeMode, 
 const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
   leftPanelVisible: "codex-react-ui.left-panel-visible",
-  inspectorVisible: "codex-react-ui.inspector-visible",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
   panelLayout: "codex-react-ui.panel-layout",
   filesPanelLayout: "codex-react-ui.files-panel-layout"
@@ -194,8 +193,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [settingsPluginTab, setSettingsPluginTab] = useState<CodexPluginSettingsTab>("marketplace");
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
-  const [inspectorVisible, setInspectorVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.inspectorVisible, true));
-  const [sideChatVisible, setSideChatVisible] = useState(false);
+  const [rightWorkspaceVisible, setRightWorkspaceVisible] = useState(false);
+  const [rightWorkspaceTab, setRightWorkspaceTab] = useState<RightWorkspaceTab>("sidechat");
   const [sideChatTabs, setSideChatTabs] = useState<SideChatTab[]>(() => [
     {
       id: "sidechat-1",
@@ -260,18 +259,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }, [leftPanelVisible]);
 
   useEffect(() => {
-    localStorage.setItem(UI_STORAGE_KEYS.inspectorVisible, JSON.stringify(inspectorVisible));
-  }, [inspectorVisible]);
-
-  useEffect(() => {
-    if (!sideChatVisible) {
+    if (!rightWorkspaceVisible || rightWorkspaceTab !== "sidechat") {
       return;
     }
     const hasActive = sideChatTabs.some((tab) => tab.id === activeSideChatId);
     if (!hasActive && sideChatTabs[0]) {
       setActiveSideChatId(sideChatTabs[0].id);
     }
-  }, [activeSideChatId, sideChatTabs, sideChatVisible]);
+  }, [activeSideChatId, rightWorkspaceTab, rightWorkspaceVisible, sideChatTabs]);
 
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.petDockEnabled, JSON.stringify(petDockEnabled));
@@ -762,7 +757,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     };
     setSideChatTabs((current) => [...current, nextTab]);
     setActiveSideChatId(nextTab.id);
-    setSideChatVisible(true);
+    setRightWorkspaceTab("sidechat");
+    setRightWorkspaceVisible(true);
   }, []);
 
   const closeSideChatTab = useCallback((tabId: string) => {
@@ -1325,61 +1321,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     );
   }
 
-  function renderInspector() {
-    return (
-      <RightInspector
-        filesPanelLayout={filesPanelLayout}
-        onFilesPanelLayoutChange={(layout) => {
-          setFilesPanelLayout(layout);
-          localStorage.setItem(UI_STORAGE_KEYS.filesPanelLayout, JSON.stringify(layout));
-        }}
-        account={state.account}
-        providers={state.providers}
-        activeThreadId={state.activeThreadId}
-        pendingRequests={state.pendingRequests}
-        tooling={state.tooling}
-        toolingLoading={state.toolingLoading}
-        pluginDetails={pluginDetails}
-        pluginSkillPreviews={pluginSkillPreviews}
-        pluginAuthNotices={pluginAuthNotices}
-        skillExtraRoots={skillExtraRoots}
-        skillPreviews={skillPreviews}
-        mcpResourceContents={mcpResourceContents}
-        mcpOauthUrls={mcpOauthUrls}
-        cwd={cwd}
-        fileDirectories={fileDirectories}
-        openFile={openFile}
-        terminalSessions={terminalSessions}
-        auditEvents={auditEvents}
-        onAnswerRequest={answerRequest}
-        onExportProfile={() => downloadProfile()}
-        onImportProfile={(file) => uploadProfile(file)}
-        onReloadAuditEvents={() => loadAuditEvents()}
-        onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
-        onReloadMcp={() => void reloadMcp()}
-        onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
-        onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
-        onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
-        onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
-        onSaveSkillExtraRoots={(roots) => void saveSkillExtraRoots(roots)}
-        onReadSkillPreview={(skill) => void readSkillPreview(skill)}
-        onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
-        onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
-        onInsertPluginMention={insertPluginMention}
-        onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
-        onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
-        onReadDirectory={(path) => void readDirectory(path)}
-        onReadFile={(path) => void readFile(path)}
-        onChangeOpenFileContent={changeOpenFileContent}
-        onSaveOpenFile={() => void saveOpenFile()}
-        onRunTerminalCommand={(command, commandCwd, size) => void runTerminalCommand(command, commandCwd, size)}
-        onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
-        onTerminateTerminal={(processId) => void terminateTerminal(processId)}
-        onResizeTerminal={(processId, size) => void resizeTerminal(processId, size)}
-      />
-    );
-  }
-
   function renderSideChatPanel() {
     return (
       <SideChatPanel
@@ -1396,9 +1337,26 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onTabChange={setActiveSideChatId}
         onAddTab={addSideChatTab}
         onCloseTab={closeSideChatTab}
-        onClosePanel={() => setSideChatVisible(false)}
+        onClosePanel={() => setRightWorkspaceVisible(false)}
         onDraftChange={changeSideChatDraft}
         onSend={(tabId, text) => void sendSideChatPrompt(tabId, text)}
+      />
+    );
+  }
+
+  function renderRightWorkspacePanel() {
+    return (
+      <RightWorkspacePanel
+        activeTab={rightWorkspaceTab}
+        sideChat={renderSideChatPanel()}
+        cwd={cwd}
+        terminalSessions={terminalSessions}
+        onTabChange={setRightWorkspaceTab}
+        onClose={() => setRightWorkspaceVisible(false)}
+        onRunTerminalCommand={(command, commandCwd, size) => void runTerminalCommand(command, commandCwd, size)}
+        onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
+        onTerminateTerminal={(processId) => void terminateTerminal(processId)}
+        onResizeTerminal={(processId, size) => void resizeTerminal(processId, size)}
       />
     );
   }
@@ -1514,28 +1472,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 <ViewSidebarIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-            <Tooltip title={inspectorVisible ? "Hide inspector panel" : "Show inspector panel"}>
-              <IconButton size="small" onClick={() => setInspectorVisible((visible) => !visible)}>
-                <ViewColumnIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
           </Box>
-          <Tooltip title={sideChatVisible ? "Hide side chat" : "Open side chat"}>
+          <Tooltip title={rightWorkspaceVisible ? "Hide right workspace" : "Open right workspace"}>
             <IconButton
               size="small"
-              onClick={() =>
-                setSideChatVisible((visible) => {
-                  const next = !visible;
-                  if (next) {
-                    setInspectorVisible(false);
-                  }
-                  return next;
-                })
-              }
-              aria-label={sideChatVisible ? "Hide side chat" : "Open side chat"}
-              color={sideChatVisible ? "primary" : "default"}
+              onClick={() => {
+                setRightWorkspaceTab("sidechat");
+                setRightWorkspaceVisible((visible) => !visible);
+              }}
+              aria-label={rightWorkspaceVisible ? "Hide right workspace" : "Open right workspace"}
+              color={rightWorkspaceVisible ? "primary" : "default"}
             >
-              <ChatBubbleOutlineIcon fontSize="small" />
+              <ViewColumnIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
@@ -1664,24 +1612,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             )}
             <Panel
               id="chat"
-              defaultSize={sideChatVisible ? (inspectorVisible ? "34%" : "48%") : inspectorVisible ? "52%" : "80%"}
+              defaultSize={rightWorkspaceVisible ? "52%" : "80%"}
               minSize="28%"
             >
               {renderCenterPanel()}
             </Panel>
-            {sideChatVisible && (
+            {rightWorkspaceVisible && (
               <>
                 <ResizeHandle />
-                <Panel id="sidechat" defaultSize={inspectorVisible ? "28%" : "32%"} minSize="24%" maxSize="50%">
-                  {renderSideChatPanel()}
-                </Panel>
-              </>
-            )}
-            {inspectorVisible && (
-              <>
-                <ResizeHandle />
-                <Panel id="inspector" defaultSize={sideChatVisible ? "18%" : "28%"} minSize="16%" maxSize="42%">
-                  {renderInspector()}
+                <Panel id="right-workspace" defaultSize="32%" minSize="24%" maxSize="56%">
+                  {renderRightWorkspacePanel()}
                 </Panel>
               </>
             )}
@@ -1698,8 +1638,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               />
             )}
             {renderCenterPanel()}
-            {sideChatVisible && <Box sx={{ minHeight: 560, height: "72vh" }}>{renderSideChatPanel()}</Box>}
-            {inspectorVisible && renderInspector()}
+            {rightWorkspaceVisible && <Box sx={{ minHeight: 560, height: "72vh" }}>{renderRightWorkspacePanel()}</Box>}
           </Box>
         )}
         </Box>
@@ -1762,7 +1701,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         installedThemePluginIds={installedThemePluginIds}
         customThemePlugins={customThemePlugins}
         leftPanelVisible={leftPanelVisible}
-        inspectorVisible={inspectorVisible}
         petDockEnabled={petDockEnabled}
         cwd={cwd}
         permission={permission}
@@ -1777,12 +1715,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         codexConfigError={codexConfigError}
         tooling={state.tooling}
         toolingLoading={state.toolingLoading}
+        skillExtraRoots={skillExtraRoots}
+        skillPreviews={skillPreviews}
+        fileDirectories={fileDirectories}
+        openFile={openFile}
+        filesPanelLayout={filesPanelLayout}
         activeThreadId={state.activeThreadId}
         pluginDetails={pluginDetails}
         pluginSkillPreviews={pluginSkillPreviews}
         pluginAuthNotices={pluginAuthNotices}
         mcpResourceContents={mcpResourceContents}
         mcpOauthUrls={mcpOauthUrls}
+        auditEvents={auditEvents}
         onClose={() => setSettingsOpen(false)}
         onThemeModeChange={onThemeModeChange}
         onInstallThemePlugin={installThemePlugin}
@@ -1790,7 +1734,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onSaveCustomThemePlugin={saveCustomThemePlugin}
         onRemoveCustomThemePlugin={removeCustomThemePlugin}
         onLeftPanelVisibleChange={setLeftPanelVisible}
-        onInspectorVisibleChange={setInspectorVisible}
         onPetDockEnabledChange={setPetDockEnabled}
         onCwdChange={setCwd}
         onPermissionChange={setPermission}
@@ -1802,9 +1745,23 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
         onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
         onReloadMcp={() => void reloadMcp()}
+        onExportProfile={() => downloadProfile()}
+        onImportProfile={(file) => uploadProfile(file)}
+        onReloadAuditEvents={() => loadAuditEvents()}
         onStartMcpOauth={(serverName) => void startMcpOauth(serverName)}
         onReadMcpResource={(serverName, uri) => void readMcpResource(serverName, uri)}
         onCallMcpTool={(serverName, toolName, args) => callMcpTool(serverName, toolName, args)}
+        onToggleSkill={(skill, enabled) => void toggleSkill(skill, enabled)}
+        onSaveSkillExtraRoots={(roots) => void saveSkillExtraRoots(roots)}
+        onReadSkillPreview={(skill) => void readSkillPreview(skill)}
+        onFilesPanelLayoutChange={(layout) => {
+          setFilesPanelLayout(layout);
+          localStorage.setItem(UI_STORAGE_KEYS.filesPanelLayout, JSON.stringify(layout));
+        }}
+        onReadDirectory={(path) => void readDirectory(path)}
+        onReadFile={(path) => void readFile(path)}
+        onChangeOpenFileContent={changeOpenFileContent}
+        onSaveOpenFile={() => void saveOpenFile()}
         onReadPluginDetail={(marketplace, plugin) => void readPluginDetail(marketplace, plugin)}
         onReadPluginSkill={(marketplace, plugin, skillName) => void readPluginSkill(marketplace, plugin, skillName)}
         onInsertPluginMention={insertPluginMention}

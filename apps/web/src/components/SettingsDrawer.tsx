@@ -15,6 +15,7 @@ import {
   ListItemIcon,
   ListItemText,
   MenuItem,
+  Paper,
   Radio,
   Select,
   Stack,
@@ -22,7 +23,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
-import type { JsonValue } from "@codex-ui/shared";
+import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -31,6 +32,7 @@ import ColorLensIcon from "@mui/icons-material/ColorLens";
 import ComputerIcon from "@mui/icons-material/Computer";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DashboardCustomizeIcon from "@mui/icons-material/DashboardCustomize";
+import DownloadIcon from "@mui/icons-material/Download";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import MemoryIcon from "@mui/icons-material/Memory";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -47,6 +49,7 @@ import TokenIcon from "@mui/icons-material/Token";
 import TuneIcon from "@mui/icons-material/Tune";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import WavesIcon from "@mui/icons-material/Waves";
 import { permissionPresets, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
@@ -62,15 +65,18 @@ import {
 } from "../state/codexConfigSettings";
 import { themePlugins, type ThemeId, type ThemeMode, type ThemePlugin } from "../theme";
 import type {
+  FsDirectoryEntry,
   McpResourceContentEntry,
   PluginDetailEntry,
   PluginEntry,
   PluginInstallAuthNotice,
   PluginMarketplace,
+  SkillEntry,
   ToolingState
 } from "../state/codexClient";
 import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
+import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
 
 export type ReasoningOption = {
   value: string;
@@ -82,8 +88,10 @@ export type SettingsSectionId =
   | "codex"
   | "appearance"
   | "layout"
+  | "workspace"
   | "session"
   | "relay"
+  | "skills"
   | "plugins"
   | "pet"
   | "privacy";
@@ -96,7 +104,6 @@ type Props = {
   installedThemePluginIds: ThemeId[];
   customThemePlugins: ThemePlugin[];
   leftPanelVisible: boolean;
-  inspectorVisible: boolean;
   petDockEnabled: boolean;
   cwd: string;
   permission: PermissionPresetId;
@@ -111,12 +118,18 @@ type Props = {
   codexConfigError: string | null;
   tooling: ToolingState;
   toolingLoading: boolean;
+  skillExtraRoots: string[];
+  skillPreviews: Record<string, string>;
+  fileDirectories: Record<string, FsDirectoryEntry[]>;
+  openFile: OpenWorkspaceFile | null;
+  filesPanelLayout?: Record<string, number>;
   activeThreadId: string | null;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
   pluginAuthNotices: Record<string, PluginInstallAuthNotice>;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
+  auditEvents: DangerousPermissionAuditEvent[];
   onClose: () => void;
   onThemeModeChange: (mode: ThemeMode) => void;
   onInstallThemePlugin: (id: ThemeId) => void;
@@ -124,7 +137,6 @@ type Props = {
   onSaveCustomThemePlugin: (plugin: ThemePlugin) => void;
   onRemoveCustomThemePlugin: (id: ThemeId) => void;
   onLeftPanelVisibleChange: (visible: boolean) => void;
-  onInspectorVisibleChange: (visible: boolean) => void;
   onPetDockEnabledChange: (enabled: boolean) => void;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
@@ -136,9 +148,20 @@ type Props = {
   onActivateProvider: (providerId: string, model?: string) => void;
   onReloadTooling: () => void;
   onReloadMcp: () => void;
+  onExportProfile: () => Promise<void>;
+  onImportProfile: (file: File) => Promise<number>;
+  onReloadAuditEvents: () => Promise<void>;
   onStartMcpOauth: (serverName: string) => void;
   onReadMcpResource: (serverName: string, uri: string) => void;
   onCallMcpTool: (serverName: string, toolName: string, args: JsonValue) => Promise<JsonValue>;
+  onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
+  onSaveSkillExtraRoots: (roots: string[]) => void;
+  onReadSkillPreview: (skill: SkillEntry) => void;
+  onFilesPanelLayoutChange?: (layout: Record<string, number>) => void;
+  onReadDirectory: (path: string) => void;
+  onReadFile: (path: string) => void;
+  onChangeOpenFileContent: (content: string) => void;
+  onSaveOpenFile: () => void;
   onReadPluginDetail: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onReadPluginSkill: (marketplace: PluginMarketplace, plugin: PluginEntry, skillName: string) => void;
   onInsertPluginMention: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
@@ -150,8 +173,10 @@ const NAV_ITEMS: Array<{ id: SettingsSectionId; label: string; icon: ReactNode }
   { id: "codex", label: "Codex Engine", icon: <StorageIcon fontSize="small" /> },
   { id: "appearance", label: "Appearance", icon: <ColorLensIcon fontSize="small" /> },
   { id: "layout", label: "Layout", icon: <DashboardCustomizeIcon fontSize="small" /> },
+  { id: "workspace", label: "Workspace", icon: <StorageIcon fontSize="small" /> },
   { id: "session", label: "Session", icon: <TuneIcon fontSize="small" /> },
   { id: "relay", label: "Relay", icon: <MemoryIcon fontSize="small" /> },
+  { id: "skills", label: "Skills", icon: <PsychologyIcon fontSize="small" /> },
   { id: "plugins", label: "Plugins", icon: <ExtensionIcon fontSize="small" /> },
   { id: "pet", label: "Pet Dock", icon: <PetsIcon fontSize="small" /> },
   { id: "privacy", label: "Privacy", icon: <SecurityIcon fontSize="small" /> }
@@ -165,7 +190,6 @@ export function SettingsDrawer({
   installedThemePluginIds,
   customThemePlugins,
   leftPanelVisible,
-  inspectorVisible,
   petDockEnabled,
   cwd,
   permission,
@@ -180,12 +204,18 @@ export function SettingsDrawer({
   codexConfigError,
   tooling,
   toolingLoading,
+  skillExtraRoots,
+  skillPreviews,
+  fileDirectories,
+  openFile,
+  filesPanelLayout,
   activeThreadId,
   pluginDetails,
   pluginSkillPreviews,
   pluginAuthNotices,
   mcpResourceContents,
   mcpOauthUrls,
+  auditEvents,
   onClose,
   onThemeModeChange,
   onInstallThemePlugin,
@@ -193,7 +223,6 @@ export function SettingsDrawer({
   onSaveCustomThemePlugin,
   onRemoveCustomThemePlugin,
   onLeftPanelVisibleChange,
-  onInspectorVisibleChange,
   onPetDockEnabledChange,
   onCwdChange,
   onPermissionChange,
@@ -205,9 +234,20 @@ export function SettingsDrawer({
   onActivateProvider,
   onReloadTooling,
   onReloadMcp,
+  onExportProfile,
+  onImportProfile,
+  onReloadAuditEvents,
   onStartMcpOauth,
   onReadMcpResource,
   onCallMcpTool,
+  onToggleSkill,
+  onSaveSkillExtraRoots,
+  onReadSkillPreview,
+  onFilesPanelLayoutChange,
+  onReadDirectory,
+  onReadFile,
+  onChangeOpenFileContent,
+  onSaveOpenFile,
   onReadPluginDetail,
   onReadPluginSkill,
   onInsertPluginMention,
@@ -502,7 +542,7 @@ export function SettingsDrawer({
             )}
 
             {section === "layout" && (
-              <SettingsSection icon={<DashboardCustomizeIcon fontSize="small" />} title="Layout" subtitle="All desktop workbench windows stay resizable like VS Code">
+              <SettingsSection icon={<DashboardCustomizeIcon fontSize="small" />} title="Layout" subtitle="Main workbench layout preferences; the right runtime workspace opens from the toolbar">
                 <SettingRow title="History panel" description="Show or hide the left conversation panel. Width is draggable on desktop.">
                   <Switch
                     checked={leftPanelVisible}
@@ -510,19 +550,28 @@ export function SettingsDrawer({
                     inputProps={{ "aria-label": "History panel" }}
                   />
                 </SettingRow>
-                <SettingRow title="Inspector panel" description="Show or hide the right config/tools/files panel. Width is draggable on desktop.">
-                  <Switch
-                    checked={inspectorVisible}
-                    onChange={(event) => onInspectorVisibleChange(event.target.checked)}
-                    inputProps={{ "aria-label": "Inspector panel" }}
-                  />
-                </SettingRow>
-                <SettingRow title="Nested pane splits" description="Files explorer, editor, and terminal use nested resizable splits with layout persistence.">
-                  <Chip size="small" label="VS Code style" color="primary" variant="outlined" />
+                <SettingRow title="Right workspace" description="Side chat, Browser, and Terminal stay outside Settings and open only from the top-right split-view control.">
+                  <Chip size="small" label="Toolbar controlled" color="primary" variant="outlined" />
                 </SettingRow>
                 <SettingRow title="Workspace cwd" description="Used for new threads, file tools, skills and permission roots.">
                   <TextField size="small" value={cwd} onChange={(event) => onCwdChange(event.target.value)} sx={{ minWidth: 240 }} />
                 </SettingRow>
+              </SettingsSection>
+            )}
+
+            {section === "workspace" && (
+              <SettingsSection icon={<StorageIcon fontSize="small" />} title="Workspace Files" subtitle="Browse and edit workspace files from Settings">
+                <WorkspaceFilesSettingsPanel
+                  cwd={cwd}
+                  fileDirectories={fileDirectories}
+                  openFile={openFile}
+                  filesPanelLayout={filesPanelLayout}
+                  onFilesPanelLayoutChange={onFilesPanelLayoutChange}
+                  onReadDirectory={onReadDirectory}
+                  onReadFile={onReadFile}
+                  onChangeOpenFileContent={onChangeOpenFileContent}
+                  onSaveOpenFile={onSaveOpenFile}
+                />
               </SettingsSection>
             )}
 
@@ -574,6 +623,19 @@ export function SettingsDrawer({
               />
             )}
 
+            {section === "skills" && (
+              <SettingsSection icon={<PsychologyIcon fontSize="small" />} title="Skills" subtitle="Skill roots, enablement, and local markdown previews">
+                <SkillsSettingsPanel
+                  tooling={tooling}
+                  extraRoots={skillExtraRoots}
+                  previews={skillPreviews}
+                  onToggleSkill={onToggleSkill}
+                  onSaveExtraRoots={onSaveSkillExtraRoots}
+                  onReadPreview={onReadSkillPreview}
+                />
+              </SettingsSection>
+            )}
+
             {section === "plugins" && (
               <SettingsSection icon={<ExtensionIcon fontSize="small" />} title="Codex Plugins" subtitle="Marketplace plugins, installed plugin mentions, hooks, apps, and MCP servers">
                 <CodexPluginSettingsPanel
@@ -615,6 +677,12 @@ export function SettingsDrawer({
 
             {section === "privacy" && (
               <SettingsSection icon={<SecurityIcon fontSize="small" />} title="Privacy And Safety" subtitle="Secrets and dangerous mode stay audited">
+                <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
+                  <Stack spacing={1.25}>
+                    <ProfileSettingsPanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
+                    <AuditSettingsPanel events={auditEvents} onReload={onReloadAuditEvents} />
+                  </Stack>
+                </Box>
                 <SettingRow title="Provider key handling" description="Keys are masked in the UI and excluded from exported profiles and Codex config writes.">
                   <Chip size="small" label="Masked" color="success" variant="outlined" />
                 </SettingRow>
@@ -1410,6 +1478,267 @@ function SettingsSection({
   );
 }
 
+function ProfileSettingsPanel({
+  providerCount,
+  onExportProfile,
+  onImportProfile
+}: {
+  providerCount: number;
+  onExportProfile: () => Promise<void>;
+  onImportProfile: (file: File) => Promise<number>;
+}) {
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "background.default" }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+        <DownloadIcon fontSize="small" />
+        <Typography variant="subtitle2" sx={{ fontWeight: 800, flex: 1 }}>
+          UI profile
+        </Typography>
+        <Chip size="small" label={`${providerCount} providers`} />
+      </Stack>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+        Export and import provider metadata without API keys.
+      </Typography>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setStatus("");
+            try {
+              await onExportProfile();
+              setStatus("Profile exported.");
+            } catch {
+              setStatus("Profile export failed.");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Export profile
+        </Button>
+        <Button size="small" variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={busy}>
+          Import profile
+          <input
+            aria-label="Import profile file"
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (!file) {
+                return;
+              }
+              void (async () => {
+                setBusy(true);
+                setStatus("");
+                try {
+                  const count = await onImportProfile(file);
+                  setStatus(`Imported ${count} providers.`);
+                } catch {
+                  setStatus("Profile import failed.");
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          />
+        </Button>
+      </Stack>
+      {status && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+          {status}
+        </Typography>
+      )}
+    </Paper>
+  );
+}
+
+function AuditSettingsPanel({
+  events,
+  onReload
+}: {
+  events: DangerousPermissionAuditEvent[];
+  onReload: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5, bgcolor: "background.default" }}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+        <SecurityIcon fontSize="small" color={events.length ? "warning" : "inherit"} />
+        <Typography variant="subtitle2" sx={{ fontWeight: 800, flex: 1 }}>
+          Dangerous permission audit
+        </Typography>
+        <Chip size="small" label={events.length} color={events.length ? "warning" : "default"} />
+        <Button
+          size="small"
+          startIcon={<RefreshIcon />}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onReload();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Refresh
+        </Button>
+      </Stack>
+      {events.length === 0 && <Typography color="text.secondary">No dangerous permission sessions recorded.</Typography>}
+      <Stack spacing={1}>
+        {events.slice(0, 5).map((event) => (
+          <Box key={event.id} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip size="small" color={event.severity === "critical" ? "error" : "warning"} label={event.severity} />
+              <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                {event.method} {event.model ? `- ${event.model}` : ""}
+              </Typography>
+            </Stack>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, overflowWrap: "anywhere" }}>
+              {formatAuditTime(event.createdAt)} {event.cwd ? `- ${event.cwd}` : ""} {event.threadId ? `- ${event.threadId}` : ""}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+              {event.reasons.join(", ")}
+              {event.inputSummary ? ` - input ${event.inputSummary.items} items (${event.inputSummary.textItems} text, ${event.inputSummary.imageItems} images, ${event.inputSummary.mentionItems} mentions)` : ""}
+            </Typography>
+          </Box>
+        ))}
+      </Stack>
+    </Paper>
+  );
+}
+
+function formatAuditTime(value: number): string {
+  return new Date(value).toLocaleString();
+}
+
+function SkillsSettingsPanel({
+  tooling,
+  extraRoots,
+  previews,
+  onToggleSkill,
+  onSaveExtraRoots,
+  onReadPreview
+}: {
+  tooling: ToolingState;
+  extraRoots: string[];
+  previews: Record<string, string>;
+  onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
+  onSaveExtraRoots: (roots: string[]) => void;
+  onReadPreview: (skill: SkillEntry) => void;
+}) {
+  const [extraRootsText, setExtraRootsText] = useState(extraRoots.join("\n"));
+
+  useEffect(() => {
+    setExtraRootsText(extraRoots.join("\n"));
+  }, [extraRoots]);
+
+  return (
+    <Stack spacing={1.25} sx={{ p: 1.5 }}>
+      <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+          Skill roots
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Add one extra root per line. Saving writes through `skills/extraRoots/set` and reloads the live inventory.
+        </Typography>
+        <TextField
+          sx={{ mt: 1 }}
+          size="small"
+          fullWidth
+          multiline
+          minRows={3}
+          label="Extra roots"
+          value={extraRootsText}
+          onChange={(event) => setExtraRootsText(event.target.value)}
+        />
+        <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
+          <Button size="small" variant="contained" startIcon={<SaveIcon />} onClick={() => onSaveExtraRoots(parseLines(extraRootsText))}>
+            Save roots
+          </Button>
+          <Chip size="small" label={`${extraRoots.length} saved`} />
+        </Stack>
+      </Paper>
+
+      {tooling.skillGroups.length === 0 && (
+        <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
+          No skills discovered by the local Codex engine.
+        </Typography>
+      )}
+
+      {tooling.skillGroups.map((group) => (
+        <Paper key={group.cwd} variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
+                {group.cwd}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {group.skills.length} skills / {group.errors.length} errors
+              </Typography>
+            </Box>
+            <Chip size="small" label={group.skills.length} />
+          </Stack>
+          {group.errors.map((error) => (
+            <Alert key={`${error.path}:${error.message}`} severity="warning" sx={{ mt: 1 }}>
+              {error.path}: {error.message}
+            </Alert>
+          ))}
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            {group.skills.map((skill) => (
+              <Box key={skill.path || skill.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+                      {skill.displayName}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                      {skill.shortDescription || skill.description || skill.path}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip size="small" label={skill.scope} />
+                    <FormControlLabel
+                      sx={{ mr: 0 }}
+                      control={<Switch size="small" checked={skill.enabled} onChange={(event) => onToggleSkill(skill, event.target.checked)} />}
+                      label={skill.enabled ? "Enabled" : "Disabled"}
+                    />
+                  </Stack>
+                </Stack>
+                {skill.path && (
+                  <Stack spacing={0.75} sx={{ mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                      {skill.path}
+                    </Typography>
+                    <Button size="small" onClick={() => onReadPreview(skill)} sx={{ alignSelf: "flex-start" }}>
+                      Preview markdown
+                    </Button>
+                    {previews[skill.path] && (
+                      <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", m: 0, maxHeight: 240, overflow: "auto" }}>
+                        {previews[skill.path]}
+                      </Typography>
+                    )}
+                  </Stack>
+                )}
+              </Box>
+            ))}
+          </Stack>
+        </Paper>
+      ))}
+    </Stack>
+  );
+}
+
 function ThemeModeCards({
   themeMode,
   onThemeModeChange
@@ -1737,4 +2066,11 @@ function SettingRow({
       <Divider />
     </>
   );
+}
+
+function parseLines(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
