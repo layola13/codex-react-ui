@@ -1078,6 +1078,77 @@ test("applies user theme media plugins to the default workbench", async ({ page 
   });
 });
 
+test("supports uploaded background images and user theme switching", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Appearance settings").click();
+  await page.getByLabel("Custom theme name").fill("Reference Rose");
+  await page.getByLabel("Custom theme primary").fill("#D94F75");
+  await page.getByLabel("Custom theme secondary").fill("#B76E79");
+  await page.getByLabel("Custom theme background").fill("#FFF4F7");
+  await page.getByLabel("Background image file").setInputFiles("/root/projects/codex-react-ui/snapshot/参考/HNVjQXebIAI_AwK.jpg");
+  await expect(page.getByTestId("custom-theme-background-preview")).toContainText("local image");
+  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
+
+  const storedTheme = await page.evaluate(() => {
+    const raw = localStorage.getItem("codex-react-ui.custom-theme-plugins");
+    return raw ? JSON.parse(raw) : [];
+  });
+  expect(JSON.stringify(storedTheme)).toContain("data:image/jpeg;base64,");
+
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
+  await expect(page.getByTestId("default-workbench-empty")).toBeVisible();
+  await page.screenshot({
+    path: "snapshot/user-theme-background-switching.png",
+    fullPage: false
+  });
+
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Appearance settings").click();
+  await page.getByLabel("Skin theme").click();
+  await page.getByRole("option", { name: "Official Black" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
+  await page.getByLabel("Skin theme").click();
+  await page.getByRole("option", { name: "Reference Rose" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
+
+  await page.getByLabel("Edit theme Reference Rose").click();
+  await expect(page.getByText("Edit theme plugin")).toBeVisible();
+  await expect(page.getByLabel("Custom theme app background image")).toHaveValue(/^data:image\/jpeg;base64,/);
+  await page.getByLabel("Custom theme secondary").fill("#2563EB");
+  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
+  await expect(page.getByLabel("Edit theme Reference Rose")).toBeVisible();
+
+  const importedTheme = {
+    name: "Imported Mint",
+    description: "Imported user background theme.",
+    preview: { primary: "#0F766E", secondary: "#F59E0B", background: "#ECFDF5" },
+    dark: false,
+    assets: {
+      appBackgroundImage:
+        "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5MDAiIGhlaWdodD0iMzIwIj48cmVjdCB3aWR0aD0iOTAwIiBoZWlnaHQ9IjMyMCIgZmlsbD0iI2VjZmRmNSIvPjxjaXJjbGUgY3g9IjY4MCIgY3k9IjEyMCIgcj0iOTAiIGZpbGw9IiMwZjc2NmUiIG9wYWNpdHk9IjAuMjUiLz48cGF0aCBkPSJNMTIwIDIyMCBDMjgwIDkwIDQ2MCAyNzAgNzIwIDEyMCIgc3Ryb2tlPSIjZjU5ZTBiIiBzdHJva2Utd2lkdGg9IjE4IiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjQ1Ii8+PC9zdmc+"
+    },
+    layout: { heroEnabled: true, petEnabled: true, decorationIntensity: "subtle" }
+  };
+  await page.getByLabel("Custom theme plugin JSON file").setInputFiles({
+    name: "imported-mint.theme.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(importedTheme))
+  });
+  await expect(page.getByLabel("Custom theme name")).toHaveValue("Imported Mint");
+  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-imported-mint-/);
+  await page.getByLabel("Skin theme").click();
+  await expect(page.getByRole("option", { name: "Reference Rose" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Imported Mint" })).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
 test("supports drag and drop image attachments in the composer", async ({ page }) => {
   await page.goto("/");
 

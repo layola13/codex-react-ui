@@ -86,7 +86,9 @@ export function Composer({
     onSuggestedPromptConsumed?.();
   }, [onSuggestedPromptConsumed, suggestedPrompt]);
 
-  const composerBackdrop = safeThemeAssetUrl(activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage);
+  const composerBackdrop = safeThemeAssetUrl(
+    activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage
+  );
 
   return (
     <Box

@@ -2,6 +2,10 @@
 
 ## Now
 
+- [x] Add user theme plugin editing so saved themes can be adjusted and switched without recreating duplicates.
+- [x] Add user theme plugin JSON import/export for local theme portability.
+- [x] Verify theme edit/import/export/switching with Playwright and fresh screenshots.
+- [x] Commit and push the user theme switching slice to `origin/main`.
 - [x] Add `New Chat` dropdown support for Full Access / Danger Bypass.
 - [x] Add a danger confirmation dialog that shows cwd, model, reasoning effort, actual sandbox/approval behavior, and backend launch parameters before enabling Danger Bypass.
 - [x] Verify the new chat danger flow with Playwright interaction checks and a screenshot.

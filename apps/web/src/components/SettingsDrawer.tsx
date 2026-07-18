@@ -24,7 +24,7 @@ import {
   Typography
 } from "@mui/material";
 import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -33,6 +33,7 @@ import ComputerIcon from "@mui/icons-material/Computer";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DashboardCustomizeIcon from "@mui/icons-material/DashboardCustomize";
 import DownloadIcon from "@mui/icons-material/Download";
+import EditIcon from "@mui/icons-material/Edit";
 import ExtensionIcon from "@mui/icons-material/Extension";
 import MemoryIcon from "@mui/icons-material/Memory";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
@@ -257,6 +258,7 @@ export function SettingsDrawer({
   const [section, setSection] = useState<SettingsSectionId>("codex");
   const [codexConfigMode, setCodexConfigMode] = useState<"quick" | "all">("quick");
   const [codexConfigSearch, setCodexConfigSearch] = useState("");
+  const [editingThemePlugin, setEditingThemePlugin] = useState<ThemePlugin | null>(null);
   const activeProvider = providers.find((provider) => provider.id === activeProviderId);
   const selectedReasoning = reasoningOptions.find((option) => option.value === reasoningEffort);
   const allThemePlugins = useMemo(
@@ -532,9 +534,20 @@ export function SettingsDrawer({
                   onThemeModeChange={onThemeModeChange}
                   onInstallThemePlugin={onInstallThemePlugin}
                   onUninstallThemePlugin={onUninstallThemePlugin}
-                  onRemoveCustomThemePlugin={onRemoveCustomThemePlugin}
+                  onEditCustomThemePlugin={setEditingThemePlugin}
+                  onRemoveCustomThemePlugin={(id) => {
+                    onRemoveCustomThemePlugin(id);
+                    setEditingThemePlugin((current) => (current?.id === id ? null : current));
+                  }}
                 />
-                <CustomThemePluginEditor onSave={onSaveCustomThemePlugin} />
+                <CustomThemePluginEditor
+                  editingPlugin={editingThemePlugin}
+                  onCancelEdit={() => setEditingThemePlugin(null)}
+                  onSave={(plugin) => {
+                    onSaveCustomThemePlugin(plugin);
+                    setEditingThemePlugin(null);
+                  }}
+                />
                 <SettingRow title="Skin safety boundary" description="Theme plugins and API relay providers are independent. Restoring Light/Black never rewrites provider keys or base URLs.">
                   <Chip size="small" label="Separated" color="success" variant="outlined" />
                 </SettingRow>
@@ -1846,6 +1859,7 @@ function ThemePluginManager({
   onThemeModeChange,
   onInstallThemePlugin,
   onUninstallThemePlugin,
+  onEditCustomThemePlugin,
   onRemoveCustomThemePlugin
 }: {
   plugins: ThemePlugin[];
@@ -1854,6 +1868,7 @@ function ThemePluginManager({
   onThemeModeChange: (mode: ThemeMode) => void;
   onInstallThemePlugin: (id: ThemeId) => void;
   onUninstallThemePlugin: (id: ThemeId) => void;
+  onEditCustomThemePlugin: (plugin: ThemePlugin) => void;
   onRemoveCustomThemePlugin: (id: ThemeId) => void;
 }) {
   return (
@@ -1928,6 +1943,11 @@ function ThemePluginManager({
                   Remove
                 </Button>
               )}
+              {plugin.source === "user-defined" && (
+                <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => onEditCustomThemePlugin(plugin)} aria-label={`Edit theme ${plugin.name}`}>
+                  Edit
+                </Button>
+              )}
               {deletable && (
                 <IconButton size="small" aria-label={`Delete theme ${plugin.name}`} onClick={() => onRemoveCustomThemePlugin(plugin.id)}>
                   <DeleteOutlineIcon fontSize="small" />
@@ -1941,7 +1961,15 @@ function ThemePluginManager({
   );
 }
 
-function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => void }) {
+function CustomThemePluginEditor({
+  editingPlugin,
+  onCancelEdit,
+  onSave
+}: {
+  editingPlugin: ThemePlugin | null;
+  onCancelEdit: () => void;
+  onSave: (plugin: ThemePlugin) => void;
+}) {
   const [name, setName] = useState("My Studio");
   const [description, setDescription] = useState("User-defined skin for this workbench.");
   const [primary, setPrimary] = useState("#0F766E");
@@ -1953,16 +1981,152 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
   const [petImage, setPetImage] = useState("");
   const [petEnabled, setPetEnabled] = useState(true);
   const [decorationIntensity, setDecorationIntensity] = useState<"none" | "subtle" | "rich">("subtle");
+  const [useBackgroundAsHero, setUseBackgroundAsHero] = useState(true);
   const [dark, setDark] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const backgroundFileRef = useRef<HTMLInputElement | null>(null);
+  const themeImportRef = useRef<HTMLInputElement | null>(null);
+  const safeBackgroundPreview = isSafeThemeAssetUrl(appBackgroundImage) ? appBackgroundImage.trim() : "";
+  const editing = Boolean(editingPlugin);
+
+  useEffect(() => {
+    if (!editingPlugin) {
+      return;
+    }
+    setName(editingPlugin.name);
+    setDescription(editingPlugin.description);
+    setPrimary(editingPlugin.preview.primary);
+    setSecondary(editingPlugin.preview.secondary);
+    setBackground(editingPlugin.preview.background);
+    setAppBackgroundImage(editingPlugin.assets?.appBackgroundImage ?? "");
+    setHeroImage(editingPlugin.assets?.heroImage ?? "");
+    setCornerImage(editingPlugin.assets?.cornerImage ?? "");
+    setPetImage(editingPlugin.assets?.petImage ?? "");
+    setPetEnabled(editingPlugin.layout?.petEnabled !== false);
+    setUseBackgroundAsHero(editingPlugin.layout?.heroEnabled !== false);
+    setDecorationIntensity(editingPlugin.layout?.decorationIntensity ?? "subtle");
+    setDark(Boolean(editingPlugin.dark));
+    setError(null);
+  }, [editingPlugin]);
+
+  function resetDraft() {
+    setName("My Studio");
+    setDescription("User-defined skin for this workbench.");
+    setPrimary("#0F766E");
+    setSecondary("#F59E0B");
+    setBackground("#F8FAFC");
+    setAppBackgroundImage("");
+    setHeroImage("");
+    setCornerImage("");
+    setPetImage("");
+    setPetEnabled(true);
+    setUseBackgroundAsHero(true);
+    setDecorationIntensity("subtle");
+    setDark(false);
+    setError(null);
+  }
+
+  function buildThemePluginDraft(): ThemePlugin | null {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Theme name is required.");
+      return null;
+    }
+    if (![primary, secondary, background].every((value) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.trim()))) {
+      setError("Primary, secondary, and background must be hex colors.");
+      return null;
+    }
+    const mediaFields = [appBackgroundImage, heroImage, cornerImage, petImage].map((value) => value.trim()).filter(Boolean);
+    if (!mediaFields.every(isSafeThemeAssetUrl)) {
+      setError("Theme media must be http(s), blob, or data:image URLs.");
+      return null;
+    }
+    const slug = trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 28);
+    const id = editingPlugin?.id ?? (`user-${slug || "theme"}-${Math.random().toString(36).slice(2, 7)}` as ThemeId);
+    const assets = removeEmptyThemeAssets({
+      appBackgroundImage: appBackgroundImage.trim(),
+      heroImage: heroImage.trim(),
+      cornerImage: cornerImage.trim(),
+      petImage: petImage.trim()
+    });
+    setError(null);
+    return {
+      id,
+      name: trimmed,
+      description: description.trim() || "User-defined theme plugin.",
+      source: "user-defined",
+      installedByDefault: false,
+      preview: {
+        primary: primary.trim(),
+        secondary: secondary.trim(),
+        background: background.trim()
+      },
+      dark,
+      assets,
+      layout: {
+        heroEnabled: Boolean(heroImage.trim()) || (useBackgroundAsHero && Boolean(appBackgroundImage.trim())),
+        petEnabled,
+        decorationIntensity
+      }
+    };
+  }
+
+  function loadThemeDraft(plugin: ThemePlugin) {
+    setName(plugin.name);
+    setDescription(plugin.description);
+    setPrimary(plugin.preview.primary);
+    setSecondary(plugin.preview.secondary);
+    setBackground(plugin.preview.background);
+    setAppBackgroundImage(plugin.assets?.appBackgroundImage ?? "");
+    setHeroImage(plugin.assets?.heroImage ?? "");
+    setCornerImage(plugin.assets?.cornerImage ?? "");
+    setPetImage(plugin.assets?.petImage ?? "");
+    setPetEnabled(plugin.layout?.petEnabled !== false);
+    setUseBackgroundAsHero(plugin.layout?.heroEnabled !== false);
+    setDecorationIntensity(plugin.layout?.decorationIntensity ?? "subtle");
+    setDark(Boolean(plugin.dark));
+    setError(null);
+  }
+
+  function exportThemeDraft() {
+    const plugin = buildThemePluginDraft();
+    if (!plugin) {
+      return;
+    }
+    const blob = new Blob([`${JSON.stringify(plugin, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${plugin.id}.theme.json`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: "background.default" }}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
         <AddIcon fontSize="small" color="primary" />
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-          Define theme plugin
+          {editing ? "Edit theme plugin" : "Define theme plugin"}
         </Typography>
+        {editing && (
+          <Button
+            size="small"
+            color="inherit"
+            onClick={() => {
+              resetDraft();
+              onCancelEdit();
+            }}
+          >
+            New theme
+          </Button>
+        )}
       </Stack>
       <Stack spacing={1.25}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -1986,6 +2150,45 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
             Theme media assets
           </Typography>
+          <Paper
+            variant="outlined"
+            sx={{
+              minHeight: 132,
+              borderRadius: 1,
+              overflow: "hidden",
+              position: "relative",
+              bgcolor: "background.paper",
+              backgroundImage: safeBackgroundPreview
+                ? (theme) =>
+                    [
+                      `linear-gradient(90deg, ${theme.palette.background.paper} 0%, rgba(255,255,255,0.72) 48%, rgba(255,255,255,0.22) 100%)`,
+                      `url("${safeBackgroundPreview}")`
+                    ].join(", ")
+                : (theme) =>
+                    [
+                      `linear-gradient(135deg, ${theme.palette.background.paper}, ${theme.palette.background.default})`,
+                      `radial-gradient(circle at 82% 20%, ${primary}33, transparent 34%)`
+                    ].join(", "),
+              backgroundSize: safeBackgroundPreview ? "cover" : "auto",
+              backgroundPosition: "center"
+            }}
+            data-testid="custom-theme-background-preview"
+          >
+            <Stack spacing={1} sx={{ p: 1.5, maxWidth: 440, position: "relative", zIndex: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+                Background theme preview
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                A selected background image will skin the shell, default workbench, and composer surfaces.
+              </Typography>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                {[primary, secondary, background].map((color) => (
+                  <Box key={color} sx={{ width: 28, height: 28, borderRadius: 0.75, bgcolor: color, border: "1px solid", borderColor: "divider" }} />
+                ))}
+                {safeBackgroundPreview && <Chip size="small" label={appBackgroundImage.startsWith("data:image/") ? "local image" : "remote image"} color="primary" />}
+              </Stack>
+            </Stack>
+          </Paper>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <TextField
               size="small"
@@ -1994,6 +2197,38 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
               onChange={(event) => setAppBackgroundImage(event.target.value)}
               sx={{ flex: 1 }}
               inputProps={{ "aria-label": "Custom theme app background image" }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              onClick={() => backgroundFileRef.current?.click()}
+              aria-label="Choose image file"
+              sx={{ flex: "0 0 auto" }}
+            >
+              Choose image
+            </Button>
+            <input
+              ref={backgroundFileRef}
+              type="file"
+              aria-label="Background image file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              hidden
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                event.currentTarget.value = "";
+                if (!file) {
+                  return;
+                }
+                void readThemeImageFile(file)
+                  .then((url) => {
+                    setAppBackgroundImage(url);
+                    setError(null);
+                  })
+                  .catch((imageError) => {
+                    setError(imageError instanceof Error ? imageError.message : String(imageError));
+                  });
+              }}
             />
             <TextField
               size="small"
@@ -2040,6 +2275,10 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
               control={<Switch checked={petEnabled} onChange={(event) => setPetEnabled(event.target.checked)} inputProps={{ "aria-label": "Custom theme pet enabled" }} />}
               label="Show pet/avatar"
             />
+            <FormControlLabel
+              control={<Switch checked={useBackgroundAsHero} onChange={(event) => setUseBackgroundAsHero(event.target.checked)} inputProps={{ "aria-label": "Use background as hero" }} />}
+              label="Use background as hero"
+            />
           </Stack>
         </Stack>
         {error ? (
@@ -2058,57 +2297,43 @@ function CustomThemePluginEditor({ onSave }: { onSave: (plugin: ThemePlugin) => 
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => {
-              const trimmed = name.trim();
-              if (!trimmed) {
-                setError("Theme name is required.");
-                return;
+              const plugin = buildThemePluginDraft();
+              if (plugin) {
+                onSave(plugin);
               }
-              if (![primary, secondary, background].every((value) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.trim()))) {
-                setError("Primary, secondary, and background must be hex colors.");
-                return;
-              }
-              const mediaFields = [appBackgroundImage, heroImage, cornerImage, petImage].map((value) => value.trim()).filter(Boolean);
-              if (!mediaFields.every(isSafeThemeAssetUrl)) {
-                setError("Theme media must be http(s), blob, or data:image URLs.");
-                return;
-              }
-              const slug = trimmed
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-")
-                .replace(/^-+|-+$/g, "")
-                .slice(0, 28);
-              const id = `user-${slug || "theme"}-${Math.random().toString(36).slice(2, 7)}` as ThemeId;
-              const assets = removeEmptyThemeAssets({
-                appBackgroundImage: appBackgroundImage.trim(),
-                heroImage: heroImage.trim(),
-                cornerImage: cornerImage.trim(),
-                petImage: petImage.trim()
-              });
-              onSave({
-                id,
-                name: trimmed,
-                description: description.trim() || "User-defined theme plugin.",
-                source: "user-defined",
-                installedByDefault: false,
-                preview: {
-                  primary: primary.trim(),
-                  secondary: secondary.trim(),
-                  background: background.trim()
-                },
-                dark,
-                assets,
-                layout: {
-                  heroEnabled: Boolean(heroImage.trim()),
-                  petEnabled,
-                  decorationIntensity
-                }
-              });
-              setError(null);
             }}
             aria-label="Save custom theme plugin"
           >
-            Save plugin
+            {editing ? "Save changes" : "Save plugin"}
           </Button>
+          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportThemeDraft} aria-label="Export custom theme plugin">
+            Export JSON
+          </Button>
+          <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => themeImportRef.current?.click()} aria-label="Import custom theme plugin">
+            Import JSON
+          </Button>
+          <input
+            ref={themeImportRef}
+            type="file"
+            aria-label="Custom theme plugin JSON file"
+            accept="application/json,.json"
+            hidden
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              event.currentTarget.value = "";
+              if (!file) {
+                return;
+              }
+              void readThemePluginFile(file)
+                .then((plugin) => {
+                  loadThemeDraft(plugin);
+                  onCancelEdit();
+                })
+                .catch((importError) => {
+                  setError(importError instanceof Error ? importError.message : String(importError));
+                });
+            }}
+          />
         </Stack>
       </Stack>
     </Box>
@@ -2121,6 +2346,96 @@ function isSafeThemeAssetUrl(value: string): boolean {
     return false;
   }
   return trimmed.startsWith("https://") || trimmed.startsWith("http://") || trimmed.startsWith("blob:") || trimmed.startsWith("data:image/");
+}
+
+const MAX_THEME_IMAGE_BYTES = 6 * 1024 * 1024;
+const MAX_THEME_JSON_BYTES = 8 * 1024 * 1024;
+
+function readThemeImageFile(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) {
+    return Promise.reject(new Error("Theme background must be an image file."));
+  }
+  if (file.size > MAX_THEME_IMAGE_BYTES) {
+    return Promise.reject(new Error("Theme background image must be smaller than 6 MiB."));
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result);
+      if (result.startsWith("data:image/")) {
+        resolve(result);
+      } else {
+        reject(new Error("Theme background could not be converted to a data:image URL."));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Theme background image could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readThemePluginFile(file: File): Promise<ThemePlugin> {
+  if (file.size > MAX_THEME_JSON_BYTES) {
+    throw new Error("Theme plugin JSON must be smaller than 8 MiB.");
+  }
+  const parsed = JSON.parse(await file.text()) as unknown;
+  return normalizeImportedThemePlugin(parsed);
+}
+
+function normalizeImportedThemePlugin(value: unknown): ThemePlugin {
+  if (!isPlainRecord(value)) {
+    throw new Error("Theme plugin JSON must be an object.");
+  }
+  const preview = isPlainRecord(value.preview) ? value.preview : null;
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const description = typeof value.description === "string" ? value.description.trim() : "";
+  const primary = typeof preview?.primary === "string" ? preview.primary.trim() : "";
+  const secondary = typeof preview?.secondary === "string" ? preview.secondary.trim() : "";
+  const background = typeof preview?.background === "string" ? preview.background.trim() : "";
+  if (!name || !primary || !secondary || !background) {
+    throw new Error("Theme plugin JSON requires name and preview colors.");
+  }
+  if (![primary, secondary, background].every((entry) => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(entry))) {
+    throw new Error("Imported theme preview colors must be hex colors.");
+  }
+  const rawAssets = isPlainRecord(value.assets) ? value.assets : {};
+  const assets = removeEmptyThemeAssets({
+    appBackgroundImage: typeof rawAssets.appBackgroundImage === "string" ? rawAssets.appBackgroundImage.trim() : "",
+    heroImage: typeof rawAssets.heroImage === "string" ? rawAssets.heroImage.trim() : "",
+    cornerImage: typeof rawAssets.cornerImage === "string" ? rawAssets.cornerImage.trim() : "",
+    petImage: typeof rawAssets.petImage === "string" ? rawAssets.petImage.trim() : ""
+  });
+  if (assets && !Object.values(assets).every((entry) => !entry || isSafeThemeAssetUrl(entry))) {
+    throw new Error("Imported theme media must be http(s), blob, or data:image URLs.");
+  }
+  const rawLayout = isPlainRecord(value.layout) ? value.layout : {};
+  const decorationIntensity =
+    rawLayout.decorationIntensity === "none" || rawLayout.decorationIntensity === "rich" || rawLayout.decorationIntensity === "subtle"
+      ? rawLayout.decorationIntensity
+      : "subtle";
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 28);
+  return {
+    id: `user-${slug || "theme"}-import` as ThemeId,
+    name,
+    description: description || "Imported user theme plugin.",
+    source: "user-defined",
+    installedByDefault: false,
+    preview: { primary, secondary, background },
+    dark: Boolean(value.dark),
+    assets,
+    layout: {
+      heroEnabled: rawLayout.heroEnabled !== false,
+      petEnabled: rawLayout.petEnabled !== false,
+      decorationIntensity
+    }
+  };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function removeEmptyThemeAssets(assets: NonNullable<ThemePlugin["assets"]>): ThemePlugin["assets"] | undefined {

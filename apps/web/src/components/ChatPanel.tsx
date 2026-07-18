@@ -366,7 +366,10 @@ function DefaultWorkbenchEmpty({
   activeThemePlugin?: ThemePlugin | null;
   onPromptSelect?: (text: string) => void;
 }) {
-  const heroImage = activeThemePlugin?.layout?.heroEnabled === false ? undefined : safeThemeAssetUrl(activeThemePlugin?.assets?.heroImage);
+  const heroImage =
+    activeThemePlugin?.layout?.heroEnabled === false
+      ? undefined
+      : safeThemeAssetUrl(activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage);
   const cornerImage = safeThemeAssetUrl(activeThemePlugin?.assets?.cornerImage);
   const richDecorations = activeThemePlugin?.layout?.decorationIntensity === "rich";
   return (
