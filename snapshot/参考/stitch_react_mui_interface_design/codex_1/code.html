@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Add Channel - AI Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600&amp;family=Manrope:wght@400&amp;family=Plus+Jakarta+Sans:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline-variant": "#c1c9bf",
+                        "surface-variant": "#e1e3de",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#b8f0c5",
+                        "on-secondary": "#ffffff",
+                        "primary-container": "#1a4d2e",
+                        "tertiary-container": "#6a323b",
+                        "primary-fixed-dim": "#9dd3aa",
+                        "on-tertiary-fixed": "#380b15",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb2bb",
+                        "secondary-container": "#dce1de",
+                        "surface-container-high": "#e7e9e4",
+                        "on-tertiary-container": "#e89ca5",
+                        "secondary-fixed-dim": "#c2c8c5",
+                        "on-secondary-fixed-variant": "#424846",
+                        "inverse-primary": "#9dd3aa",
+                        "on-secondary-container": "#5e6462",
+                        "tertiary": "#4f1c26",
+                        "secondary": "#5a605d",
+                        "surface-tint": "#366847",
+                        "surface-container-low": "#f3f4ef",
+                        "on-primary-container": "#88bd95",
+                        "inverse-surface": "#2e312e",
+                        "tertiary-fixed": "#ffd9dd",
+                        "primary": "#00361a",
+                        "on-secondary-fixed": "#171d1b",
+                        "surface-bright": "#f8faf5",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#edeee9",
+                        "surface": "#f8faf5",
+                        "on-primary-fixed-variant": "#1d5031",
+                        "on-background": "#191c19",
+                        "surface-container-highest": "#e1e3de",
+                        "secondary-fixed": "#dfe4e1",
+                        "on-error": "#ffffff",
+                        "background": "#f8faf5",
+                        "error": "#ba1a1a",
+                        "outline": "#717971",
+                        "surface-dim": "#d9dbd6",
+                        "inverse-on-surface": "#f0f1ec",
+                        "on-tertiary-fixed-variant": "#6e353e",
+                        "on-primary-fixed": "#00210e",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#191c19",
+                        "on-surface-variant": "#414942",
+                        "on-tertiary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "section_gap": "40px",
+                        "card_gutter": "24px",
+                        "container_padding": "32px",
+                        "input_padding": "16px 24px",
+                        "sidebar_width": "260px"
+                    },
+                    "fontFamily": {
+                        "nav-item": ["Plus Jakarta Sans"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-md": ["Manrope"],
+                        "h2": ["Plus Jakarta Sans"],
+                        "body-lg": ["Manrope"],
+                        "h1": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "nav-item": ["15px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "h2": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "h1": ["40px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom scrollbar for providers list */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: theme('colors.outline-variant');
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex items-center justify-center p-4 sm:p-8 relative overflow-hidden">
+<!-- Atmospheric Background Element -->
+<div class="absolute inset-0 z-0 pointer-events-none opacity-40 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-surface-tint/10 via-background to-background"></div>
+<!-- Main Modal/Dialog Container -->
+<main class="w-full max-w-6xl bg-surface-container-lowest/80 backdrop-blur-2xl rounded-xl shadow-lg border border-outline-variant/20 relative z-10 flex flex-col max-h-[921px] overflow-hidden">
+<!-- Header -->
+<header class="flex justify-between items-start p-6 border-b border-outline-variant/10 shrink-0">
+<div>
+<h1 class="font-h2 text-h2 text-primary">Add Channel</h1>
+<p class="text-on-surface-variant font-body-md mt-1">Create a new AI model channel</p>
+</div>
+<button class="text-on-surface-variant hover:text-primary transition-colors p-2 rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined" data-icon="close">close</span>
+</button>
+</header>
+<!-- Content Area -->
+<div class="flex flex-col md:flex-row flex-1 overflow-hidden">
+<!-- Left Sidebar: Providers -->
+<aside class="w-full md:w-[280px] border-r border-outline-variant/10 bg-surface-container-low/30 flex flex-col shrink-0">
+<div class="p-4 border-b border-outline-variant/10">
+<h2 class="font-nav-item text-nav-item text-on-surface font-semibold">Service Provider</h2>
+</div>
+<div class="overflow-y-auto custom-scrollbar flex-1 p-4 space-y-2">
+<!-- Provider Item: Active -->
+<label class="flex items-center gap-3 p-3 rounded-lg border border-primary bg-primary/5 cursor-pointer transition-all hover:bg-primary/10 relative">
+<input checked="" class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="openai"/>
+<span class="material-symbols-outlined text-primary" data-icon="token">token</span>
+<span class="font-nav-item text-nav-item text-on-surface font-semibold flex-1">OpenAI</span>
+</label>
+<!-- Provider Item: Inactive -->
+<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest cursor-pointer transition-all hover:bg-surface-variant/50 group">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="deepseek"/>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="search_insights">search_insights</span>
+<span class="font-nav-item text-nav-item text-on-surface-variant group-hover:text-on-surface flex-1">DeepSeek</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest cursor-pointer transition-all hover:bg-surface-variant/50 group">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="gemini"/>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-nav-item text-nav-item text-on-surface-variant group-hover:text-on-surface flex-1">Gemini</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest cursor-pointer transition-all hover:bg-surface-variant/50 group">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="anthropic"/>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="view_in_ar">view_in_ar</span>
+<span class="font-nav-item text-nav-item text-on-surface-variant group-hover:text-on-surface flex-1">Anthropic</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest cursor-pointer transition-all hover:bg-surface-variant/50 group">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="moonshot"/>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="dark_mode">dark_mode</span>
+<span class="font-nav-item text-nav-item text-on-surface-variant group-hover:text-on-surface flex-1">Moonshot</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest cursor-pointer transition-all hover:bg-surface-variant/50 group">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="zhipu"/>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="psychology">psychology</span>
+<span class="font-nav-item text-nav-item text-on-surface-variant group-hover:text-on-surface flex-1">Zhipu</span>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest cursor-pointer transition-all hover:bg-surface-variant/50 group">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline" name="provider" type="radio" value="minimax"/>
+<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="waves">waves</span>
+<span class="font-nav-item text-nav-item text-on-surface-variant group-hover:text-on-surface flex-1">Minimax</span>
+</label>
+</div>
+</aside>
+<!-- Right Side: Configuration Form -->
+<section class="flex-1 overflow-y-auto custom-scrollbar p-6 bg-surface-container-lowest/50">
+<form class="max-w-3xl space-y-8">
+<!-- Form Field Group -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-start">
+<label class="font-nav-item text-nav-item text-on-surface pt-3">API Format</label>
+<div class="space-y-4">
+<select class="w-full md:w-auto min-w-[300px] bg-surface-container-low border border-outline-variant/50 rounded-lg py-3 px-4 text-on-surface focus:ring-primary focus:border-primary transition-colors cursor-pointer appearance-none">
+<option>OpenAI (Chat Completions)</option>
+<option>Other Format</option>
+</select>
+<!-- Sub-options -->
+<div class="space-y-3 pt-2">
+<p class="text-on-surface-variant text-sm">Other supported formats upstream (check to enable):</p>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface text-sm">OpenAI (Responses)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface text-sm">OpenAI (Responses Compact)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface text-sm">OpenAI (Image Generation)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface text-sm">OpenAI (Image Edit)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface text-sm">OpenAI (Image Variation)</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer">
+<input class="text-primary focus:ring-primary h-4 w-4 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface text-sm">OpenAI (Video)</span>
+</label>
+</div>
+</div>
+</div>
+</div>
+<!-- Channel Name -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-center">
+<label class="font-nav-item text-nav-item text-on-surface">Channel Name</label>
+<input class="w-full bg-surface-container-low border border-outline-variant/50 rounded-lg py-3 px-4 text-on-surface focus:ring-primary focus:border-primary transition-colors placeholder:text-on-surface-variant/50" placeholder="Enter channel name" type="text" value="My Channel"/>
+</div>
+<!-- Proxy Type -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-center">
+<label class="font-nav-item text-nav-item text-on-surface">Proxy Type</label>
+<select class="w-full md:w-auto min-w-[300px] bg-surface-container-low border border-outline-variant/50 rounded-lg py-3 px-4 text-on-surface focus:ring-primary focus:border-primary transition-colors cursor-pointer appearance-none">
+<option>Environment Variable - Use System Proxy</option>
+<option>Custom Proxy</option>
+<option>No Proxy</option>
+</select>
+</div>
+<!-- User-Agent -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-center">
+<label class="font-nav-item text-nav-item text-on-surface">User-Agent</label>
+<select class="w-full md:w-auto min-w-[300px] bg-surface-container-low border border-outline-variant/50 rounded-lg py-3 px-4 text-on-surface focus:ring-primary focus:border-primary transition-colors cursor-pointer appearance-none">
+<option>Inherit System Settings</option>
+<option>Custom User-Agent</option>
+</select>
+</div>
+<!-- Request Body Passthrough -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-center">
+<label class="font-nav-item text-nav-item text-on-surface">Request Body Passthrough</label>
+<label class="flex items-center gap-3 cursor-pointer">
+<input class="text-primary focus:ring-primary h-5 w-5 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface">Enable request body passthrough</span>
+</label>
+</div>
+<!-- Anti-Ban -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-start">
+<label class="font-nav-item text-nav-item text-on-surface pt-1">Anti-Ban</label>
+<div class="space-y-2">
+<label class="flex items-center gap-3 cursor-pointer">
+<input class="text-primary focus:ring-primary h-5 w-5 bg-transparent border-outline rounded" type="checkbox"/>
+<span class="text-on-surface">Enable anti-ban for this channel</span>
+</label>
+<p class="text-on-surface-variant text-sm max-w-2xl">When enabled, this only takes effect when requests are routed to this channel. It can intercept classic jailbreak/policy bypass prompts. It does not replace the upstream service provider's own security policies.</p>
+</div>
+</div>
+<!-- Base URL -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-center">
+<label class="font-nav-item text-nav-item text-on-surface">Base URL</label>
+<input class="w-full bg-surface-container-low border border-outline-variant/50 rounded-lg py-3 px-4 text-on-surface focus:ring-primary focus:border-primary transition-colors placeholder:text-on-surface-variant/50" type="url" value="https://api.openai.com/v1"/>
+</div>
+<!-- API Key -->
+<div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4 md:gap-8 items-start">
+<label class="font-nav-item text-nav-item text-on-surface pt-3">API Key</label>
+<div class="space-y-2">
+<textarea class="w-full bg-surface-container-low border border-outline-variant/50 rounded-lg py-3 px-4 text-on-surface focus:ring-primary focus:border-primary transition-colors font-label-caps placeholder:text-on-surface-variant/50 resize-y" placeholder="sk-..." rows="4"></textarea>
+<p class="text-on-surface-variant text-sm">One API Key per line. Multiple keys will be used in a round-robin manner.</p>
+</div>
+</div>
+</form>
+</section>
+</div>
+<!-- Footer Actions -->
+<footer class="p-6 border-t border-outline-variant/10 bg-surface/50 backdrop-blur-md flex justify-end gap-4 shrink-0">
+<button class="px-6 py-2.5 rounded-lg border border-outline-variant/50 text-on-surface hover:bg-surface-variant/50 transition-colors font-nav-item font-semibold" type="button">
+                Cancel
+            </button>
+<button class="px-6 py-2.5 rounded-lg bg-primary text-on-primary hover:bg-primary-container hover:text-on-primary-container transition-colors font-nav-item font-semibold shadow-sm" type="button">
+                Create
+            </button>
+</footer>
+</main>
+</body></html>

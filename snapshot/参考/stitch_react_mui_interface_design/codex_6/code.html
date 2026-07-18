@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Codex - Configuration</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Plus+Jakarta+Sans:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-container": "#e89ca5",
+                        "surface-container-highest": "#e1e3de",
+                        "tertiary-container": "#6a323b",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#414942",
+                        "outline-variant": "#c1c9bf",
+                        "on-primary": "#ffffff",
+                        "background": "#f8faf5",
+                        "tertiary-fixed-dim": "#ffb2bb",
+                        "surface": "#f8faf5",
+                        "surface-tint": "#366847",
+                        "tertiary-fixed": "#ffd9dd",
+                        "primary": "#00361a",
+                        "error": "#ba1a1a",
+                        "tertiary": "#4f1c26",
+                        "on-tertiary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dfe4e1",
+                        "on-secondary-container": "#5e6462",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-low": "#f3f4ef",
+                        "surface-container": "#edeee9",
+                        "primary-container": "#1a4d2e",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#191c19",
+                        "surface-dim": "#d9dbd6",
+                        "surface-bright": "#f8faf5",
+                        "primary-fixed-dim": "#9dd3aa",
+                        "on-tertiary-fixed-variant": "#6e353e",
+                        "surface-container-high": "#e7e9e4",
+                        "secondary": "#5a605d",
+                        "inverse-on-surface": "#f0f1ec",
+                        "inverse-surface": "#2e312e",
+                        "secondary-container": "#dce1de",
+                        "outline": "#717971",
+                        "on-tertiary-fixed": "#380b15",
+                        "on-primary-fixed": "#00210e",
+                        "on-background": "#191c19",
+                        "surface-variant": "#e1e3de",
+                        "on-primary-container": "#88bd95",
+                        "secondary-fixed-dim": "#c2c8c5",
+                        "inverse-primary": "#9dd3aa",
+                        "on-secondary-fixed-variant": "#424846",
+                        "primary-fixed": "#b8f0c5",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed": "#171d1b",
+                        "on-primary-fixed-variant": "#1d5031"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar_width": "260px",
+                        "section_gap": "40px",
+                        "card_gutter": "24px",
+                        "input_padding": "16px 24px",
+                        "container_padding": "32px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Manrope"],
+                        "label-caps": ["JetBrains Mono"],
+                        "h1": ["Plus Jakarta Sans"],
+                        "nav-item": ["Plus Jakarta Sans"],
+                        "h2": ["Plus Jakarta Sans"],
+                        "body-lg": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "h1": ["40px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+                        "nav-item": ["15px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "h2": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen">
+<!-- Top Navigation -->
+<nav class="full-width top-0 h-16 bg-transparent flex justify-between items-center w-full px-8 py-4 ml-[260px] max-w-[calc(100%-260px)] z-50">
+<div class="flex items-center gap-4">
+<h1 class="text-h1 font-h1 text-on-surface">Configuration</h1>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface hover:opacity-80 transition-opacity p-2 rounded-full">
+<span class="material-symbols-outlined">public</span>
+</button>
+<button class="text-on-surface hover:opacity-80 transition-opacity p-2 rounded-full">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface hover:opacity-80 transition-opacity p-2 rounded-full">
+<span class="material-symbols-outlined">palette</span>
+</button>
+<img class="w-8 h-8 rounded-full border border-outline-variant/30 object-cover ml-2" data-alt="A small circular avatar placeholder image for a user profile picture in a sleek digital workspace." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAstUwuJv-ad31doFwicmZMlDgTFudgWcs-pKXLn7izHlXq5Yc0SUncdVMk20cz7CjAMd6N2f0hhomuseY2gf1xokA6Q_fouDy1oxUjVGYNGX206e5Y8OnTQ31EuLF4Bl3Aq39q2gke4Ly6LW8fhL3ajY9G9YckI1ehtMTifrhXcNkhOEnx3sDFTV3RnlWACE7crpkLdGNYUzwVNO4obLzIdlHijA_z7cczY-EHRPFBOnFlKscQD3z7JJ7VXfeRU3ahJ91ILwN9ABCq"/>
+</div>
+</nav>
+<!-- Side Navigation -->
+<aside class="fixed left-0 top-0 bottom-0 z-40 flex flex-col p-4 docked left-0 h-full w-[260px] border-r border-outline-variant/20 bg-surface/80 dark:bg-inverse-surface/80 backdrop-blur-xl glassmorphism backdrop-blur-lg border-r border-outline-variant/10 flat no shadows">
+<div class="mb-8 px-3 mt-2">
+<div class="flex items-center gap-3">
+<img class="w-8 h-8 rounded bg-primary-container p-1" data-alt="A minimalist tech logo placeholder for the Codex AI workspace." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCym2Q_a1t0CaCp-BcWcLqu79eCS6PrAkuT4aRZ6WKX50Tk7c5-8z6jikas9vsDoVI63daufxC6R9C3P2QvkanVxuVPQatn5l4oYm7baXJTFAwQt1XQuhvKnyDRqnja23MI8muE05BRvnlJZ7pW238GG-tvM6MbBwNdowSYbwRmlK2cWesyNThIFO6DCfLEO4u2KHP-zm5N8MJeItBwdBW7YN9CyiM2tu4Cb8SUz2w0p5pkuam8qvWRZD7UnVM5wwQGf1aA5s29u8rH"/>
+<div>
+<h2 class="text-h2 font-h2 font-extrabold text-primary dark:text-inverse-primary tracking-tight text-xl leading-none">Codex</h2>
+<span class="text-label-caps font-label-caps text-on-surface-variant">AI Workspace</span>
+</div>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary rounded-lg py-3 px-4 flex items-center justify-center gap-2 font-bold mb-6 hover:bg-primary/90 transition-colors">
+<span class="material-symbols-outlined text-lg">add</span>
+            New Project
+        </button>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">add_box</span>
+<span class="text-nav-item font-nav-item">New Task</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">schedule</span>
+<span class="text-nav-item font-nav-item">Schedule</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">extension</span>
+<span class="text-nav-item font-nav-item">Plugins</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">language</span>
+<span class="text-nav-item font-nav-item">Sites</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+<span class="text-nav-item font-nav-item">Pull Requests</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">chat</span>
+<span class="text-nav-item font-nav-item">Chat</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 space-y-1">
+<a class="flex items-center gap-3 bg-primary-container text-on-primary-container rounded-lg px-3 py-2 font-bold scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="text-nav-item font-nav-item">Settings</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span class="text-nav-item font-nav-item">Notifications</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="text-nav-item font-nav-item">Profile</span>
+</a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-[260px] p-container_padding pt-24 max-w-7xl mx-auto space-y-section_gap">
+<!-- Environment Config Section -->
+<section class="bg-surface-container/40 backdrop-blur-xl border border-outline-variant/20 rounded-xl p-8 shadow-sm">
+<div class="mb-6 flex justify-between items-start">
+<div>
+<h2 class="text-h2 font-h2 text-on-surface mb-2">Custom config.toml settings</h2>
+<p class="text-on-surface-variant text-body-md max-w-2xl">Manage your local workspace configuration overrides. These settings will apply immediately to your active environment.</p>
+</div>
+<a class="text-primary hover:text-primary-container font-semibold flex items-center gap-1 transition-colors" href="#">
+<span class="material-symbols-outlined text-sm">open_in_new</span>
+                    Open config.toml
+                </a>
+</div>
+<div class="max-w-md">
+<label class="block text-label-caps font-label-caps text-on-surface-variant mb-2">Configuration Profile</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface border border-outline-variant/30 rounded-lg py-3 pl-4 pr-10 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+<option>User config</option>
+<option>Project default</option>
+<option>Global fallback</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-3.5 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+</section>
+<!-- Policy Grid Section -->
+<section>
+<h3 class="text-h2 font-h2 text-on-surface mb-6">Policy</h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-card_gutter">
+<!-- Approval Policy Card -->
+<div class="bg-surface-container/40 backdrop-blur-xl border border-outline-variant/20 rounded-xl p-6 hover:shadow-md transition-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="bg-primary-container/20 p-2 rounded-lg text-primary">
+<span class="material-symbols-outlined">rule</span>
+</div>
+<h4 class="text-lg font-bold text-on-surface">Approval policy</h4>
+</div>
+<p class="text-on-surface-variant mb-6 min-h-[48px]">Define how external script execution and plugin access should be handled in the current workspace.</p>
+<div class="relative">
+<select class="w-full appearance-none bg-surface border border-outline-variant/30 rounded-lg py-2 pl-4 pr-10 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50">
+<option>On request</option>
+<option>Always allow</option>
+<option>Strict deny</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-2.5 text-on-surface-variant pointer-events-none text-sm">expand_more</span>
+</div>
+</div>
+<!-- Sandbox Settings Card -->
+<div class="bg-surface-container/40 backdrop-blur-xl border border-outline-variant/20 rounded-xl p-6 hover:shadow-md transition-shadow">
+<div class="flex items-center gap-3 mb-4">
+<div class="bg-primary-container/20 p-2 rounded-lg text-primary">
+<span class="material-symbols-outlined">lock_person</span>
+</div>
+<h4 class="text-lg font-bold text-on-surface">Sandbox settings</h4>
+</div>
+<p class="text-on-surface-variant mb-6 min-h-[48px]">Configure the file system access level for the integrated AI assistant tools.</p>
+<div class="relative">
+<select class="w-full appearance-none bg-surface border border-outline-variant/30 rounded-lg py-2 pl-4 pr-10 text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50">
+<option>Read only</option>
+<option>Read &amp; Write</option>
+<option>Isolated container</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-2.5 text-on-surface-variant pointer-events-none text-sm">expand_more</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Model Features Section -->
+<section class="bg-surface-container/40 backdrop-blur-xl border border-outline-variant/20 rounded-xl p-8 shadow-sm">
+<h3 class="text-h2 font-h2 text-on-surface mb-6">Model features</h3>
+<div class="space-y-8">
+<!-- Multi-select -->
+<div>
+<label class="block text-label-caps font-label-caps text-on-surface-variant mb-2">Available reasoning efforts</label>
+<div class="border border-outline-variant/30 rounded-lg p-2 bg-surface min-h-[48px] flex flex-wrap gap-2 items-center cursor-text">
+<span class="bg-primary-container/30 text-on-surface px-3 py-1 rounded-full text-sm flex items-center gap-1 border border-primary-container/50">
+                            Low <button class="hover:text-error ml-1"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</span>
+<span class="bg-primary-container/30 text-on-surface px-3 py-1 rounded-full text-sm flex items-center gap-1 border border-primary-container/50">
+                            Medium <button class="hover:text-error ml-1"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</span>
+<span class="bg-primary-container/30 text-on-surface px-3 py-1 rounded-full text-sm flex items-center gap-1 border border-primary-container/50">
+                            High <button class="hover:text-error ml-1"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</span>
+<span class="bg-primary-container/30 text-on-surface px-3 py-1 rounded-full text-sm flex items-center gap-1 border border-primary-container/50">
+                            Ultra <button class="hover:text-error ml-1"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</span>
+<span class="bg-primary-container/30 text-on-surface px-3 py-1 rounded-full text-sm flex items-center gap-1 border border-primary-container/50">
+                            Max <button class="hover:text-error ml-1"><span class="material-symbols-outlined text-[14px]">close</span></button>
+</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm flex-1 min-w-[150px]" placeholder="Add effort level..." type="text"/>
+</div>
+<p class="text-xs text-on-surface-variant mt-2">Select which reasoning effort tiers are visible in the model picker.</p>
+</div>
+<!-- Toggle -->
+<div class="flex items-center justify-between border-t border-outline-variant/20 pt-6">
+<div>
+<h4 class="font-bold text-on-surface">Ultra in model picker slider</h4>
+<p class="text-sm text-on-surface-variant mt-1">Include the experimental 'Ultra' effort setting directly in the quick-access UI.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</div>
+</section>
+<!-- Workspace Dependencies Section -->
+<section class="bg-surface-container/40 backdrop-blur-xl border border-outline-variant/20 rounded-xl p-8 shadow-sm">
+<h3 class="text-h2 font-h2 text-on-surface mb-6">Workspace Dependencies</h3>
+<div class="flex items-center justify-between">
+<div>
+<h4 class="font-bold text-on-surface">Codex dependencies</h4>
+<p class="text-sm text-on-surface-variant mt-1">Automatically download and manage required binary dependencies for language server features.</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</section>
+</main>
+<!-- Reference Image (Hidden, per instructions to include placeholder IDs) -->
+<div style="display:none; background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCZn-nJBDNa2q3IbG41Udlo3J034i-Ten_TSOK2BbACJv46yc9PfS5_xzKd5wW_frFNh1wtIeEa1HRfALPH6sotkp3f2WqcZhWDr2dNd9oxMm-C5c-sJANJ9dFsGsXbI2ZimA8XMuPcwPNdO2Eq6tSCwedVYyO4kgNM7XoI-XCMUcMBCdYHAovbFy3scZZcwo6hcDQg8pIsuy5mUde28rr3T2O80Yb0mXW-YnqVJNVsX9dFsMk1vwWe-1LoZMUq-R2oaRnZe98lhI3r');"></div>
+</body></html>

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chat Interface</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&amp;family=Manrope:wght@400;500;600&amp;family=JetBrains+Mono:wght@600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-tertiary-container": "#e89ca5",
+                      "surface-container-highest": "#e1e3de",
+                      "tertiary-container": "#6a323b",
+                      "on-error": "#ffffff",
+                      "on-surface-variant": "#414942",
+                      "outline-variant": "#c1c9bf",
+                      "on-primary": "#ffffff",
+                      "background": "#f8faf5",
+                      "tertiary-fixed-dim": "#ffb2bb",
+                      "surface": "#f8faf5",
+                      "surface-tint": "#366847",
+                      "tertiary-fixed": "#ffd9dd",
+                      "primary": "#00361a",
+                      "error": "#ba1a1a",
+                      "tertiary": "#4f1c26",
+                      "on-tertiary": "#ffffff",
+                      "on-error-container": "#93000a",
+                      "secondary-fixed": "#dfe4e1",
+                      "on-secondary-container": "#5e6462",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-container-low": "#f3f4ef",
+                      "surface-container": "#edeee9",
+                      "primary-container": "#1a4d2e",
+                      "error-container": "#ffdad6",
+                      "on-surface": "#191c19",
+                      "surface-dim": "#d9dbd6",
+                      "surface-bright": "#f8faf5",
+                      "primary-fixed-dim": "#9dd3aa",
+                      "on-tertiary-fixed-variant": "#6e353e",
+                      "surface-container-high": "#e7e9e4",
+                      "secondary": "#5a605d",
+                      "inverse-on-surface": "#f0f1ec",
+                      "inverse-surface": "#2e312e",
+                      "secondary-container": "#dce1de",
+                      "outline": "#717971",
+                      "on-tertiary-fixed": "#380b15",
+                      "on-primary-fixed": "#00210e",
+                      "on-background": "#191c19",
+                      "surface-variant": "#e1e3de",
+                      "on-primary-container": "#88bd95",
+                      "secondary-fixed-dim": "#c2c8c5",
+                      "inverse-primary": "#9dd3aa",
+                      "on-secondary-fixed-variant": "#424846",
+                      "primary-fixed": "#b8f0c5",
+                      "on-secondary": "#ffffff",
+                      "on-secondary-fixed": "#171d1b",
+                      "on-primary-fixed-variant": "#1d5031"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sidebar_width": "260px",
+                      "section_gap": "40px",
+                      "card_gutter": "24px",
+                      "input_padding": "16px 24px",
+                      "container_padding": "32px"
+              },
+              "fontFamily": {
+                      "body-md": [
+                              "Manrope"
+                      ],
+                      "label-caps": [
+                              "JetBrains Mono"
+                      ],
+                      "h1": [
+                              "Plus Jakarta Sans"
+                      ],
+                      "nav-item": [
+                              "Plus Jakarta Sans"
+                      ],
+                      "h2": [
+                              "Plus Jakarta Sans"
+                      ],
+                      "body-lg": [
+                              "Manrope"
+                      ]
+              },
+              "fontSize": {
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "1.5",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "1",
+                                      "letterSpacing": "0.1em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "h1": [
+                              "40px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "800"
+                              }
+                      ],
+                      "nav-item": [
+                              "15px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "h2": [
+                              "28px",
+                              {
+                                      "lineHeight": "1.3",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "1.6",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+</head>
+<body class="bg-background text-on-background font-body-md h-screen w-screen overflow-hidden flex selection:bg-primary selection:text-on-primary">
+<!-- Fixed SideNavBar -->
+<nav class="fixed left-0 top-0 bottom-0 z-40 flex flex-col p-4 w-[260px] bg-surface/80 dark:bg-inverse-surface/80 backdrop-blur-xl border-r border-outline-variant/10 glassmorphism shadow-none hidden md:flex">
+<!-- Header -->
+<div class="flex items-center gap-3 mb-8">
+<div class="w-10 h-10 rounded-lg bg-primary-container flex items-center justify-center shrink-0">
+<img alt="Codex Logo" class="w-6 h-6 object-cover rounded-md opacity-0" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAG5QsNMLIv-5W3dBMHGOefpt1cOZdG5INaPbLGUhhup8WcGxYenXLOVbETWAhupp5cLBFJF16gGcGNjq2mbt40vDyAlpv-WkicofpcyY5z4GchB2bs5O02oPV7XbHBZwVO4glH3mMSymSX8shqwlUxUB41NdY4N8RxUY3MfEgEcVwnbNb3jwbiNE98e9piOnqJ1CvGPRF9Ll6qv-ozMBb0PoGDqmL6oKUTkbfW0IaxuRY-OKdTKl7GVnsDwgQ57a9BIXSeApOQJ6NW"/>
+<span class="material-symbols-outlined text-on-primary-container absolute" data-icon="terminal">terminal</span>
+</div>
+<div>
+<h2 class="text-h2 font-h2 font-extrabold text-primary dark:text-inverse-primary tracking-tight">Codex</h2>
+<span class="text-label-caps font-label-caps text-on-surface-variant block uppercase opacity-70">AI Workspace</span>
+</div>
+</div>
+<!-- Main Navigation -->
+<div class="flex-1 overflow-y-auto space-y-1 scrollbar-hide">
+<div class="mb-4">
+<button class="w-full flex items-center gap-3 bg-surface-container-high text-on-surface rounded-lg px-3 py-3 border border-outline-variant/20 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200">
+<span class="material-symbols-outlined text-primary" data-icon="add">add</span>
+<span class="text-nav-item font-nav-item font-bold">New Project</span>
+</button>
+</div>
+<span class="text-label-caps font-label-caps text-on-surface-variant opacity-60 px-3 pb-2 pt-4 block">Workspace</span>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="add_box">add_box</span>
+<span class="text-nav-item font-nav-item">New Task</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="schedule">schedule</span>
+<span class="text-nav-item font-nav-item">Schedule</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="extension">extension</span>
+<span class="text-nav-item font-nav-item">Plugins</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="language">language</span>
+<span class="text-nav-item font-nav-item">Sites</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+<span class="text-nav-item font-nav-item">Pull Requests</span>
+</a>
+<!-- Active Tab -->
+<a class="flex items-center gap-3 bg-primary-container text-on-primary-container rounded-lg px-3 py-2 font-bold scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="chat" data-weight="fill">chat</span>
+<span class="text-nav-item font-nav-item truncate">你好</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200 ml-6 opacity-70" href="#">
+<span class="text-nav-item font-nav-item text-sm truncate">Previous Chat 1</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200 ml-6 opacity-70" href="#">
+<span class="text-nav-item font-nav-item text-sm truncate">System Design Spec</span>
+</a>
+</div>
+<!-- Footer -->
+<div class="mt-auto pt-4 border-t border-outline-variant/10 space-y-1">
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-nav-item font-nav-item">Settings</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="text-nav-item font-nav-item">Notifications</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="text-nav-item font-nav-item">Profile</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col md:ml-[260px] relative h-full bg-[url('https://lh3.googleusercontent.com/aida-public/AB6AXuAG5QsNMLIv-5W3dBMHGOefpt1cOZdG5INaPbLGUhhup8WcGxYenXLOVbETWAhupp5cLBFJF16gGcGNjq2mbt40vDyAlpv-WkicofpcyY5z4GchB2bs5O02oPV7XbHBZwVO4glH3mMSymSX8shqwlUxUB41NdY4N8RxUY3MfEgEcVwnbNb3jwbiNE98e9piOnqJ1CvGPRF9Ll6qv-ozMBb0PoGDqmL6oKUTkbfW0IaxuRY-OKdTKl7GVnsDwgQ57a9BIXSeApOQJ6NW')] bg-cover bg-center bg-no-repeat before:content-[''] before:absolute before:inset-0 before:bg-background/95 dark:before:bg-inverse-surface/95 before:backdrop-blur-md">
+<!-- TopNavBar (Structural Anchor, content hidden per design intent of chat screen but structure maintained) -->
+<header class="flex justify-between items-center w-full px-8 py-4 h-16 bg-transparent z-10 relative">
+<div class="flex items-center gap-2 text-on-surface-variant text-sm font-body-md opacity-70">
+<span class="w-2 h-2 rounded-full bg-error animate-pulse"></span>
+<span>Reconnecting 5/5</span>
+</div>
+<div class="flex gap-4">
+<button class="text-on-surface-variant hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined" data-icon="public">public</span>
+</button>
+<button class="text-on-surface-variant hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined" data-icon="palette">palette</span>
+</button>
+</div>
+</header>
+<!-- Chat Canvas Workspace -->
+<div class="flex-1 overflow-y-auto px-container_padding pb-[120px] pt-8 z-10 relative flex flex-col items-center">
+<div class="w-full max-w-4xl flex flex-col gap-8">
+<!-- Error Banner -->
+<div class="bg-error-container/20 border border-error/30 rounded-xl p-4 flex items-start gap-3 w-full backdrop-blur-sm shadow-sm">
+<span class="material-symbols-outlined text-error mt-0.5" data-icon="error">error</span>
+<div>
+<h4 class="text-nav-item font-nav-item font-bold text-on-error-container">Authentication Error</h4>
+<p class="text-body-md font-body-md text-on-surface-variant text-sm mt-1">401 Unauthorized. Please check your credentials or log in again to continue syncing your workspace.</p>
+</div>
+</div>
+<!-- 'Add' Widget Bento Grid -->
+<div class="bg-surface-container-low/60 dark:bg-surface-container-highest/20 backdrop-blur-xl border border-outline-variant/20 rounded-2xl p-6 w-full shadow-lg">
+<h3 class="text-h2 font-h2 text-on-surface mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined" data-icon="add_circle">add_circle</span>
+                         Add Content
+                     </h3>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-card_gutter">
+<!-- Core Actions -->
+<div class="flex flex-col gap-3">
+<span class="text-label-caps font-label-caps text-on-surface-variant uppercase opacity-70">Sources</span>
+<button class="flex items-center gap-4 bg-surface-container/50 hover:bg-surface-variant/80 border border-outline-variant/10 rounded-xl p-4 transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-primary-container/20 flex items-center justify-center group-hover:bg-primary-container/40 transition-colors">
+<span class="material-symbols-outlined text-primary" data-icon="folder">folder</span>
+</div>
+<div>
+<div class="text-nav-item font-nav-item font-bold text-on-surface">Files &amp; Folders</div>
+<div class="text-label-caps font-label-caps text-on-surface-variant mt-1">Local &amp; Cloud</div>
+</div>
+</button>
+<button class="flex items-center gap-4 bg-surface-container/50 hover:bg-surface-variant/80 border border-outline-variant/10 rounded-xl p-4 transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-secondary-container/20 flex items-center justify-center group-hover:bg-secondary-container/40 transition-colors">
+<span class="material-symbols-outlined text-secondary" data-icon="track_changes">track_changes</span>
+</div>
+<div>
+<div class="text-nav-item font-nav-item font-bold text-on-surface">Goal</div>
+<div class="text-label-caps font-label-caps text-on-surface-variant mt-1">Define objective</div>
+</div>
+</button>
+<button class="flex items-center gap-4 bg-surface-container/50 hover:bg-surface-variant/80 border border-outline-variant/10 rounded-xl p-4 transition-all group text-left">
+<div class="w-10 h-10 rounded-full bg-tertiary-container/20 flex items-center justify-center group-hover:bg-tertiary-container/40 transition-colors">
+<span class="material-symbols-outlined text-tertiary" data-icon="format_list_bulleted">format_list_bulleted</span>
+</div>
+<div>
+<div class="text-nav-item font-nav-item font-bold text-on-surface">Plan Mode</div>
+<div class="text-label-caps font-label-caps text-on-surface-variant mt-1">Structured tasks</div>
+</div>
+</button>
+</div>
+<!-- Plugins -->
+<div class="lg:col-span-2 flex flex-col gap-3">
+<span class="text-label-caps font-label-caps text-on-surface-variant uppercase opacity-70">Plugins &amp; Formats</span>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+<button class="flex items-center gap-3 bg-surface-container/30 hover:bg-surface-variant/60 border border-outline-variant/10 rounded-lg p-3 transition-all text-left">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="description">description</span>
+<span class="text-body-md font-body-md text-sm text-on-surface">Documents</span>
+</button>
+<button class="flex items-center gap-3 bg-surface-container/30 hover:bg-surface-variant/60 border border-outline-variant/10 rounded-lg p-3 transition-all text-left">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="picture_as_pdf">picture_as_pdf</span>
+<span class="text-body-md font-body-md text-sm text-on-surface">PDF</span>
+</button>
+<button class="flex items-center gap-3 bg-surface-container/30 hover:bg-surface-variant/60 border border-outline-variant/10 rounded-lg p-3 transition-all text-left">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="table">table</span>
+<span class="text-body-md font-body-md text-sm text-on-surface">Spreadsheets</span>
+</button>
+<button class="flex items-center gap-3 bg-surface-container/30 hover:bg-surface-variant/60 border border-outline-variant/10 rounded-lg p-3 transition-all text-left">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="co_present">co_present</span>
+<span class="text-body-md font-body-md text-sm text-on-surface">Presentations</span>
+</button>
+<button class="flex items-center gap-3 bg-surface-container/30 hover:bg-surface-variant/60 border border-outline-variant/10 rounded-lg p-3 transition-all text-left sm:col-span-2">
+<span class="material-symbols-outlined text-primary" data-icon="magic_button">magic_button</span>
+<span class="text-body-md font-body-md text-sm text-on-surface font-semibold">Template Creator</span>
+<span class="ml-auto text-label-caps font-label-caps bg-primary/10 text-primary px-2 py-0.5 rounded-full">Beta</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Fixed InputBar Pill -->
+<div class="fixed bottom-0 left-0 md:left-[260px] right-0 z-50 flex justify-center px-container_padding pb-8 pt-4 bg-gradient-to-t from-background via-background/90 to-transparent pointer-events-none">
+<div class="w-full max-w-4xl bg-surface-container-highest/60 dark:bg-surface-container/40 backdrop-blur-2xl rounded-full border border-outline-variant/30 shadow-2xl p-2 flex items-center gap-2 focus-within:ring-2 focus-within:ring-primary/50 transition-all pointer-events-auto">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/80 dark:hover:bg-inverse-surface/80 transition-colors shrink-0">
+<span class="material-symbols-outlined" data-icon="add">add</span>
+</button>
+<input class="flex-1 bg-transparent border-none focus:ring-0 text-body-md font-body-md text-on-surface placeholder:text-on-surface-variant px-2 h-10 outline-none" placeholder="Message Codex..." type="text"/>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/80 dark:hover:bg-inverse-surface/80 transition-colors shrink-0">
+<span class="material-symbols-outlined" data-icon="mic">mic</span>
+</button>
+<button class="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center hover:opacity-90 transition-opacity shrink-0 shadow-md">
+<span class="material-symbols-outlined" data-icon="send" data-weight="fill">send</span>
+</button>
+</div>
+</div>
+</main>
+</body></html>

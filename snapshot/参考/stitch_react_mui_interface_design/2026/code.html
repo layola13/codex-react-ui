@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Codex - 2026 Global Soccer Platform</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&family=Manrope:wght@400;500;600&family=JetBrains+Mono:wght@600&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@100..900&family=Manrope:wght@100..900&display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-primary": "#9dd3aa",
+                        "on-surface-variant": "#414942",
+                        "on-secondary-container": "#5e6462",
+                        "tertiary-fixed-dim": "#ffb2bb",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "on-error": "#ffffff",
+                        "outline-variant": "#c1c9bf",
+                        "background": "#f8faf5",
+                        "on-primary-container": "#88bd95",
+                        "surface-tint": "#366847",
+                        "on-tertiary": "#ffffff",
+                        "primary-fixed-dim": "#9dd3aa",
+                        "surface-container": "#edeee9",
+                        "primary": "#00361a",
+                        "secondary-container": "#dce1de",
+                        "on-primary-fixed": "#00210e",
+                        "secondary": "#5a605d",
+                        "surface-container-low": "#f3f4ef",
+                        "tertiary-container": "#6a323b",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#717971",
+                        "on-secondary-fixed": "#171d1b",
+                        "surface-dim": "#d9dbd6",
+                        "inverse-surface": "#2e312e",
+                        "tertiary-fixed": "#ffd9dd",
+                        "surface": "#f8faf5",
+                        "on-secondary-fixed-variant": "#424846",
+                        "surface-variant": "#e1e3de",
+                        "surface-container-high": "#e7e9e4",
+                        "secondary-fixed": "#dfe4e1",
+                        "on-tertiary-fixed-variant": "#6e353e",
+                        "tertiary": "#4f1c26",
+                        "inverse-on-surface": "#f0f1ec",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-container": "#e89ca5",
+                        "secondary-fixed-dim": "#c2c8c5",
+                        "on-background": "#191c19",
+                        "surface-container-highest": "#e1e3de",
+                        "on-surface": "#191c19",
+                        "primary-fixed": "#b8f0c5",
+                        "on-tertiary-fixed": "#380b15",
+                        "surface-bright": "#f8faf5",
+                        "error": "#ba1a1a",
+                        "on-primary-fixed-variant": "#1d5031",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#1a4d2e"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "input_padding": "16px 24px",
+                        "card_gutter": "24px",
+                        "container_padding": "32px",
+                        "sidebar_width": "260px",
+                        "section_gap": "40px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["JetBrains Mono"],
+                        "nav-item": ["Plus Jakarta Sans"],
+                        "h1": ["Plus Jakarta Sans"],
+                        "body-lg": ["Manrope"],
+                        "body-md": ["Manrope"],
+                        "h2": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "nav-item": ["15px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "h1": ["40px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "h2": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex overflow-hidden relative">
+<!-- Global Background Theme -->
+<div class="fixed inset-0 z-[-1] opacity-10 bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-primary via-surface-container to-background pointer-events-none"></div>
+<!-- SideNavBar (Shared Component) -->
+<nav class="fixed left-0 top-0 bottom-0 z-40 flex flex-col p-4 bg-surface/80 dark:bg-inverse-surface/80 backdrop-blur-xl docked left-0 h-full w-[260px] border-r border-outline-variant/20">
+<!-- Brand -->
+<div class="flex items-center gap-3 px-3 py-6 mb-4">
+<span class="material-symbols-outlined text-primary text-3xl">sports_soccer</span>
+<div class="text-h2 font-h2 font-extrabold text-primary dark:text-inverse-primary tracking-tight">Codex</div>
+</div>
+<!-- Primary Actions -->
+<div class="space-y-1 mb-8">
+<a class="flex items-center gap-3 bg-primary-container text-on-primary-container rounded-lg px-3 py-2 font-bold scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">add_box</span>
+<span class="text-nav-item font-nav-item">New Task</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">schedule</span>
+<span class="text-nav-item font-nav-item">Schedule</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">extension</span>
+<span class="text-nav-item font-nav-item">Plugins</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">language</span>
+<span class="text-nav-item font-nav-item">Sites</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">account_tree</span>
+<span class="text-nav-item font-nav-item">Pull Requests</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 dark:hover:bg-on-surface-variant/10 transition-colors scale-98-active duration-200" href="#">
+<span class="material-symbols-outlined">chat</span>
+<span class="text-nav-item font-nav-item">Chat</span>
+</a>
+</div>
+<div class="mt-auto space-y-1">
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-nav-item font-nav-item">Settings</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span class="text-nav-item font-nav-item">Notifications</span>
+</a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="text-nav-item font-nav-item">Profile</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="ml-[260px] flex-1 flex flex-col h-screen relative">
+<!-- TopNavBar (Shared Component) -->
+<header class="flex justify-between items-center w-full px-8 py-4 full-width top-0 h-16 bg-transparent fade-in duration-300 z-10">
+<div class="flex items-center gap-4">
+<h1 class="text-h2 font-h2 font-extrabold text-on-surface">2026全球足球创作台</h1>
+<span class="text-label-caps font-label-caps text-on-surface-variant bg-surface-variant/50 px-2 py-1 rounded">非官方主题皮肤</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined">emoji_events</span>
+</button>
+<button class="text-on-surface hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined">public</span>
+</button>
+<button class="text-on-surface hover:opacity-80 transition-opacity relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="text-on-surface hover:opacity-80 transition-opacity">
+<span class="material-symbols-outlined">palette</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-primary-container overflow-hidden ml-2 border-2 border-primary">
+<img class="w-full h-full object-cover" data-alt="A small circular avatar placeholder image for user profile in a clean minimalist interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIe57b-Inw5E2hSgOLxo74F6lqoNQvOAxqAwOH3YtO3AbrKuIJh7JwELHmrZ9KyEhmevkzJETFJlaQZR3RhNYp01QzbVqUhAl9ICX6Uv17huTSM61TZIpoZE0kc8zlsOFOROg4yMaHNdMJJcJ0i_fJawFAgWuz1JaGqHhkFu9Ua50Nms7Tdt3Kihke52HsrjkdJ_Mq7EOOfeBqymcd7fp_XsiHQ-WsnPxBFjC-dB3R0A7ghayYtb0rgN3Qp1W6BHpF2Mx0OSlaQCAd"/>
+</div>
+</div>
+</header>
+<!-- Scrollable Content -->
+<div class="flex-1 overflow-y-auto px-container_padding pb-[120px]">
+<!-- Hero Banner -->
+<section class="relative w-full rounded-2xl overflow-hidden mb-section_gap h-[400px] bg-primary flex items-center justify-center">
+<!-- Background Image -->
+<div class="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-luminosity" data-alt="A dynamic, high-contrast image of a soccer player mid-kick on a large illuminated stadium field. Glowing energetic light trails follow the ball's trajectory across the pitch. The atmosphere is tense, sporty, and electric, rendered in dark rich blues and greens." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAqaj3saFmLUIY8igQUwgS8VuVjRTfjwXdBWY6D3S1iuD9Jxss9BjzXX4yyNHFDRYOvUox2EBT8oRivmtVwwaQFZlVTV0hxm02MhqNaeap5fUef9GrPInXzrAPwOrHbdDQXOiEz_Nwcq4fMVJqjGvH8BS6KWIYo0Qxm_qP2ec9KTYPlaW7AQgiZouOsCEqUk1Ogaa0wOBL68llVKQeQ_awx-IAf7Y8w4qKkANeTDhZfeD2sHG9xSWwdKFaAlSHiAZhlh_DadLvW_yhI')"></div>
+<!-- Gradient Overlay -->
+<div class="absolute inset-0 bg-gradient-to-r from-primary/90 to-transparent"></div>
+<div class="relative z-10 w-full px-12 flex flex-col items-start text-on-primary">
+<h2 class="text-[56px] font-extrabold tracking-tight leading-[1.1] mb-4">下一场传奇，由你预测</h2>
+<p class="text-h2 font-h2 text-primary-fixed-dim">汇集赛程、战术、数据与每一个高光时刻</p>
+</div>
+<!-- Floating Score Widget -->
+<div class="absolute top-12 right-12 bg-inverse-surface/80 backdrop-blur-md border border-outline/30 rounded-xl p-4 text-on-primary flex flex-col items-center">
+<span class="text-h1 font-h1 font-extrabold text-primary-fixed">2:1</span>
+<span class="text-label-caps font-label-caps text-on-surface-variant mt-1">87:43</span>
+</div>
+</section>
+<!-- Action Cards (Bento Grid Style) -->
+<section class="grid grid-cols-4 gap-card_gutter mb-section_gap -mt-24 relative z-20 px-8">
+<!-- Card 1 -->
+<div class="bg-surface/90 dark:bg-inverse-surface/90 backdrop-blur-xl border border-outline-variant/30 rounded-xl p-6 flex flex-col items-center justify-center gap-4 hover:shadow-lg transition-shadow cursor-pointer group">
+<div class="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center group-hover:bg-primary-container/40 transition-colors">
+<span class="material-symbols-outlined text-4xl text-primary">calendar_month</span>
+</div>
+<span class="text-nav-item font-nav-item font-bold text-on-surface">追踪赛程</span>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface/90 dark:bg-inverse-surface/90 backdrop-blur-xl border border-outline-variant/30 rounded-xl p-6 flex flex-col items-center justify-center gap-4 hover:shadow-lg transition-shadow cursor-pointer group">
+<div class="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center group-hover:bg-primary-container/40 transition-colors">
+<span class="material-symbols-outlined text-4xl text-primary">strategy</span>
+</div>
+<span class="text-nav-item font-nav-item font-bold text-on-surface">分析阵型</span>
+</div>
+<!-- Card 3 -->
+<div class="bg-surface/90 dark:bg-inverse-surface/90 backdrop-blur-xl border border-outline-variant/30 rounded-xl p-6 flex flex-col items-center justify-center gap-4 hover:shadow-lg transition-shadow cursor-pointer group">
+<div class="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center group-hover:bg-primary-container/40 transition-colors">
+<span class="material-symbols-outlined text-4xl text-primary">bar_chart</span>
+</div>
+<span class="text-nav-item font-nav-item font-bold text-on-surface">解读数据</span>
+</div>
+<!-- Card 4 -->
+<div class="bg-surface/90 dark:bg-inverse-surface/90 backdrop-blur-xl border border-outline-variant/30 rounded-xl p-6 flex flex-col items-center justify-center gap-4 hover:shadow-lg transition-shadow cursor-pointer group">
+<div class="w-16 h-16 rounded-full bg-primary-container/20 flex items-center justify-center group-hover:bg-primary-container/40 transition-colors">
+<span class="material-symbols-outlined text-4xl text-primary">stars</span>
+</div>
+<span class="text-nav-item font-nav-item font-bold text-on-surface">收藏高光</span>
+</div>
+</section>
+<!-- Interaction Area & Photo Widget -->
+<section class="flex gap-card_gutter">
+<!-- Chat/Input Widget Canvas -->
+<div class="flex-1 bg-surface-container-low/80 backdrop-blur-xl border border-outline-variant/20 rounded-2xl p-6 flex flex-col relative min-h-[300px]">
+<div class="flex items-center gap-2 mb-6">
+<span class="material-symbols-outlined text-primary">folder_open</span>
+<span class="text-nav-item font-nav-item font-bold">赛事</span>
+</div>
+<div class="flex-1 text-on-surface-variant/60 text-body-lg font-body-lg italic">
+                        输入比赛、球队、战术或你想预测的问题......
+                     </div>
+<!-- Background decorative graphic for input area -->
+<div class="absolute inset-0 pointer-events-none opacity-[0.03] flex items-center justify-center">
+<span class="material-symbols-outlined text-[200px]">sports_soccer</span>
+</div>
+</div>
+<!-- Photo Widget (Polaroid style) -->
+<div class="w-[280px] rotate-3 bg-surface p-4 pb-8 rounded shadow-xl border border-outline-variant/20 flex flex-col gap-2">
+<div class="w-full h-48 bg-surface-variant relative overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A vintage style polaroid photograph of a soccer player celebrating a goal on the field. Warm nostalgic lighting, slight film grain, energetic sports atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDj-y6z6ltoU9wUCUTl2DvTjg_OHzG56cZ1b4SQEzS_ShkRfDhIUmQZI3iS253SGJW9sbKMzHj4tyuWhImHo3NMO2gxTiGqZd0_PLDjWHgz_XvDjfkSF4uWFp31OhPiy8yN0vrAR09WBP0reJypChedrWrvdJkm3D1SDUwG1N64J829gJUrKHEwERRinFJb3xtsNFS8-K6f7ukFQy7te9g5ffaJssfTMbCd7pQ0nwu1x-oAacNzWDr6q48trAGU08UD3j75GQUGPJ4o"/>
+</div>
+<div class="text-center mt-2 font-handwriting text-on-surface opacity-80 flex items-center justify-center gap-2">
+                        For the Next Legend <span class="material-symbols-outlined text-sm">sports_soccer</span>
+</div>
+</div>
+</section>
+</div>
+<!-- InputBar (Shared Component) -->
+<div class="fixed bottom-0 left-[260px] right-0 z-50 flex justify-center px-container_padding pb-8">
+<div class="bg-surface-container-highest/90 dark:bg-surface-container/90 backdrop-blur-2xl rounded-full mx-auto w-full max-w-4xl border border-outline-variant/30 shadow-2xl p-2 flex items-center justify-between focus-within:ring-2 focus-within:ring-primary/50 transition-all">
+<div class="flex items-center gap-2 px-2">
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/80 transition-colors">
+<span class="material-symbols-outlined">add</span>
+</button>
+<div class="h-6 w-[1px] bg-outline-variant/50 mx-2"></div>
+<button class="flex items-center gap-2 px-3 py-2 rounded-full text-on-surface-variant hover:bg-surface-variant/80 transition-colors text-nav-item font-nav-item">
+<span class="material-symbols-outlined text-sm">lock_open</span>
+                        完全访问
+                        <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/80 transition-colors">
+<span class="material-symbols-outlined">bookmark</span>
+</button>
+</div>
+<div class="flex items-center gap-2 px-2">
+<span class="text-label-caps font-label-caps text-on-surface-variant/80 mr-2 flex items-center gap-1">
+                        5.6 Sol 中
+                        <span class="material-symbols-outlined text-sm">expand_more</span>
+</span>
+<button class="w-10 h-10 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/80 transition-colors">
+<span class="material-symbols-outlined">mic</span>
+</button>
+<button class="w-12 h-12 rounded-full bg-primary text-on-primary flex items-center justify-center hover:opacity-90 transition-opacity shadow-md">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</body></html>

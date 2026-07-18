@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Model Channels - AI Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600&amp;family=Manrope:wght@400&amp;family=Plus+Jakarta+Sans:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline-variant": "#c1c9bf",
+                        "surface-variant": "#e1e3de",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#b8f0c5",
+                        "on-secondary": "#ffffff",
+                        "primary-container": "#1a4d2e",
+                        "tertiary-container": "#6a323b",
+                        "primary-fixed-dim": "#9dd3aa",
+                        "on-tertiary-fixed": "#380b15",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#ffb2bb",
+                        "secondary-container": "#dce1de",
+                        "surface-container-high": "#e7e9e4",
+                        "on-tertiary-container": "#e89ca5",
+                        "secondary-fixed-dim": "#c2c8c5",
+                        "on-secondary-fixed-variant": "#424846",
+                        "inverse-primary": "#9dd3aa",
+                        "on-secondary-container": "#5e6462",
+                        "tertiary": "#4f1c26",
+                        "secondary": "#5a605d",
+                        "surface-tint": "#366847",
+                        "surface-container-low": "#f3f4ef",
+                        "on-primary-container": "#88bd95",
+                        "inverse-surface": "#2e312e",
+                        "tertiary-fixed": "#ffd9dd",
+                        "primary": "#00361a",
+                        "on-secondary-fixed": "#171d1b",
+                        "surface-bright": "#f8faf5",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#edeee9",
+                        "surface": "#f8faf5",
+                        "on-primary-fixed-variant": "#1d5031",
+                        "on-background": "#191c19",
+                        "surface-container-highest": "#e1e3de",
+                        "secondary-fixed": "#dfe4e1",
+                        "on-error": "#ffffff",
+                        "background": "#f8faf5",
+                        "error": "#ba1a1a",
+                        "outline": "#717971",
+                        "surface-dim": "#d9dbd6",
+                        "inverse-on-surface": "#f0f1ec",
+                        "on-tertiary-fixed-variant": "#6e353e",
+                        "on-primary-fixed": "#00210e",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#191c19",
+                        "on-surface-variant": "#414942",
+                        "on-tertiary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "section_gap": "40px",
+                        "card_gutter": "24px",
+                        "container_padding": "32px",
+                        "input_padding": "16px 24px",
+                        "sidebar_width": "260px"
+                    },
+                    "fontFamily": {
+                        "nav-item": ["Plus Jakarta Sans"],
+                        "label-caps": ["JetBrains Mono"],
+                        "body-md": ["Manrope"],
+                        "h2": ["Plus Jakarta Sans"],
+                        "body-lg": ["Manrope"],
+                        "h1": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "nav-item": ["15px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "h2": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "h1": ["40px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(243, 244, 239, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .table-row-hover:hover {
+            background-color: rgba(225, 227, 222, 0.5);
+        }
+        
+        /* Custom Scrollbar for horizontal scrolling table */
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f0f1ec; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #c1c9bf; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #717971; 
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex flex-col relative overflow-x-hidden">
+<!-- Atmospheric Background Image -->
+<div class="fixed inset-0 z-0 bg-cover bg-center w-full h-full opacity-40 mix-blend-multiply pointer-events-none" data-alt="A serene, minimalist digital workspace background. The scene features highly diffused, soft natural light creating a calm atmosphere. Subtle, abstract geometric shapes float gently in the distance against a pristine, very light grey and soft white backdrop. The aesthetic is clean, modern, light-mode corporate tech, with no distracting elements. Overall mood is focused and airy." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuATA1ObYNcaB-U10f_hZBQJcc9a9VCo_2VbxCy-DWLJxXtV3SyNcLcoIwukLvsLIBGKXBzNCl-njVbXK_S2SraYNJfTa2R_yRQ2o3KzUhR6nNwo3Jx56gB45SCMQ4O1_Z9zv6ABhNG9eS7HlEmK2VZv5IXSEwHGwIpjMkubDhom-h71_AO0JpRuXq9iByVXrHMAQf-q8le7gowD7FN-3L2hKVDU9RiY0wqT-o_vq9NLbR7Zw7aihWGTzFsszgJ0iM2P-zHkA89m70bu')"></div>
+<!-- TopNavBar -->
+<nav class="bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-xl docked full-width top-0 border-b border-outline-variant/10 flat no shadows fixed top-0 left-0 w-full z-40 flex justify-between items-center px-container_padding h-16">
+<div class="flex items-center gap-8">
+<span class="font-h2 text-h2 font-bold text-primary dark:text-primary-fixed">AI Workspace</span>
+<div class="hidden md:flex items-center gap-1">
+<a class="px-4 py-2 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-container-low transition-colors scale-95 duration-150" href="#">Dashboard</a>
+<a class="px-4 py-2 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-container-low transition-colors scale-95 duration-150" href="#">Workspaces</a>
+<a class="px-4 py-2 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-container-low transition-colors scale-95 duration-150" href="#">Analytic</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50">search</span>
+<input class="bg-surface-container-low border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-primary/20 w-64 transition-all" placeholder="Search..." type="text"/>
+</div>
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">help</span>
+</button>
+<button class="p-2 rounded-full hover:bg-surface-container-low transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<img alt="User Profile Avatar" class="w-8 h-8 rounded-full object-cover border border-outline-variant/30 ml-2" data-alt="A small, circular avatar image of a professional user. The user is a modern professional in a well-lit, minimalist office setting. High quality, soft lighting, neutral background, conveying trustworthiness and tech-savvy persona." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB7fIfTGPplbT27FOKUFGakl71Sr9telHUUP73CkACQs-Hmk2U_taheqfxl3w__HfGpZlmVsiEyoGxkdfMS0iaFdu0ZkSKRiTc47TPqQKO4dUQQCN9Sds0i_2mNsH8yT6SOZ9rWhDFTxxzJrR3hpQemEVWhhfqj81W0-ovFFNwD2J8B8ohd0HNSqSlPacDfHrZZT6BeBC6PsV_AbNt_h98q6tRjr6i5vppcinvV9ge271Sq_1lOKvUCit-_x1DQ5E2I498-LLrURF3x"/>
+</div>
+</nav>
+<!-- Main Layout: Sidebar + Content -->
+<div class="flex flex-1 pt-16 relative z-10">
+<!-- SideNavBar -->
+<aside class="bg-surface-container-low/90 dark:bg-surface-container-highest/80 backdrop-blur-2xl fixed left-0 top-16 h-[calc(100vh-64px)] w-sidebar_width border-r border-outline-variant/10 flat flex flex-col gap-2 p-4 hidden md:flex z-30">
+<div class="mb-6 px-3 flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">workspaces</span>
+</div>
+<div>
+<h2 class="font-bold text-on-surface leading-tight">Settings</h2>
+<p class="text-xs text-on-surface-variant">Manage preferences</p>
+</div>
+</div>
+<nav class="flex-1 flex flex-col gap-1 overflow-y-auto">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-200 tap-highlight-transparent group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">person</span>
+                    Account
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-200 tap-highlight-transparent group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">settings</span>
+                    General
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-200 tap-highlight-transparent group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">palette</span>
+                    Appearance
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 bg-primary-container text-on-primary-container rounded-lg font-nav-item text-nav-item font-bold tap-highlight-transparent relative" href="#">
+<div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-on-primary-container rounded-r-full"></div>
+<span class="material-symbols-outlined text-[20px]">neurology</span>
+                    Models
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-200 tap-highlight-transparent group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">key</span>
+                    API Keys
+                </a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg font-nav-item text-nav-item text-on-surface-variant dark:text-secondary-fixed-dim hover:bg-surface-variant/50 hover:translate-x-1 transition-transform duration-200 tap-highlight-transparent group" href="#">
+<span class="material-symbols-outlined text-[20px] group-hover:text-primary transition-colors">shield</span>
+                    Security
+                </a>
+</nav>
+<div class="mt-auto pt-4 border-t border-outline-variant/10 flex flex-col gap-2">
+<button class="w-full py-2.5 px-4 bg-primary text-on-primary rounded-lg font-nav-item text-nav-item hover:bg-primary/90 transition-colors shadow-sm">Upgrade Plan</button>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg font-nav-item text-nav-item text-on-surface-variant hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">contact_support</span>
+                    Support
+                </a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg font-nav-item text-nav-item text-error hover:bg-error/10 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+                    Sign Out
+                </a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-[260px] p-container_padding max-w-[1600px] mx-auto w-full flex flex-col gap-section_gap">
+<!-- Page Header -->
+<header class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<h1 class="font-h1 text-h1 text-on-surface mb-2">Channels</h1>
+<p class="text-on-surface-variant text-body-lg">Manage AI model channels, configure providers, and monitor health status.</p>
+</div>
+<!-- Global Actions -->
+<div class="flex flex-wrap items-center gap-3">
+<button class="flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+                        Settings
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-[18px]">upload</span>
+                        Batch Import
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium">
+<span class="material-symbols-outlined text-[18px]">swap_vert</span>
+                        Batch Adjust Weight
+                    </button>
+<button class="flex items-center gap-2 px-6 py-2 rounded-full bg-tertiary text-on-tertiary hover:bg-tertiary/90 transition-colors text-sm font-medium shadow-md">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                        Add Channel
+                    </button>
+</div>
+</header>
+<!-- Filters & Search Toolbar -->
+<div class="flex flex-col gap-4">
+<!-- Provider Chips -->
+<div class="flex flex-wrap items-center gap-2">
+<button class="px-4 py-1.5 rounded-full bg-tertiary text-on-tertiary text-sm font-medium flex items-center gap-2">
+                        All <span class="bg-on-tertiary/20 text-on-tertiary px-1.5 py-0.5 rounded-md text-[10px]">30</span>
+</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium flex items-center gap-2">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">O</span>
+                        OpenAI <span class="bg-surface-variant text-on-surface-variant px-1.5 py-0.5 rounded-md text-[10px]">24</span>
+</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium flex items-center gap-2">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">A</span>
+                        Anthropic <span class="bg-surface-variant text-on-surface-variant px-1.5 py-0.5 rounded-md text-[10px]">2</span>
+</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium flex items-center gap-2">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">G</span>
+                        Gemini <span class="bg-surface-variant text-on-surface-variant px-1.5 py-0.5 rounded-md text-[10px]">2</span>
+</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors text-sm font-medium flex items-center gap-2">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">C</span>
+                        Codex <span class="bg-surface-variant text-on-surface-variant px-1.5 py-0.5 rounded-md text-[10px]">1</span>
+</button>
+</div>
+<!-- Secondary Toolbar -->
+<div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+<div class="relative w-full max-w-xl">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/50">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-full py-2.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-primary/20 transition-all shadow-sm" placeholder="Search by ID, Name, or Owner" type="text"/>
+</div>
+<div class="flex flex-wrap items-center gap-2">
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low transition-colors text-xs font-medium">
+<span class="material-symbols-outlined text-[16px]">add_circle</span> Status
+                        </button>
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low transition-colors text-xs font-medium">
+<span class="material-symbols-outlined text-[16px]">add_circle</span> Tag
+                        </button>
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low transition-colors text-xs font-medium">
+<span class="material-symbols-outlined text-[16px]">add_circle</span> Model
+                        </button>
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-outline-variant/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low transition-colors text-xs font-medium">
+<span class="material-symbols-outlined text-[16px]">add_circle</span> Visibility
+                        </button>
+<div class="w-px h-6 bg-outline-variant/30 mx-2"></div>
+<button class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low transition-colors text-xs font-medium">
+<span class="material-symbols-outlined text-[16px]">tune</span> Columns
+                        </button>
+</div>
+</div>
+</div>
+<!-- Data Table Container -->
+<div class="glass-panel rounded-xl border border-outline-variant/20 shadow-sm overflow-hidden flex flex-col relative z-20">
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full min-w-[1200px] text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-high/50 text-on-surface-variant text-sm font-medium border-b border-outline-variant/20">
+<th class="py-4 px-4 w-12 text-center">
+<input class="rounded border-outline-variant text-primary focus:ring-primary/20 bg-surface-container-lowest" type="checkbox"/>
+</th>
+<th class="py-4 px-4 font-semibold">ID</th>
+<th class="py-4 px-4 font-semibold">Name <span class="material-symbols-outlined text-[14px] align-middle inline-block opacity-50 cursor-pointer">unfold_more</span></th>
+<th class="py-4 px-4 font-semibold">Provider <span class="material-symbols-outlined text-[14px] align-middle inline-block opacity-50 cursor-pointer">unfold_more</span></th>
+<th class="py-4 px-4 font-semibold">Status <span class="material-symbols-outlined text-[14px] align-middle inline-block opacity-50 cursor-pointer">unfold_more</span></th>
+<th class="py-4 px-4 font-semibold">Visibility</th>
+<th class="py-4 px-4 font-semibold">Budget / Usage</th>
+<th class="py-4 px-4 font-semibold">Owner</th>
+<th class="py-4 px-4 font-semibold">Supported Models</th>
+<th class="py-4 px-4 font-semibold text-center">Health</th>
+<th class="py-4 px-4 font-semibold text-right">Weight <span class="material-symbols-outlined text-[14px] align-middle inline-block opacity-50 cursor-pointer">unfold_more</span></th>
+</tr>
+</thead>
+<tbody class="text-sm divide-y divide-outline-variant/10 bg-surface-container-lowest/40">
+<!-- Row 1 -->
+<tr class="table-row-hover transition-colors group">
+<td class="py-3 px-4 text-center">
+<input class="rounded border-outline-variant text-primary focus:ring-primary/20 bg-surface-container-lowest opacity-0 group-hover:opacity-100 transition-opacity" type="checkbox"/>
+</td>
+<td class="py-3 px-4 text-on-surface-variant font-mono text-xs">#14589</td>
+<td class="py-3 px-4 text-on-surface font-medium">Nvidia Other Account</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface-container-low border border-outline-variant/30 w-fit">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">O</span>
+<span class="text-xs">OpenAI</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="w-10 h-5 bg-tertiary rounded-full relative cursor-pointer shadow-inner">
+<div class="absolute right-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"></div>
+</div>
+</td>
+<td class="py-3 px-4">
+<span class="font-label-caps text-label-caps bg-[#fef0c7] text-[#93370d] px-2 py-0.5 rounded-md">Private</span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant">—</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2">
+<img alt="Owner" class="w-6 h-6 rounded-full object-cover" data-alt="A very small, circular avatar portrait of a user with a dark brown, abstract patterned background, representing a generic user profile icon in a corporate interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbc8AavGOhKeF6yKu6gK2Ygj2pp5mC-7CldnI3LI-pBkgK7qp7BWwPYNo9SgOcER1TmEMX_Z0-XCRXHxxPxVhpFHNyB4GiuptkBr9sqP5mijaIorDj_vK0h_Lde-VaxC1ZeJgHxOxCI1JLpvb1dHI0QY6mXvJ-L5u3D_JUxqKpsfbrszTCwTpuuPkJMRQ5l8ZgWONKLMDHuLgCo-9ldr4fgS34N8pZ47xALsnD6-cgwv2ebtIrC-c8YZmsEbmdIL213NopyRmxbxRD"/>
+<span>Song Di</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md truncate max-w-[200px]">nvidia/nemotron-3-ultra-550...</span>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="w-2.5 h-2.5 rounded-full bg-primary inline-block shadow-[0_0_8px_rgba(0,54,26,0.4)]"></span>
+</td>
+<td class="py-3 px-4 text-right font-mono">0</td>
+</tr>
+<!-- Row 2 -->
+<tr class="table-row-hover transition-colors group">
+<td class="py-3 px-4 text-center">
+<input class="rounded border-outline-variant text-primary focus:ring-primary/20 bg-surface-container-lowest opacity-0 group-hover:opacity-100 transition-opacity" type="checkbox"/>
+</td>
+<td class="py-3 px-4 text-on-surface-variant font-mono text-xs">#13458</td>
+<td class="py-3 px-4 text-on-surface font-medium">3000 Token Temp</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface-container-low border border-outline-variant/30 w-fit">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">O</span>
+<span class="text-xs">OpenAI</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="w-10 h-5 bg-tertiary rounded-full relative cursor-pointer shadow-inner">
+<div class="absolute right-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"></div>
+</div>
+</td>
+<td class="py-3 px-4">
+<span class="font-label-caps text-label-caps bg-[#fef0c7] text-[#93370d] px-2 py-0.5 rounded-md">Private</span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant">—</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2">
+<img alt="Owner" class="w-6 h-6 rounded-full object-cover" data-alt="A very small, circular avatar portrait of a user with a dark brown, abstract patterned background, representing a generic user profile icon in a corporate interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsv87nyPYrc1Go-A-Z-ROYJD2aKkdCbKsidnUlomzu-6AaBkjt59CPBVWKTVA_eVF4G4k7Lls-ROqqKY7RJHuyFqorpVsNNTY0QMG56R2AlhVY3NFozXXQrwe9IrGdwPi5n92evtDq7o3al1UxjXOhJsQuColpLxqFyyXw0RCRUQXDxzricKgQLpqMHzAk9jb3qUj5Qe2vgpVBJ_XBguXlEn_a0DZ4SQ12yFrZh39gsV4lOOQZxfbKJ8gK0PQSgkq8CNimiOPJuYV2"/>
+<span>Song Di</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md">gpt-5.5</span>
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md">gpt-5.4-mini</span>
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md">gpt-5.4</span>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="w-2.5 h-2.5 rounded-full bg-primary inline-block shadow-[0_0_8px_rgba(0,54,26,0.4)]"></span>
+</td>
+<td class="py-3 px-4 text-right font-mono">0</td>
+</tr>
+<!-- Row 3 -->
+<tr class="table-row-hover transition-colors group">
+<td class="py-3 px-4 text-center">
+<input class="rounded border-outline-variant text-primary focus:ring-primary/20 bg-surface-container-lowest opacity-0 group-hover:opacity-100 transition-opacity" type="checkbox"/>
+</td>
+<td class="py-3 px-4 text-on-surface-variant font-mono text-xs">#13413</td>
+<td class="py-3 px-4 text-on-surface font-medium">Hundred Fold Public</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2 px-2.5 py-1 rounded-full bg-surface-container-low border border-outline-variant/30 w-fit">
+<span class="w-4 h-4 bg-surface-variant rounded-full flex items-center justify-center text-[10px] font-bold">A</span>
+<span class="text-xs">Anthropic</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="w-10 h-5 bg-tertiary rounded-full relative cursor-pointer shadow-inner">
+<div class="absolute right-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"></div>
+</div>
+</td>
+<td class="py-3 px-4">
+<span class="font-label-caps text-label-caps bg-[#fef0c7] text-[#93370d] px-2 py-0.5 rounded-md">Private</span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant">—</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2">
+<img alt="Owner" class="w-6 h-6 rounded-full object-cover" data-alt="A very small, circular avatar portrait of a user with a dark brown, abstract patterned background, representing a generic user profile icon in a corporate interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCWrw_B2PQNvuHjkaksClpN6t22S3GZmBmLuaGI2HWnvKDNP7gp90nnc3V13m9WEi9FXolHgB305C29LyKMijsydkQ4BUc2uQ5yFtp_uy3tYhi6RSW4LC3l9yUOhQTNmPx265gFuC6qXlvAUI352GuqhuIxYEdLk1pmgbSrog6BR_KX7W8k38cy8Sea7bN1MLhNS-8JI2CFNNtNUOZUXg_CBsBxVmZAXUvboEFTI7cjxX6VE7JcRwTKqQlNqSW2_btfcaRj2Umhmzbd"/>
+<span>Song Di</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="flex flex-wrap gap-1 max-w-[300px]">
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md">claude-opus-4-6</span>
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md">claude-opus-4-7</span>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="w-2.5 h-2.5 rounded-full bg-primary inline-block shadow-[0_0_8px_rgba(0,54,26,0.4)]"></span>
+</td>
+<td class="py-3 px-4 text-right font-mono">0</td>
+</tr>
+<!-- Row 4 (Disabled state) -->
+<tr class="table-row-hover transition-colors group bg-surface-variant/20">
+<td class="py-3 px-4 text-center">
+<input class="rounded border-outline-variant text-primary focus:ring-primary/20 bg-surface-container-lowest opacity-0 group-hover:opacity-100 transition-opacity" type="checkbox"/>
+</td>
+<td class="py-3 px-4 text-on-surface-variant font-mono text-xs">#13007</td>
+<td class="py-3 px-4 text-on-surface-variant font-medium">anyrouter5.5</td>
+<td class="py-3 px-4">
+<div class="flex items-center gap-2 px-2.5 py-1 rounded-full bg-primary-fixed border border-primary/20 w-fit">
+<span class="w-4 h-4 bg-white/50 rounded-full flex items-center justify-center text-[10px] font-bold text-primary">O</span>
+<span class="text-xs text-primary-container font-medium">OpenAI</span>
+</div>
+</td>
+<td class="py-3 px-4">
+<div class="w-10 h-5 bg-surface-variant rounded-full relative cursor-pointer shadow-inner border border-outline-variant/30">
+<div class="absolute left-1 top-1 w-3 h-3 bg-white rounded-full shadow-sm"></div>
+</div>
+</td>
+<td class="py-3 px-4">
+<span class="font-label-caps text-label-caps bg-[#fef0c7] text-[#93370d] px-2 py-0.5 rounded-md opacity-70">Private</span>
+</td>
+<td class="py-3 px-4 text-on-surface-variant">—</td>
+<td class="py-3 px-4 opacity-70">
+<div class="flex items-center gap-2">
+<img alt="Owner" class="w-6 h-6 rounded-full object-cover grayscale" data-alt="A very small, circular avatar portrait of a user with a dark brown, abstract patterned background, representing a generic user profile icon in a corporate interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCt9wRtASM4MpMeL9egoyu9wvl9OcczmWQTBY7VDfVF0Si_nqouZwujNFd4EwWbMGOpk5Gf_QMtRmovpSKtgSgIHrt5Chx2oQDgZ3J2aNz7Gl3fN7bM-B5E6rVyTnMvBTtu5GeaIq7wKEoJ4zFTDeyBo7jnU7T8zSAjW1RANPJjPecKCiM6KgNOHgPtvH_XpYWZIOVx03JmABW3r5N0m1NKCxNvj8sn78HL-6EU1w-vn91yN7YelMWUJScow5G5zYAH7xXL_NHezXQW"/>
+<span>Song Di</span>
+</div>
+</td>
+<td class="py-3 px-4 opacity-70">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-1 bg-surface-container text-on-surface-variant text-xs rounded-md">gpt-5.5</span>
+</div>
+</td>
+<td class="py-3 px-4 text-center">
+<span class="w-2.5 h-2.5 rounded-full bg-error inline-block shadow-[0_0_8px_rgba(186,26,26,0.4)]"></span>
+</td>
+<td class="py-3 px-4 text-right font-mono text-on-surface-variant">0</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination Footer -->
+<div class="p-4 border-t border-outline-variant/20 flex items-center justify-between bg-surface-container-low/50">
+<span class="text-sm text-on-surface-variant">Showing 1 to 4 of 30 entries</span>
+<div class="flex items-center gap-1">
+<button class="p-1 rounded hover:bg-surface-variant text-on-surface-variant disabled:opacity-50"><span class="material-symbols-outlined">chevron_left</span></button>
+<button class="w-8 h-8 rounded bg-primary/10 text-primary font-medium text-sm">1</button>
+<button class="w-8 h-8 rounded hover:bg-surface-variant text-on-surface-variant text-sm">2</button>
+<button class="w-8 h-8 rounded hover:bg-surface-variant text-on-surface-variant text-sm">3</button>
+<span class="px-1 text-on-surface-variant">...</span>
+<button class="w-8 h-8 rounded hover:bg-surface-variant text-on-surface-variant text-sm">8</button>
+<button class="p-1 rounded hover:bg-surface-variant text-on-surface-variant"><span class="material-symbols-outlined">chevron_right</span></button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

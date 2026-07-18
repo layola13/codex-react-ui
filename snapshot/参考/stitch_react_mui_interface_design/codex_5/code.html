@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>General Permissions - Codex</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400&amp;family=JetBrains+Mono:wght@600&amp;family=Plus+Jakarta+Sans:wght@500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-container": "#e89ca5",
+                        "surface-container-highest": "#e1e3de",
+                        "tertiary-container": "#6a323b",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#414942",
+                        "outline-variant": "#c1c9bf",
+                        "on-primary": "#ffffff",
+                        "background": "#f8faf5",
+                        "tertiary-fixed-dim": "#ffb2bb",
+                        "surface": "#f8faf5",
+                        "surface-tint": "#366847",
+                        "tertiary-fixed": "#ffd9dd",
+                        "primary": "#00361a",
+                        "error": "#ba1a1a",
+                        "tertiary": "#4f1c26",
+                        "on-tertiary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#dfe4e1",
+                        "on-secondary-container": "#5e6462",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-low": "#f3f4ef",
+                        "surface-container": "#edeee9",
+                        "primary-container": "#1a4d2e",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#191c19",
+                        "surface-dim": "#d9dbd6",
+                        "surface-bright": "#f8faf5",
+                        "primary-fixed-dim": "#9dd3aa",
+                        "on-tertiary-fixed-variant": "#6e353e",
+                        "surface-container-high": "#e7e9e4",
+                        "secondary": "#5a605d",
+                        "inverse-on-surface": "#f0f1ec",
+                        "inverse-surface": "#2e312e",
+                        "secondary-container": "#dce1de",
+                        "outline": "#717971",
+                        "on-tertiary-fixed": "#380b15",
+                        "on-primary-fixed": "#00210e",
+                        "on-background": "#191c19",
+                        "surface-variant": "#e1e3de",
+                        "on-primary-container": "#88bd95",
+                        "secondary-fixed-dim": "#c2c8c5",
+                        "inverse-primary": "#9dd3aa",
+                        "on-secondary-fixed-variant": "#424846",
+                        "primary-fixed": "#b8f0c5",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed": "#171d1b",
+                        "on-primary-fixed-variant": "#1d5031"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar_width": "260px",
+                        "section_gap": "40px",
+                        "card_gutter": "24px",
+                        "input_padding": "16px 24px",
+                        "container_padding": "32px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Manrope"],
+                        "label-caps": ["JetBrains Mono"],
+                        "h1": ["Plus Jakarta Sans"],
+                        "nav-item": ["Plus Jakarta Sans"],
+                        "h2": ["Plus Jakarta Sans"],
+                        "body-lg": ["Manrope"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "h1": ["40px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "800" }],
+                        "nav-item": ["15px", { "lineHeight": "24px", "fontWeight": "500" }],
+                        "h2": ["28px", { "lineHeight": "1.3", "fontWeight": "700" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #00361a;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #00361a;
+        }
+        .toggle-checkbox:checked + .toggle-label::after {
+            transform: translateX(100%);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body-md antialiased min-h-screen">
+<!-- SideNavBar (from JSON) -->
+<nav class="fixed left-0 top-0 bottom-0 z-40 flex flex-col p-4 w-[260px] border-r border-outline-variant/10 glassmorphism backdrop-blur-lg bg-surface/80 dark:bg-inverse-surface/80 backdrop-blur-xl">
+<div class="flex items-center gap-4 px-2 mb-8 mt-2">
+<img class="w-10 h-10 rounded-lg" data-alt="A sleek, minimalist logo icon for 'Codex' featuring geometric shapes in dark green and white, representing a modern AI workspace environment, rendered in high fidelity vector art style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2pMijf-egUAimLli8KMGpJDpIOYQBziUyVB3YQKxZwOh5t8IfWl1GcH2CD-Z_lvykc8fBOlb26Wc7f0_GejGFalmLwRUfsNNLQUZPwwIIuboTZ6eAnyU0cJSC2PPsOqUTyIMKQGUjPQ-FCseHOlZ8qwD1f-bfRQuPDxhNPBx7mpF0-7acHD6nlDN1r9fDI7hQ8J8AtTVvhnZsVTDywcnVEe3uh0cTD7XTi_PP_p-QXULNvNsuXef8wnrbYIHZ-7rLopE9qwFQy0pt"/>
+<div>
+<h1 class="text-h2 font-h2 font-extrabold text-primary dark:text-inverse-primary tracking-tight">Codex</h1>
+<p class="text-label-caps font-label-caps text-on-surface-variant uppercase mt-1">AI Workspace</p>
+</div>
+</div>
+<button class="mb-6 flex items-center justify-center gap-2 bg-primary text-on-primary font-nav-item text-nav-item py-3 px-4 rounded-xl hover:bg-primary-fixed-variant transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[20px]">add</span>
+            New Project
+        </button>
+<ul class="flex flex-col gap-1 flex-1 overflow-y-auto">
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">add_box</span>
+                    New Task
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">schedule</span>
+                    Schedule
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">extension</span>
+                    Plugins
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">language</span>
+                    Sites
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">account_tree</span>
+                    Pull Requests
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">chat</span>
+                    Chat
+                </a>
+</li>
+</ul>
+<ul class="flex flex-col gap-1 pt-4 border-t border-outline-variant/10 mt-auto">
+<li>
+<a class="flex items-center gap-3 bg-primary-container text-on-primary-container rounded-lg px-3 py-2 font-bold text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">settings</span>
+                    Settings
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">notifications</span>
+                    Notifications
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:text-on-surface rounded-lg px-3 py-2 text-nav-item font-nav-item hover:bg-surface-variant/50 transition-colors" href="#">
+<span class="material-symbols-outlined text-[20px]">account_circle</span>
+                    Profile
+                </a>
+</li>
+</ul>
+</nav>
+<!-- TopNavBar & Main Content Wrapper -->
+<div class="ml-[260px] max-w-[calc(100%-260px)] min-h-screen flex flex-col bg-surface-container-low">
+<!-- TopNavBar (from JSON) -->
+<header class="flex justify-between items-center w-full px-8 py-4 bg-transparent fade-in duration-300 top-0 h-16 shrink-0 z-30 sticky">
+<h2 class="text-h1 font-h1 text-on-surface">Settings</h2>
+<div class="flex items-center gap-4 text-on-surface-variant">
+<button class="hover:opacity-80 p-2 rounded-full hover:bg-surface-variant/50 transition-colors"><span class="material-symbols-outlined">public</span></button>
+<button class="hover:opacity-80 p-2 rounded-full hover:bg-surface-variant/50 transition-colors"><span class="material-symbols-outlined">notifications</span></button>
+<button class="hover:opacity-80 p-2 rounded-full hover:bg-surface-variant/50 transition-colors"><span class="material-symbols-outlined">palette</span></button>
+<img class="w-9 h-9 rounded-full ml-2 border border-outline-variant/30" data-alt="A small, circular avatar portrait of a professional individual in a minimalist, well-lit modern studio setting, representing a user profile picture." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbKHQ0Q0BnX41smEi0ZsgV9uPAuxMM-kPd8q6qeTACbgnEYROiebzDWA6JhxjICxflv78DOLMn6WcWcVVwuTKNXJnAFWnxGzOXCx2O5y-9a-65FZYqfwfoUEaYFaJ6E9QMnG8RJRhex3Bmg5uAhK0y_v99OKbe4lXLaTWELj0J9BwYLoGinU78QI_S6b7EXTzYRaWcMh25MV2RT1rZVieDA14CaTUjjlZG2MAAnSdS1-eOITHxIVePsD8A5IlpW2Pcd2SHyvtj0EG7"/>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 p-container_padding pt-4">
+<div class="max-w-5xl mx-auto flex gap-card_gutter items-start">
+<!-- Settings Nav (In-page) -->
+<aside class="w-64 shrink-0 pr-8">
+<nav class="flex flex-col gap-2">
+<a class="text-nav-item font-nav-item text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg hover:bg-surface-variant/30 transition-colors" href="#">Account</a>
+<a class="text-nav-item font-nav-item text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg hover:bg-surface-variant/30 transition-colors" href="#">Billing &amp; Plans</a>
+<a class="text-nav-item font-nav-item text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg hover:bg-surface-variant/30 transition-colors" href="#">Data Privacy</a>
+<h3 class="text-label-caps font-label-caps text-outline uppercase mt-6 mb-2 px-4">Workspace</h3>
+<a class="text-nav-item font-nav-item text-primary bg-primary-container/20 px-4 py-2 rounded-lg font-bold border-l-4 border-primary" href="#">General</a>
+<a class="text-nav-item font-nav-item text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg hover:bg-surface-variant/30 transition-colors" href="#">Integrations</a>
+<a class="text-nav-item font-nav-item text-on-surface-variant hover:text-on-surface px-4 py-2 rounded-lg hover:bg-surface-variant/30 transition-colors" href="#">Appearance</a>
+</nav>
+</aside>
+<!-- Settings Content Area -->
+<div class="flex-1 flex flex-col gap-section_gap">
+<!-- Title -->
+<div>
+<h1 class="text-h2 font-h2 text-on-surface mb-2">General Permissions</h1>
+<p class="text-body-md font-body-md text-on-surface-variant">Manage default behaviors and access levels for your workspace environment.</p>
+</div>
+<!-- Permissions Section -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-outline-variant/10">
+<h3 class="text-h2 font-h2 text-on-surface mb-6 text-[22px]">Permissions</h3>
+<div class="flex flex-col gap-6">
+<!-- Toggle Item 1 -->
+<div class="flex items-start justify-between pb-6 border-b border-outline-variant/10">
+<div class="pr-8">
+<h4 class="text-nav-item font-nav-item text-on-surface font-semibold mb-1">Default permissions</h4>
+<p class="text-body-md font-body-md text-on-surface-variant text-sm">Automatically grant standard read/write access to new projects created in this workspace.</p>
+</div>
+<div class="shrink-0 mt-1">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer toggle-checkbox" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all toggle-label"></div>
+</label>
+</div>
+</div>
+<!-- Toggle Item 2 -->
+<div class="flex items-start justify-between pb-6 border-b border-outline-variant/10">
+<div class="pr-8">
+<h4 class="text-nav-item font-nav-item text-on-surface font-semibold mb-1">Auto-review</h4>
+<p class="text-body-md font-body-md text-on-surface-variant text-sm">Enable AI-assisted preliminary reviews on all incoming pull requests targeting the main branch.</p>
+</div>
+<div class="shrink-0 mt-1">
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer toggle-checkbox" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all toggle-label"></div>
+</label>
+</div>
+</div>
+<!-- Toggle Item 3 -->
+<div class="flex items-start justify-between">
+<div class="pr-8">
+<h4 class="text-nav-item font-nav-item text-on-surface font-semibold mb-1">Full access</h4>
+<p class="text-body-md font-body-md text-on-surface-variant text-sm">Grant plugins unrestricted access to local file system and network resources.</p>
+</div>
+<div class="shrink-0 mt-1">
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer toggle-checkbox" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all toggle-label"></div>
+</label>
+</div>
+</div>
+</div>
+</section>
+<!-- General Environment Section -->
+<section class="bg-surface-container-lowest rounded-xl p-8 shadow-sm border border-outline-variant/10 mb-8">
+<h3 class="text-h2 font-h2 text-on-surface mb-6 text-[22px]">General</h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<!-- Select 1 -->
+<div class="flex flex-col gap-2">
+<label class="text-nav-item font-nav-item text-on-surface font-semibold">Default file open destination</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container hover:bg-surface-container-high transition-colors border-0 rounded-lg px-4 py-3 text-on-surface text-body-md font-body-md focus:ring-2 focus:ring-primary/50">
+<option>VS Code</option>
+<option>Cursor</option>
+<option>Web Editor</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Select 2 -->
+<div class="flex flex-col gap-2">
+<label class="text-nav-item font-nav-item text-on-surface font-semibold">Agent environment</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container hover:bg-surface-container-high transition-colors border-0 rounded-lg px-4 py-3 text-on-surface text-body-md font-body-md focus:ring-2 focus:ring-primary/50">
+<option>Windows native</option>
+<option>WSL 2</option>
+<option>Docker Container</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Select 3 -->
+<div class="flex flex-col gap-2">
+<label class="text-nav-item font-nav-item text-on-surface font-semibold">Integrated terminal shell</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container hover:bg-surface-container-high transition-colors border-0 rounded-lg px-4 py-3 text-on-surface text-body-md font-body-md focus:ring-2 focus:ring-primary/50">
+<option>PowerShell</option>
+<option>Command Prompt</option>
+<option>Git Bash</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Select 4 -->
+<div class="flex flex-col gap-2">
+<label class="text-nav-item font-nav-item text-on-surface font-semibold">Language</label>
+<div class="relative">
+<select class="w-full appearance-none bg-surface-container hover:bg-surface-container-high transition-colors border-0 rounded-lg px-4 py-3 text-on-surface text-body-md font-body-md focus:ring-2 focus:ring-primary/50">
+<option>Auto detect</option>
+<option>English (US)</option>
+<option>Spanish</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>
+</div>
+</div>
+</div>
+<div class="mt-8 flex justify-end">
+<button class="bg-primary hover:bg-primary-fixed-variant text-on-primary px-6 py-2 rounded-lg font-nav-item text-nav-item font-semibold transition-colors shadow-sm">Save Changes</button>
+</div>
+</section>
+</div>
+</div>
+</main>
+</div>
+</body></html>
