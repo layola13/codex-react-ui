@@ -822,6 +822,25 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   });
 });
 
+test("exposes every bundled Codex schema top-level setting in All config", async ({ page }) => {
+  test.setTimeout(120_000);
+  const schema = JSON.parse(await readFile("apps/web/src/state/codexConfigSchema.json", "utf8")) as {
+    properties?: Record<string, unknown>;
+  };
+  const schemaKeys = Object.keys(schema.properties ?? {}).sort((a, b) => a.localeCompare(b));
+  expect(schemaKeys).toHaveLength(93);
+
+  await page.goto("/");
+  await page.getByLabel("Open settings").click();
+  await page.getByRole("button", { name: "All config" }).click();
+  await expect(page.getByLabel("Search all Codex config")).toBeVisible();
+
+  for (const key of schemaKeys) {
+    await page.getByLabel("Search all Codex config").fill(key);
+    await expect(page.getByText(key, { exact: true }).first(), `Settings All config should expose ${key}`).toBeVisible();
+  }
+});
+
 test("resolves chained provider aliases before starting a turn", async ({ page }) => {
   await page.goto("/");
 

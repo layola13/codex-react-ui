@@ -2,6 +2,16 @@
 
 ## 2026-07-18
 
+- Audited the "complete all settings" goal against the current Settings implementation.
+- Added Playwright coverage that reads `apps/web/src/state/codexConfigSchema.json`, asserts the bundled Codex schema still has 93 top-level settings, opens Settings -> All config, and searches each key to prove every top-level setting is visible in the UI.
+- Verified the new coverage directly:
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema top-level setting"`
+- Re-ran the full Settings verification gate after adding the coverage:
+  - `pnpm check:codex-config-schema`
+  - `pnpm --filter @codex-ui/web typecheck`
+  - `pnpm --filter @codex-ui/web build`
+  - `pnpm test:e2e` (14/14 Chromium tests)
+
 - Moved third-party relay setup into Settings -> Relay:
   - Added a reference-style `Model Channels` page with a left service-provider list and a right `Add Channel` form.
   - Added saved-channel cards for provider kind, active/saved state, health, weight, supported model chips, model selection, and activation.

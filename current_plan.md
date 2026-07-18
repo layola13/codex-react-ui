@@ -6,15 +6,16 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Immediate Slice
 
-1. Finish the Settings relocation and visual polish requested from the Stitch references:
-   - keep third-party relay/channel setup inside Settings -> Relay
-   - render saved providers as responsive channel cards with activation controls
-   - expose VS Code-like System/Light/Dark theme mode choices in Settings -> Appearance
-   - keep the right inspector focused on a companion/profile/audit surface now that relay settings moved
+1. Prove the "complete all settings" state:
+   - keep Settings -> Codex Engine backed by the bundled Codex JSON schema
+   - verify every bundled top-level Codex setting is searchable and visible in All config
+   - keep relay providers in Settings -> Relay and secrets out of Codex config writes
+   - keep Appearance theme mode/plugin settings, Layout settings, Session settings, Plugins, Pet Dock, and Privacy groups available from the Settings drawer
 2. Verify with commands and screenshots:
    - `pnpm --filter @codex-ui/web typecheck`
    - `pnpm --filter @codex-ui/web build`
    - `pnpm check:codex-config-schema`
+   - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema top-level setting"`
    - `pnpm test:e2e`
    - inspect `/root/projects/snapshot/07-right-companion-sidebar.png`
    - inspect `/root/projects/snapshot/08-settings-appearance-theme-cards.png`
@@ -34,12 +35,12 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Next Commit Target
 
-Settings relay relocation, theme mode cards, and right companion sidebar are verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
+All Settings coverage audit and regression test are verified, committed locally, and pushed to GitHub through the authenticated SSH remote URL.
 
 ## Latest Verification
 
 - `pnpm check:codex-config-schema`
 - `pnpm --filter @codex-ui/web typecheck`
 - `pnpm --filter @codex-ui/web build`
-- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "captures relay settings saved channel cards"`
-- `pnpm test:e2e` (13/13 Chromium tests)
+- `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "exposes every bundled Codex schema top-level setting"`
+- `pnpm test:e2e` (14/14 Chromium tests)
