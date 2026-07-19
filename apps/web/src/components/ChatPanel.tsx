@@ -198,7 +198,7 @@ export function ChatPanel({
     ? agentConversationTurns(turns, activeThreadId, selectedAgent)
     : mainConversationTurns(turns, activeThreadId);
   const hasParallelAgents = visibleAgents.length > 0;
-  const showTopStatus = Boolean(goal || slashNotice || statsOpen || modes.fast || modes.plan);
+  const showTopStatus = Boolean(goal || slashNotice || statsOpen || modes.fast || modes.plan || requestMonitor.length > 0);
 
   function selectAgent(agent: AgentSession) {
     setSelectedAgentId(agent.id);

@@ -585,7 +585,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
       if (appResult.status === "fulfilled") {
         nextTooling.apps = parseApps(appResult.value);
-      } else {
+      } else if (!isThreadNotFoundError(appResult.reason)) {
         errors.push(errorMessage("App inventory", appResult.reason));
       }
 
@@ -2991,6 +2991,11 @@ function mergeTurns(current: ClientState["turns"], loaded: ClientState["turns"])
 
 function errorMessage(scope: string, error: unknown): string {
   return `${scope}: ${formatErrorText(error)}`;
+}
+
+function isThreadNotFoundError(error: unknown): boolean {
+  const message = formatErrorText(error).toLowerCase();
+  return message.includes("thread not found");
 }
 
 function formatErrorText(error: unknown): string {
