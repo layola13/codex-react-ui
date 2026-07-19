@@ -77,6 +77,8 @@
   "composer.renameTooltip": "Rename current thread",
   "composer.attachTooltip": "Attach images to this turn. Drag and drop is also supported.",
   "composer.imageButton": "Image",
+  "composer.menu.add": "Add",
+  "composer.menu.commands": "Commands",
   "composer.send": "Send",
   "composer.imageSummary": "{count} {imageLabel} · {bytes} selected. ",
   "composer.imageOne": "image",

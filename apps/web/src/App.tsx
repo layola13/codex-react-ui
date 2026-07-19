@@ -2215,6 +2215,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       sx={{
         height: "100dvh",
         maxHeight: "100dvh",
+        boxSizing: "border-box",
         display: "grid",
         gridTemplateRows: "56px minmax(0, 1fr)",
         gap: { xs: 1, sm: 1.25, lg: 1.5 },

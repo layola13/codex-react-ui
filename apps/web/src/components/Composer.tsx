@@ -1,16 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Alert,
   Box,
-  Button,
   Chip,
+  Divider,
   IconButton,
+  Menu,
+  MenuItem,
   Stack,
   TextField,
   Tooltip,
   Typography
 } from "@mui/material";
-import SendIcon from "@mui/icons-material/Send";
+import AddIcon from "@mui/icons-material/Add";
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
 import AssessmentIcon from "@mui/icons-material/Assessment";
@@ -20,6 +23,7 @@ import EditNoteIcon from "@mui/icons-material/EditNote";
 import FlagIcon from "@mui/icons-material/Flag";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import PanToolAltIcon from "@mui/icons-material/PanToolAlt";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { alpha } from "@mui/material/styles";
@@ -76,6 +80,7 @@ export function Composer({
   const [mentions, setMentions] = useState<ComposerMention[]>([]);
   const [imageError, setImageError] = useState("");
   const [dragActive, setDragActive] = useState(false);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragDepthRef = useRef(0);
   const selectedPreset = useMemo(() => permissionPresets.find((preset) => preset.id === permission), [permission]);
@@ -87,6 +92,7 @@ export function Composer({
       : "";
   const hasContent = text.trim().length > 0 || images.length > 0;
   const imageTotalBytes = images.reduce((total, image) => total + image.size, 0);
+  const permissionShortLabel = selectedPreset?.label ?? permission;
 
   useEffect(() => {
     if (!pendingMention) {
@@ -232,128 +238,136 @@ export function Composer({
             {modeBadges.goalActive && <Chip size="small" color="success" variant="outlined" icon={<FlagIcon />} label={t("composer.goalBadge")} data-testid="composer-goal-badge" />}
           </Stack>
         )}
-        <TextField
-          multiline
-          minRows={3}
-          maxRows={8}
-          placeholder={t("composer.placeholder")}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            if (event.target.value.length > 0) {
-              onUserActivity?.();
-            }
-          }}
-          sx={{
-            "& .MuiOutlinedInput-root": {
-              borderRadius: 3,
-              alignItems: "flex-start",
-              px: 1.5,
-              py: 1
-            },
-            "& textarea": {
-              fontSize: 15,
-              lineHeight: 1.65
-            }
-          }}
-        />
-        <Stack
-          direction="row"
-          spacing={0.75}
-          flexWrap="wrap"
-          useFlexGap
-          data-testid="composer-slash-shortcuts"
-          sx={{
-            alignItems: "center",
-            "& .MuiButton-root": {
-              minHeight: 30,
-              borderRadius: 1,
-              px: 1
-            }
-          }}
-        >
-          <Tooltip title={t("composer.fastTooltip")}>
+        <Box sx={{ position: "relative" }}>
+          <TextField
+            multiline
+            minRows={3}
+            maxRows={8}
+            placeholder={t("composer.placeholder")}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              if (event.target.value.length > 0) {
+                onUserActivity?.();
+              }
+            }}
+            sx={{
+              width: "100%",
+              "& .MuiOutlinedInput-root": {
+                borderRadius: 3,
+                alignItems: "flex-start",
+                px: 1.5,
+                pt: 1,
+                pb: 6.5
+              },
+              "& textarea": {
+                fontSize: 15,
+                lineHeight: 1.65
+              }
+            }}
+          />
+          <Tooltip title={t("composer.attachTooltip")}>
             <span>
-              <Button
+              <IconButton
                 size="small"
-                variant={modeBadges.fast ? "contained" : "outlined"}
-                color="warning"
-                startIcon={<BoltIcon />}
+                aria-label={t("composer.attachTooltip")}
                 disabled={disabled}
-                onClick={() => runSlashCommandShortcut("/fast")}
+                onClick={(event) => setMenuAnchorEl(event.currentTarget)}
+                sx={{
+                  position: "absolute",
+                  left: 12,
+                  bottom: 10,
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: (theme) => alpha(theme.palette.background.paper, 0.94),
+                  boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
+                  "&:hover": {
+                    bgcolor: "background.paper"
+                  }
+                }}
               >
-                /fast
-              </Button>
+                <AddIcon fontSize="small" />
+              </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={t("composer.statusTooltip")}>
+          <Box
+            sx={{
+              position: "absolute",
+              left: 58,
+              right: 118,
+              bottom: 10,
+              height: 36,
+              display: "flex",
+              alignItems: "center",
+              gap: 0.75,
+              color: "text.secondary",
+              pointerEvents: "none",
+              minWidth: 0
+            }}
+          >
+            <PanToolAltIcon sx={{ fontSize: 18, flex: "0 0 auto" }} />
+            <Typography
+              variant="body2"
+              sx={{
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                color: "text.secondary"
+              }}
+            >
+              {permissionShortLabel}
+            </Typography>
+          </Box>
+          <Tooltip
+            title={
+              images.length > 0
+                ? t("composer.imageSummary", {
+                    count: images.length,
+                    imageLabel: t(images.length === 1 ? "composer.imageOne" : "composer.imageOther"),
+                    bytes: formatBytes(imageTotalBytes)
+                  })
+                : selectedPreset?.description ?? ""
+            }
+          >
             <span>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<AssessmentIcon />}
-                disabled={disabled}
-                onClick={() => runSlashCommandShortcut("/status")}
-              >
-                /status
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title={t("composer.goalTooltip")}>
-            <span>
-              <Button
-                size="small"
-                variant={modeBadges.goalActive ? "contained" : "outlined"}
-                color="success"
-                startIcon={<FlagIcon />}
-                disabled={disabled}
-                onClick={() => setSlashTemplate("/goal ")}
-              >
-                /goal
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title={t("composer.planTooltip")}>
-            <span>
-              <Button
-                size="small"
-                variant={modeBadges.plan ? "contained" : "outlined"}
+              <IconButton
                 color="primary"
-                startIcon={<ChecklistIcon />}
-                disabled={disabled}
-                onClick={() => runSlashCommandShortcut(modeBadges.plan ? "/plan off" : "/plan")}
+                aria-label={t("composer.send")}
+                disabled={sendBlocked || !hasContent}
+                onClick={() => {
+                  onUserActivity?.();
+                  onSend(text, images, mentions);
+                  setText("");
+                  setImages([]);
+                  setMentions([]);
+                }}
+                sx={{
+                  position: "absolute",
+                  right: 12,
+                  bottom: 10,
+                  width: 40,
+                  height: 40,
+                  bgcolor: (theme) => theme.palette.mode === "dark" ? theme.palette.primary.main : "#111827",
+                  color: "#fff",
+                  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.18)",
+                  "&:hover": {
+                    bgcolor: (theme) => theme.palette.mode === "dark" ? theme.palette.primary.dark : "#020617"
+                  },
+                  "&.Mui-disabled": {
+                    bgcolor: "action.disabledBackground",
+                    color: "action.disabled"
+                  }
+                }}
               >
-                /plan
-              </Button>
+                <ArrowUpwardIcon fontSize="small" />
+              </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={t("composer.reviewTooltip")}>
-            <span>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<RateReviewIcon />}
-                disabled={disabled}
-                onClick={() => runSlashCommandShortcut("/review")}
-              >
-                /review
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title={t("composer.renameTooltip")}>
-            <span>
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<EditNoteIcon />}
-                disabled={disabled}
-                onClick={() => setSlashTemplate("/rename ")}
-              >
-                /rename
-              </Button>
-            </span>
-          </Tooltip>
-        </Stack>
+        </Box>
         {images.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ overflowX: "auto", pb: 0.5 }}>
             {images.map((image) => (
@@ -402,79 +416,77 @@ export function Composer({
             ))}
           </Stack>
         )}
-        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} spacing={1}>
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: { sm: "0 0 auto" } }}>
-            <Tooltip title={t("composer.attachTooltip")}>
-              <span>
-                <Button size="small" startIcon={<ImageIcon />} disabled={disabled} onClick={() => fileInputRef.current?.click()}>
-                  {t("composer.imageButton")}
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  hidden
-                  onChange={(event) => {
-                    void addImages(event.currentTarget.files);
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </span>
-            </Tooltip>
-            <Box sx={{ flex: 1, display: { xs: "block", sm: "none" } }} />
-            <Button
-              variant="contained"
-              endIcon={<SendIcon />}
-              disabled={sendBlocked || !hasContent}
-              onClick={() => {
-                onUserActivity?.();
-                onSend(text, images, mentions);
-                setText("");
-                setImages([]);
-                setMentions([]);
-              }}
-              sx={{ display: { xs: "inline-flex", sm: "none" } }}
-            >
-              {t("composer.send")}
-            </Button>
-          </Stack>
-          <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            {images.length > 0
-              ? t("composer.imageSummary", {
-                  count: images.length,
-                  imageLabel: t(images.length === 1 ? "composer.imageOne" : "composer.imageOther"),
-                  bytes: formatBytes(imageTotalBytes)
-                })
-              : ""}
-            {selectedPreset?.description}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(event) => {
+            void addImages(event.currentTarget.files);
+            event.currentTarget.value = "";
+          }}
+        />
+        <Menu
+          anchorEl={menuAnchorEl}
+          open={Boolean(menuAnchorEl)}
+          onClose={() => setMenuAnchorEl(null)}
+          anchorOrigin={{ vertical: "top", horizontal: "left" }}
+          transformOrigin={{ vertical: "bottom", horizontal: "left" }}
+          slotProps={{
+            paper: {
+              sx: {
+                width: { xs: "calc(100vw - 48px)", sm: 420 },
+                maxWidth: 520,
+                borderRadius: 3,
+                p: 1,
+                boxShadow: "0 20px 50px rgba(15, 23, 42, 0.18)"
+              }
+            }
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ px: 1.25, py: 0.75 }}>
+            {t("composer.menu.add")}
           </Typography>
-          <Button
-            variant="contained"
-            endIcon={<SendIcon />}
-            disabled={sendBlocked || !hasContent}
+          <MenuItem
+            disabled={disabled}
             onClick={() => {
-              onUserActivity?.();
-              onSend(text, images, mentions);
-              setText("");
-              setImages([]);
-              setMentions([]);
+              setMenuAnchorEl(null);
+              fileInputRef.current?.click();
             }}
-            sx={{ display: { xs: "none", sm: "inline-flex" } }}
+            sx={{ borderRadius: 2, minHeight: 42 }}
           >
-            {t("composer.send")}
-          </Button>
-        </Stack>
+            <ImageIcon fontSize="small" style={{ marginRight: 14 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2">{t("composer.imageButton")}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {t("composer.attachTooltip")}
+              </Typography>
+            </Box>
+          </MenuItem>
+          <Divider sx={{ my: 0.75 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ px: 1.25, py: 0.75 }}>
+            {t("composer.menu.commands")}
+          </Typography>
+          <ComposerMenuItem icon={<BoltIcon fontSize="small" />} label="/fast" detail={t("composer.fastTooltip")} disabled={disabled} onClick={() => runSlashCommandShortcut("/fast")} />
+          <ComposerMenuItem icon={<AssessmentIcon fontSize="small" />} label="/status" detail={t("composer.statusTooltip")} disabled={disabled} onClick={() => runSlashCommandShortcut("/status")} />
+          <ComposerMenuItem icon={<FlagIcon fontSize="small" />} label="/goal" detail={t("composer.goalTooltip")} disabled={disabled} onClick={() => setSlashTemplate("/goal ")} />
+          <ComposerMenuItem icon={<ChecklistIcon fontSize="small" />} label="/plan" detail={t("composer.planTooltip")} disabled={disabled} onClick={() => runSlashCommandShortcut(modeBadges.plan ? "/plan off" : "/plan")} />
+          <ComposerMenuItem icon={<RateReviewIcon fontSize="small" />} label="/review" detail={t("composer.reviewTooltip")} disabled={disabled} onClick={() => runSlashCommandShortcut("/review")} />
+          <ComposerMenuItem icon={<EditNoteIcon fontSize="small" />} label="/rename" detail={t("composer.renameTooltip")} disabled={disabled} onClick={() => setSlashTemplate("/rename ")} />
+        </Menu>
       </Stack>
     </Box>
   );
 
   function runSlashCommandShortcut(command: string): void {
+    setMenuAnchorEl(null);
     onUserActivity?.();
     onSend(command, [], []);
   }
 
   function setSlashTemplate(command: string): void {
+    setMenuAnchorEl(null);
     onUserActivity?.();
     setText((current) => (current.trim().length === 0 || current.trim().startsWith("/") ? command : `${current.trimEnd()}\n${command}`));
   }
@@ -516,6 +528,36 @@ export function Composer({
     }
     setImages((current) => [...current, ...next]);
   }
+}
+
+function ComposerMenuItem({
+  icon,
+  label,
+  detail,
+  disabled,
+  onClick
+}: {
+  icon: ReactNode;
+  label: string;
+  detail: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <MenuItem disabled={disabled} onClick={onClick} sx={{ borderRadius: 2, minHeight: 44 }}>
+      <Box sx={{ mr: 1.75, width: 20, height: 20, display: "grid", placeItems: "center", color: "text.secondary", flex: "0 0 auto" }}>
+        {icon}
+      </Box>
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="body2" sx={{ fontWeight: 650 }}>
+          {label}
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {detail}
+        </Typography>
+      </Box>
+    </MenuItem>
+  );
 }
 
 async function readImageFile(file: File): Promise<ComposerImageAttachment> {

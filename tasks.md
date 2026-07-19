@@ -139,6 +139,10 @@
 - [x] Add plugin installed-only mention picker and richer plugin app/auth handling.
 - [x] Complete Settings Codex/plugin i18n coverage for English and Chinese, including plugin status enums and screenshot verification.
 - [x] Add an initial loading animation to prevent first-open white screen before the React app mounts.
+- [x] Move the composer image attachment action into a left-bottom plus menu and remove the separate image button row.
+- [x] Move the composer plus/send controls into the input box itself so the lower row no longer wastes space.
+- [x] Move slash command shortcuts into the composer plus menu to match the reference input layout.
+- [x] Keep the welcome page within the first viewport and hide the request monitor entry when there are zero requests.
 - [x] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
 - [x] Add terminal/process controls for command execution and PTY interaction.
 - [x] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.

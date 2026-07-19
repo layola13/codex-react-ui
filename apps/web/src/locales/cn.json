@@ -77,6 +77,8 @@
   "composer.renameTooltip": "重命名当前线程",
   "composer.attachTooltip": "为本轮附加图片，也支持拖拽。",
   "composer.imageButton": "图片",
+  "composer.menu.add": "添加",
+  "composer.menu.commands": "命令",
   "composer.send": "发送",
   "composer.imageSummary": "已选择 {count} 张{imageLabel} · {bytes}。 ",
   "composer.imageOne": "图片",

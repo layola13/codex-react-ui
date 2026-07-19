@@ -306,19 +306,21 @@ export function ChatPanel({
                 </Typography>
               </Alert>
             )}
-            <Stack direction="row" alignItems="center" justifyContent="flex-end">
-              <Button
-                data-testid="request-monitor-button"
-                size="small"
-                variant="outlined"
-                startIcon={<AssessmentIcon />}
-                onClick={() => setRequestsOpen(true)}
-                sx={{ borderRadius: 1 }}
-              >
-                {t("chat.requests")}
-                <Chip size="small" label={requestMonitor.length} sx={{ ml: 1, height: 20 }} />
-              </Button>
-            </Stack>
+            {requestMonitor.length > 0 && (
+              <Stack direction="row" alignItems="center" justifyContent="flex-end">
+                <Button
+                  data-testid="request-monitor-button"
+                  size="small"
+                  variant="outlined"
+                  startIcon={<AssessmentIcon />}
+                  onClick={() => setRequestsOpen(true)}
+                  sx={{ borderRadius: 1 }}
+                >
+                  {t("chat.requests")}
+                  <Chip size="small" label={requestMonitor.length} sx={{ ml: 1, height: 20 }} />
+                </Button>
+              </Stack>
+            )}
             {(modes.fast || modes.plan) && (
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
                 {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label={t("app.fast")} data-testid="fast-mode-badge" />}
