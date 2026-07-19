@@ -12,7 +12,7 @@ const sourcePath = join(codexRoot, "codex-rs/core/config.schema.json");
 const targetPath = join(rootDir, "apps/web/src/state/codexConfigSchema.json");
 
 if (args.has("--help") || args.has("-h")) {
-  console.log(`Usage: node scripts/sync-codex-config-schema.mjs [--write] [--codex-root=/path/to/codex]
+  console.log(`Usage: bun scripts/sync-codex-config-schema.mjs [--write] [--codex-root=/path/to/codex]
 
 Checks that the web UI's bundled Codex config schema matches the local Codex repo.
 
@@ -53,7 +53,7 @@ if (sourceNormalized !== targetNormalized) {
   if (extra.length > 0) {
     console.error(`Extra keys: ${extra.join(", ")}`);
   }
-  console.error("Run: pnpm sync:codex-config-schema");
+  console.error("Run: bun run sync:codex-config-schema");
   process.exit(1);
 }
 

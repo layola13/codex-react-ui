@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { DatabaseSync } from "node:sqlite";
+import type { Database } from "bun:sqlite";
 import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
 import { LocalDatabase } from "./localDatabase.js";
 
 export class AuditLogStore {
   private readonly dir = join(homedir(), ".codex-react-ui");
   private readonly file = join(this.dir, "audit-log.jsonl");
-  private readonly db: DatabaseSync;
+  private readonly db: Database;
 
   public constructor(database = new LocalDatabase()) {
     this.db = database.connection;

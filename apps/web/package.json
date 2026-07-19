@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "tsc -p tsconfig.json && vite build",
+    "dev": "bun scripts/build.ts && bun scripts/preview.ts",
+    "build": "tsc -p tsconfig.json && bun scripts/build.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "preview": "vite preview --host 127.0.0.1 --port 5173"
+    "preview": "bun scripts/preview.ts"
   },
   "dependencies": {
     "@codex-ui/shared": "workspace:*",
@@ -18,14 +18,12 @@
     "@mui/icons-material": "^7.3.5",
     "@mui/material": "^7.3.5",
     "@types/three": "^0.185.1",
-    "@vitejs/plugin-react": "^5.1.1",
     "marked": "^18.0.6",
     "monaco-editor": "^0.55.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-resizable-panels": "^4.12.2",
-    "three": "^0.185.1",
-    "vite": "^7.2.4"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",

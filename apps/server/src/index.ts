@@ -1,11 +1,8 @@
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
-import Fastify from "fastify";
-import fastifyStatic from "@fastify/static";
-import websocket from "@fastify/websocket";
-import type { WebSocket } from "ws";
+import { existsSync, statSync } from "node:fs";
+import type { Server, ServerWebSocket } from "bun";
 import {
   type ClientToServerMessage,
   type JsonRpcMessage,
@@ -26,87 +23,13 @@ const localDatabase = new LocalDatabase();
 const providerStore = new ProviderStore(localDatabase);
 const auditLogStore = new AuditLogStore(localDatabase);
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
-const clients = new Set<WebSocket>();
+const clients = new Set<ServerWebSocket>();
 
 await providerStore.initialize();
 
-const app = Fastify({
-  logger: {
-    level: process.env.LOG_LEVEL ?? "info",
-    redact: ["req.headers.authorization", "*.apiKey", "*.token"]
-  }
-});
-
-await app.register(websocket);
-
-app.addHook("onRequest", async (request, reply) => {
-  reply.header("Cross-Origin-Resource-Policy", "same-origin");
-  reply.header("X-Content-Type-Options", "nosniff");
-  if (request.url === "/api/session") {
-    return;
-  }
-  if (request.url.startsWith("/api") || request.url.startsWith("/ws")) {
-    const url = new URL(request.url, "http://127.0.0.1");
-    const queryToken = url.searchParams.get("token");
-    const headerValue = request.headers["x-codex-ui-token"];
-    const token = Array.isArray(headerValue) ? headerValue[0] : headerValue ?? queryToken;
-    if (token !== sessionToken) {
-      return reply.code(401).send({ error: "Unauthorized" });
-    }
-  }
-});
-
-app.get("/api/session", async () => ({ token: sessionToken }));
-app.get("/api/health", async () => ({ ok: true, status: bridge.getStatus() }));
-app.get("/api/engine/status", async () => bridge.getStatus());
-app.post("/api/engine/start", async () => bridge.start());
-app.get("/api/providers", async () => ({ data: await providerStore.list() }));
-app.get("/api/profile/export", async () => providerStore.exportProfile());
-app.post("/api/profile/import", async (request, reply) => {
-  try {
-    return await providerStore.importProfile(request.body);
-  } catch (error) {
-    return reply.code(400).send({ error: errorToMessage(error) });
-  }
-});
-app.get("/api/audit/events", async () => ({ data: await auditLogStore.list() }));
-
-app.get("/ws", { websocket: true }, (socket) => {
-  const ws = socket as WebSocket;
-  clients.add(ws);
-  send(ws, { type: "engine.status", status: bridge.getStatus() });
-
-  ws.on("message", async (raw) => {
-    try {
-      const message = JSON.parse(raw.toString("utf8")) as ClientToServerMessage;
-      await handleClientMessage(ws, message);
-    } catch (error) {
-      send(ws, {
-        type: "server.error",
-        message: errorToMessage(error)
-      });
-    }
-  });
-
-  ws.once("close", () => clients.delete(ws));
-});
-
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const hasWebBuild = existsSync(join(webDist, "index.html"));
-if (hasWebBuild) {
-  await app.register(fastifyStatic, {
-    root: webDist,
-    prefix: "/"
-  });
-}
-
-app.setNotFoundHandler((request, reply) => {
-  if (hasWebBuild && request.method === "GET" && !request.url.startsWith("/api") && !request.url.startsWith("/ws")) {
-    reply.sendFile("index.html");
-    return;
-  }
-  reply.code(404).send({ error: "Not found" });
-});
+const webDistRoot = resolve(webDist);
 
 bridge.on("status", (status) => {
   broadcast({ type: "engine.status", status });
@@ -121,26 +44,145 @@ bridge.on("message", (message: JsonRpcMessage) => {
 });
 
 bridge.on("stderr", (message) => {
-  app.log.warn({ source: "codex" }, message as string);
+  console.warn("[codex]", message as string);
 });
 
 try {
   await bridge.start();
 } catch (error) {
-  app.log.warn({ error }, "Codex app-server did not start during boot; UI can retry");
+  console.warn("Codex app-server did not start during boot; UI can retry", error);
 }
 
-await app.listen({ host: HOST, port: PORT });
-app.log.info(`Codex React UI listening at http://${HOST}:${PORT}/?token=${sessionToken}`);
+const server = Bun.serve({
+  hostname: HOST,
+  port: PORT,
+  fetch: handleHttpRequest,
+  websocket: {
+    open(ws) {
+      clients.add(ws);
+      send(ws, { type: "engine.status", status: bridge.getStatus() });
+    },
+    async message(ws, raw) {
+      try {
+        const message = JSON.parse(raw.toString()) as ClientToServerMessage;
+        await handleClientMessage(ws, message);
+      } catch (error) {
+        send(ws, {
+          type: "server.error",
+          message: errorToMessage(error)
+        });
+      }
+    },
+    close(ws) {
+      clients.delete(ws);
+    }
+  }
+});
 
-async function handleClientMessage(ws: WebSocket, message: ClientToServerMessage): Promise<void> {
+console.info(`Codex React UI listening at http://${HOST}:${PORT}/?token=${sessionToken}`);
+
+async function handleHttpRequest(request: Request, server: Server<undefined>): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  const headers = securityHeaders();
+
+  try {
+    if (url.pathname === "/ws") {
+      if (!isAuthorized(request, url)) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      if (server.upgrade(request)) {
+        return;
+      }
+      return jsonResponse({ error: "WebSocket upgrade failed" }, 400, headers);
+    }
+
+    if (url.pathname === "/api/session" && request.method === "GET") {
+      return jsonResponse({ token: sessionToken }, 200, headers);
+    }
+
+    if (url.pathname.startsWith("/api")) {
+      if (!isAuthorized(request, url)) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      return await handleApiRequest(request, url, headers);
+    }
+
+    return serveStatic(request, url, headers);
+  } catch (error) {
+    console.error("Request failed", error);
+    return jsonResponse({ error: errorToMessage(error) }, 500, headers);
+  }
+}
+
+async function handleApiRequest(request: Request, url: URL, headers: Headers): Promise<Response> {
+  const route = `${request.method} ${url.pathname}`;
+  switch (route) {
+    case "GET /api/health":
+      return jsonResponse({ ok: true, status: bridge.getStatus() }, 200, headers);
+    case "GET /api/engine/status":
+      return jsonResponse(bridge.getStatus(), 200, headers);
+    case "POST /api/engine/start":
+      return jsonResponse(await bridge.start(), 200, headers);
+    case "GET /api/providers":
+      return jsonResponse({ data: await providerStore.list() }, 200, headers);
+    case "GET /api/profile/export":
+      return jsonResponse(await providerStore.exportProfile(), 200, headers);
+    case "POST /api/profile/import": {
+      try {
+        return jsonResponse(await providerStore.importProfile(await request.json()), 200, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "GET /api/audit/events":
+      return jsonResponse({ data: await auditLogStore.list() }, 200, headers);
+    default:
+      return jsonResponse({ error: "Not found" }, 404, headers);
+  }
+}
+
+function serveStatic(request: Request, url: URL, headers: Headers): Response {
+  if (!hasWebBuild || (request.method !== "GET" && request.method !== "HEAD")) {
+    return jsonResponse({ error: "Not found" }, 404, headers);
+  }
+
+  const path = decodeURIComponent(url.pathname);
+  const normalized = resolve(webDistRoot, `.${path === "/" ? "/index.html" : path}`);
+  const isInsideWebDist = normalized === webDistRoot || normalized.startsWith(`${webDistRoot}${sep}`);
+  if (isInsideWebDist && existsSync(normalized) && statSync(normalized).isFile()) {
+    return new Response(request.method === "HEAD" ? null : Bun.file(normalized), { headers });
+  }
+
+  return new Response(request.method === "HEAD" ? null : Bun.file(join(webDistRoot, "index.html")), { headers });
+}
+
+function isAuthorized(request: Request, url: URL): boolean {
+  const queryToken = url.searchParams.get("token");
+  const headerToken = request.headers.get("x-codex-ui-token");
+  return (headerToken ?? queryToken) === sessionToken;
+}
+
+function jsonResponse(value: unknown, status = 200, headers = securityHeaders()): Response {
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("Content-Type", "application/json; charset=utf-8");
+  return new Response(JSON.stringify(value), { status, headers: responseHeaders });
+}
+
+function securityHeaders(): Headers {
+  return new Headers({
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "X-Content-Type-Options": "nosniff"
+  });
+}
+
+async function handleClientMessage(ws: ServerWebSocket, message: ClientToServerMessage): Promise<void> {
   switch (message.type) {
     case "rpc": {
       try {
         try {
           await auditLogStore.recordDangerousPermission(message.method, message.params);
         } catch (error) {
-          app.log.warn({ error, method: message.method }, "Failed to write dangerous permission audit event");
+          console.warn("Failed to write dangerous permission audit event", { error, method: message.method });
         }
         const result = await bridge.request(message.method, message.params);
         send(ws, { type: "rpc.result", id: message.id, result });
@@ -258,9 +300,11 @@ function providerToCodexConfig(provider: ProviderConfig): JsonValue {
   return config;
 }
 
-function send(ws: WebSocket, message: ServerToClientMessage): void {
-  if (ws.readyState === ws.OPEN) {
+function send(ws: ServerWebSocket, message: ServerToClientMessage): void {
+  try {
     ws.send(JSON.stringify(message));
+  } catch {
+    clients.delete(ws);
   }
 }
 

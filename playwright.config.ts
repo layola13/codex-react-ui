@@ -27,8 +27,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: "pnpm --filter @codex-ui/web dev -- --host 127.0.0.1 --port 5173",
-    env: { CHOKIDAR_USEPOLLING: "true" },
+    command: "bun --filter @codex-ui/web build && bun --filter @codex-ui/web preview",
     url: "http://127.0.0.1:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000

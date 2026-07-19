@@ -5,18 +5,18 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const node = process.execPath;
+const bun = process.platform === "win32" ? "bun.exe" : "bun";
+const runtime = process.execPath;
 const args = new Set(process.argv.slice(2).filter((arg) => arg !== "--"));
 
 if (args.has("--help") || args.has("-h")) {
-  console.log(`Usage: pnpm launch [--build|--skip-build]
+  console.log(`Usage: bun run launch [--build|--skip-build]
 
 Builds missing production assets, then starts the local Codex React UI server.
 
 Options:
-  --build       Force pnpm build before starting.
-  --skip-build  Start from existing dist files without running pnpm build first.
+  --build       Force bun build before starting.
+  --skip-build  Start from existing dist files without running bun build first.
 `);
   process.exit(0);
 }
@@ -39,17 +39,17 @@ if (shouldBuild) {
   if (missingOutputs.length > 0 && !args.has("--build")) {
     console.log(`Building missing assets: ${missingOutputs.join(", ")}`);
   }
-  await run(pnpm, ["build"]);
+  await run(bun, ["run", "build"]);
 }
 
 const remainingMissingOutputs = requiredOutputs.filter((path) => !existsSync(join(rootDir, path)));
 if (remainingMissingOutputs.length > 0) {
   console.error(`Missing launch assets: ${remainingMissingOutputs.join(", ")}`);
-  console.error("Run pnpm launch -- --build to create production assets.");
+  console.error("Run bun run launch -- --build to create production assets.");
   process.exit(1);
 }
 
-const server = spawn(node, [join(rootDir, "apps/server/dist/index.js")], {
+const server = spawn(runtime, [join(rootDir, "apps/server/dist/index.js")], {
   cwd: rootDir,
   env: process.env,
   stdio: "inherit"

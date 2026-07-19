@@ -5,7 +5,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 ## What Works
 
 - React + MUI three-column workbench: history, chat, composer, config/tools/files inspector.
-- Local Node/Fastify bridge on `127.0.0.1` only; the browser never talks to `codex app-server` directly.
+- Local Bun HTTP/WebSocket bridge on `127.0.0.1` only; the browser never talks to `codex app-server` directly.
 - Codex app-server over stdio, including `initialize`, `thread/start`, `turn/start`, `model/list`, `thread/list`, and account read.
 - New conversation permission presets, including the explicit `Dangerously bypass approvals and sandbox` option gated by typing `BYPASS`.
 - Third-party provider metadata: base URL, native models, model aliases, API key preview, save, and activate.
@@ -19,11 +19,11 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 ## Development
 
 ```bash
-pnpm install
-pnpm dev
+bun install
+bun run dev
 ```
 
-The server listens on `127.0.0.1:43110`; Vite proxies `/api` and `/ws` to it.
+`bun run dev` builds the web UI once with Bun, then starts the Bun server on `127.0.0.1:43110`.
 
 By default the server tries these Codex binaries:
 
@@ -34,10 +34,10 @@ By default the server tries these Codex binaries:
 ## Production-Style Local Run
 
 ```bash
-pnpm launch
+bun run launch
 ```
 
-`pnpm launch` builds missing production assets, then starts the local Node server that serves both the API and the built web UI. Use `pnpm launch -- --build` to force a rebuild, or `pnpm launch -- --skip-build` to start from existing `dist` files.
+`bun run launch` builds missing production assets, then starts the local Bun server that serves both the API and the built web UI. Use `bun run launch -- --build` to force a rebuild, or `bun run launch -- --skip-build` to start from existing `dist` files.
 
 The server prints a URL like:
 
@@ -52,22 +52,22 @@ http://127.0.0.1:43110/?token=<session-token>
 To keep this repository's `README.md` checkpointed every 120 seconds without staging unrelated files:
 
 ```bash
-pnpm readme:autopush:start
+bun run readme:autopush:start
 ```
 
 Useful controls:
 
 ```bash
-pnpm readme:autopush:status
-pnpm readme:autopush:run-once
-pnpm readme:autopush:stop
+bun run readme:autopush:status
+bun run readme:autopush:run-once
+bun run readme:autopush:stop
 ```
 
 The watcher only stages `README.md`, writes its pid/log files under `.codex-maintenance/`, and uses `origin` plus the current branch by default. Override the polling interval or remote with `README_AUTOPUSH_INTERVAL` and `README_AUTOPUSH_REMOTE`.
 
 ## Provider Switching
 
-Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Node process memory and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
+Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Bun process memory and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
 
 Activating a provider writes:
 

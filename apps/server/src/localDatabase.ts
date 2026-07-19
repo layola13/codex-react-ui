@@ -2,16 +2,16 @@ import { mkdirSync } from "node:fs";
 import { chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { Database } from "bun:sqlite";
 
 export class LocalDatabase {
   public readonly dir = join(homedir(), ".codex-react-ui");
   public readonly file = join(this.dir, "codex-ui.sqlite3");
-  private readonly db: DatabaseSync;
+  private readonly db: Database;
 
   public constructor() {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
-    this.db = new DatabaseSync(this.file);
+    this.db = new Database(this.file);
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA foreign_keys = ON");
     this.db.exec("PRAGMA busy_timeout = 5000");
@@ -19,7 +19,7 @@ export class LocalDatabase {
     void chmod(this.file, 0o600).catch(() => undefined);
   }
 
-  public get connection(): DatabaseSync {
+  public get connection(): Database {
     return this.db;
   }
 

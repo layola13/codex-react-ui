@@ -2,6 +2,16 @@
 
 ## Now
 
+- [ ] Fix New Chat startup flow so every new conversation first shows a workspace selection panel, defaults to `~/`, and blocks sending until the user confirms the workspace.
+- [ ] Keep the composer text area editable while Codex is not ready or workspace selection is pending; only the Send action should be blocked with a clear inline reason.
+- [ ] Show the current relay/provider in the main UI so users can immediately see which middle relay/channel is active.
+- [ ] Move Settings out of the top-right toolbar into a left-bottom account/app area with avatar-ready layout, direct Settings access, and no required secondary menu.
+- [ ] Add PWA install support so Chrome-like browsers can install the web UI as a standalone local app.
+- [ ] Rework the chat panel into a true chat waterfall: only `/goal` stays pinned at the top; normal messages, request/status surfaces, and history content scroll together.
+- [ ] Add thinking/reasoning rendering that previews the first 3 lines by default and can expand for full details, using `/root/projects/cherry-studio` chat-panel behavior as reference.
+- [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.
+- [ ] Verify the above with a real browser screenshot after New Chat, workspace confirmation, typing, relay display, settings location, install affordance, sticky goal, and thinking preview.
+- [x] Move package management and runtime/build scripts from pnpm/concurrently/tsx/Vite/Fastify to Bun, generate `bun.lock`, and verify `bun run typecheck`, `bun run build`, real server launch, and browser screenshot.
 - [x] Remove duplicate new conversation entry points by keeping top-level New Chat, converting the task-tab new action to a compact plus button, and making Conversations a history-only list.
 - [x] Refine Settings -> Relay channel management so the default view is the Channels list, Add/Edit opens the Model Channel form separately, and rows support activate, test, edit, and delete.
 - [x] Fix Settings -> Plugins so API-key mode no longer surfaces remote catalog auth warnings; local Code Index marketplace now shows without alerts.
