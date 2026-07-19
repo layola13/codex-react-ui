@@ -410,10 +410,10 @@ export function SettingsDrawer({
 
           <Box sx={{ overflow: "auto", px: { xs: 1.5, sm: 2.5 }, py: 2, bgcolor: "background.default" }}>
             {section === "codex" && (
-              <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.codex")} subtitle="Synced through config/read and config/batchWrite">
+              <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.codex")} subtitle={t("settings.codex.subtitle")}>
                 <SettingRow
-                  title="User config sync"
-                  description="Curated fields write into the real Codex user config.toml with reloadUserConfig. Theme skins and API keys never enter this path."
+                  title={t("settings.codex.userConfigSync")}
+                  description={t("settings.codex.userConfigSyncDescription")}
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
                     {codexConfigLoading || codexConfigSaving ? <CircularProgress size={18} /> : null}
@@ -423,9 +423,9 @@ export function SettingsDrawer({
                       startIcon={<RefreshIcon />}
                       onClick={onReloadCodexConfig}
                       disabled={codexConfigLoading || codexConfigSaving}
-                      aria-label="Reload Codex config"
+                      aria-label={t("settings.codex.reloadConfig")}
                     >
-                      Reload Codex config
+                      {t("settings.codex.reloadConfig")}
                     </Button>
                   </Stack>
                 </SettingRow>
@@ -439,13 +439,13 @@ export function SettingsDrawer({
                 {!codexConfig && !codexConfigLoading ? (
                   <Box sx={{ px: 1.5, pb: 1.5 }}>
                     <Alert severity="info" variant="outlined">
-                      Open Settings while the engine is ready to load live user config.
+                      {t("settings.codex.engineReadyNotice")}
                     </Alert>
                   </Box>
                 ) : null}
                 <SettingRow
-                  title="Config coverage"
-                  description="Quick settings keep the common controls compact. All config is generated from Codex's bundled JSON schema and includes runtime keys from config/read."
+                  title={t("settings.codex.configCoverage")}
+                  description={t("settings.codex.configCoverageDescription")}
                 >
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Button
@@ -453,33 +453,37 @@ export function SettingsDrawer({
                       variant={codexConfigMode === "quick" ? "contained" : "outlined"}
                       onClick={() => setCodexConfigMode("quick")}
                     >
-                      Quick settings
+                      {t("settings.codex.quickSettings")}
                     </Button>
                     <Button
                       size="small"
                       variant={codexConfigMode === "all" ? "contained" : "outlined"}
                       onClick={() => setCodexConfigMode("all")}
                     >
-                      All config
+                      {t("settings.codex.allConfig")}
                     </Button>
                   </Stack>
                 </SettingRow>
                 {codexConfigMode === "quick" ? (
                   <>
-                    {CODEX_CONFIG_FIELD_META.map((field) => (
-                      <CodexConfigFieldRow
-                        key={field.key}
-                        fieldKey={field.key}
-                        label={field.label}
-                        description={field.description}
-                        kind={field.kind}
-                        options={field.options}
-                        readOnly={field.readOnly}
-                        value={codexConfig?.[field.key] ?? ""}
-                        disabled={!codexConfig || Boolean(field.readOnly) || codexConfigSaving}
-                        onCommit={(next) => onCodexConfigFieldChange(field.key, next)}
-                      />
-                    ))}
+                    {CODEX_CONFIG_FIELD_META.map((field) => {
+                      const localizedField = localizeQuickCodexConfigField(field, t);
+                      return (
+                        <CodexConfigFieldRow
+                          key={field.key}
+                          fieldKey={field.key}
+                          label={localizedField.label}
+                          description={localizedField.description}
+                          kind={field.kind}
+                          options={localizedField.options}
+                          readOnly={field.readOnly}
+                          value={codexConfig?.[field.key] ?? ""}
+                          disabled={!codexConfig || Boolean(field.readOnly) || codexConfigSaving}
+                          unsetLabel={t("settings.codex.unset")}
+                          onCommit={(next) => onCodexConfigFieldChange(field.key, next)}
+                        />
+                      );
+                    })}
                   </>
                 ) : (
                   <Box>
@@ -487,20 +491,20 @@ export function SettingsDrawer({
                       <TextField
                         size="small"
                         fullWidth
-                        label="Search all Codex config"
+                        label={t("settings.codex.searchAllConfig")}
                         value={codexConfigSearch}
                         onChange={(event) => setCodexConfigSearch(event.target.value)}
-                        inputProps={{ "aria-label": "Search all Codex config" }}
+                        inputProps={{ "aria-label": t("settings.codex.searchAllConfig") }}
                       />
                       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-                        {groupedDynamicCodexConfigFields.reduce((count, group) => count + group.fields.length, 0)} schema/runtime settings
+                        {t("settings.codex.schemaRuntimeSettings", { count: groupedDynamicCodexConfigFields.reduce((count, group) => count + group.fields.length, 0) })}
                       </Typography>
                     </Box>
                     {groupedDynamicCodexConfigFields.map((group) => (
                       <Box key={group.group} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 1.5, py: 1, bgcolor: "background.default" }}>
                           <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                            {group.group}
+                            {localizeCodexConfigSegment(group.group, t)}
                           </Typography>
                           <Chip size="small" label={group.fields.length} variant="outlined" />
                         </Stack>
@@ -510,6 +514,7 @@ export function SettingsDrawer({
                             field={field}
                             value={getConfigValueAtPath(codexConfig?.rawConfig ?? {}, field.keyPath)}
                             disabled={!codexConfig || codexConfigSaving}
+                            t={t}
                             onCommit={(next) => onCodexConfigValueChange(field.keyPath, next)}
                           />
                         ))}
@@ -517,7 +522,7 @@ export function SettingsDrawer({
                     ))}
                   </Box>
                 )}
-                <SettingRow title="Config source" description="Engine-owned keys only. Provider secrets use keyring; skins use local theme plugins.">
+                <SettingRow title={t("settings.codex.configSource")} description={t("settings.codex.configSourceDescription")}>
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                     <Chip size="small" label="config/read" color="primary" variant="outlined" />
                     <Chip size="small" label="Codex JSON schema" color="primary" variant="outlined" />
@@ -527,26 +532,26 @@ export function SettingsDrawer({
             )}
 
             {section === "appearance" && (
-              <SettingsSection icon={<ColorLensIcon fontSize="small" />} title={t("settings.section.appearance")} subtitle="Official skins plus installable and user-defined theme plugins">
+              <SettingsSection icon={<ColorLensIcon fontSize="small" />} title={t("settings.section.appearance")} subtitle={t("settings.appearance.subtitle")}>
                 <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
                   <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 850 }}>
-                    Theme
+                    {t("settings.appearance.theme")}
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                    Select your preferred color scheme.
+                    {t("settings.appearance.themeDescription")}
                   </Typography>
-                  <ThemeModeCards themeMode={themeMode} onThemeModeChange={onThemeModeChange} />
+                  <ThemeModeCards themeMode={themeMode} onThemeModeChange={onThemeModeChange} t={t} />
                 </Box>
-                <SettingRow title="Active skin" description="Official themes are always installed. Local/customer skins can be installed and switched here.">
+                <SettingRow title={t("settings.appearance.activeSkin")} description={t("settings.appearance.activeSkinDescription")}>
                   <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel>Skin</InputLabel>
+                    <InputLabel>{t("settings.appearance.skin")}</InputLabel>
                     <Select
                       value={themeMode}
-                      label="Skin"
-                      inputProps={{ "aria-label": "Skin theme" }}
+                      label={t("settings.appearance.skin")}
+                      inputProps={{ "aria-label": t("settings.appearance.skin") }}
                       onChange={(event) => onThemeModeChange(event.target.value as ThemeMode)}
                     >
-                      <MenuItem value="system">System</MenuItem>
+                      <MenuItem value="system">{t("settings.appearance.system")}</MenuItem>
                       {allThemePlugins
                         .filter((plugin) => installedThemePluginIds.includes(plugin.id))
                         .map((plugin) => (
@@ -565,6 +570,7 @@ export function SettingsDrawer({
                   onInstallThemePlugin={onInstallThemePlugin}
                   onUninstallThemePlugin={onUninstallThemePlugin}
                   onEditCustomThemePlugin={setEditingThemePlugin}
+                  t={t}
                   onRemoveCustomThemePlugin={(id) => {
                     onRemoveCustomThemePlugin(id);
                     setEditingThemePlugin((current) => (current?.id === id ? null : current));
@@ -573,37 +579,38 @@ export function SettingsDrawer({
                 <CustomThemePluginEditor
                   editingPlugin={editingThemePlugin}
                   onCancelEdit={() => setEditingThemePlugin(null)}
+                  t={t}
                   onSave={(plugin) => {
                     onSaveCustomThemePlugin(plugin);
                     setEditingThemePlugin(null);
                   }}
                 />
-                <SettingRow title="Skin safety boundary" description="Theme plugins and API relay providers are independent. Restoring Light/Black never rewrites provider keys or base URLs.">
-                  <Chip size="small" label="Separated" color="success" variant="outlined" />
+                <SettingRow title={t("settings.appearance.skinSafety")} description={t("settings.appearance.skinSafetyDescription")}>
+                  <Chip size="small" label={t("settings.appearance.separated")} color="success" variant="outlined" />
                 </SettingRow>
               </SettingsSection>
             )}
 
             {section === "layout" && (
-              <SettingsSection icon={<DashboardCustomizeIcon fontSize="small" />} title={t("settings.section.layout")} subtitle="Main workbench layout preferences; the right runtime workspace opens from the toolbar">
-                <SettingRow title="History panel" description="Show or hide the left conversation panel. Width is draggable on desktop.">
+              <SettingsSection icon={<DashboardCustomizeIcon fontSize="small" />} title={t("settings.section.layout")} subtitle={t("settings.layout.subtitle")}>
+                <SettingRow title={t("settings.layout.historyPanel")} description={t("settings.layout.historyPanelDescription")}>
                   <Switch
                     checked={leftPanelVisible}
                     onChange={(event) => onLeftPanelVisibleChange(event.target.checked)}
-                    inputProps={{ "aria-label": "History panel" }}
+                    inputProps={{ "aria-label": t("settings.layout.historyPanel") }}
                   />
                 </SettingRow>
-                <SettingRow title="Right workspace" description="Side chat, Browser, and Terminal stay outside Settings and open only from the top-right split-view control.">
-                  <Chip size="small" label="Toolbar controlled" color="primary" variant="outlined" />
+                <SettingRow title={t("settings.layout.rightWorkspace")} description={t("settings.layout.rightWorkspaceDescription")}>
+                  <Chip size="small" label={t("settings.layout.toolbarControlled")} color="primary" variant="outlined" />
                 </SettingRow>
-                <SettingRow title="Workspace cwd" description="Used for new threads, file tools, skills and permission roots.">
+                <SettingRow title={t("settings.layout.workspaceCwd")} description={t("settings.layout.workspaceCwdDescription")}>
                   <TextField size="small" value={cwd} onChange={(event) => onCwdChange(event.target.value)} sx={{ minWidth: 240 }} />
                 </SettingRow>
               </SettingsSection>
             )}
 
             {section === "workspace" && (
-              <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.workspace")} subtitle="Browse and edit workspace files from Settings">
+              <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.workspace")} subtitle={t("settings.workspace.subtitle")}>
                 <WorkspaceFilesSettingsPanel
                   cwd={cwd}
                   fileDirectories={fileDirectories}
@@ -619,17 +626,17 @@ export function SettingsDrawer({
             )}
 
             {section === "session" && (
-              <SettingsSection icon={<TuneIcon fontSize="small" />} title={t("settings.section.session")} subtitle="Per-session overrides used by the next turn">
-                <SettingRow title="Selected model" description="Session model for the next turn (toolbar). Engine default is managed in Codex Engine Config.">
-                  <Chip size="small" label={selectedModel || "Not selected"} />
+              <SettingsSection icon={<TuneIcon fontSize="small" />} title={t("settings.section.session")} subtitle={t("settings.session.subtitle")}>
+                <SettingRow title={t("settings.session.selectedModel")} description={t("settings.session.selectedModelDescription")}>
+                  <Chip size="small" label={selectedModel || t("settings.session.notSelected")} />
                 </SettingRow>
-                <SettingRow title="Reasoning strength" description={selectedReasoning?.description || "Sends the selected effort as turn/start.effort for this session."}>
+                <SettingRow title={t("settings.session.reasoningStrength")} description={selectedReasoning?.description || t("settings.session.reasoningStrengthDescription")}>
                   <FormControl size="small" sx={{ minWidth: 160 }}>
-                    <InputLabel>Effort</InputLabel>
+                    <InputLabel>{t("settings.session.effort")}</InputLabel>
                     <Select
                       value={reasoningEffort}
-                      label="Effort"
-                      inputProps={{ "aria-label": "Reasoning effort" }}
+                      label={t("settings.session.effort")}
+                      inputProps={{ "aria-label": t("settings.session.reasoningStrength") }}
                       onChange={(event) => onReasoningEffortChange(event.target.value)}
                     >
                       {reasoningOptions.map((option) => (
@@ -640,10 +647,10 @@ export function SettingsDrawer({
                     </Select>
                   </FormControl>
                 </SettingRow>
-                <SettingRow title="Permission preset" description="Controls sandbox and approval policy for new turns in this UI session.">
+                <SettingRow title={t("settings.session.permissionPreset")} description={t("settings.session.permissionPresetDescription")}>
                   <FormControl size="small" sx={{ minWidth: 220 }}>
-                    <InputLabel>Permissions</InputLabel>
-                    <Select value={permission} label="Permissions" onChange={(event) => onPermissionChange(event.target.value as PermissionPresetId)}>
+                    <InputLabel>{t("settings.session.permissions")}</InputLabel>
+                    <Select value={permission} label={t("settings.session.permissions")} onChange={(event) => onPermissionChange(event.target.value as PermissionPresetId)}>
                       {permissionPresets.map((preset) => (
                         <MenuItem key={preset.id} value={preset.id}>
                           {preset.label}
@@ -668,7 +675,7 @@ export function SettingsDrawer({
             )}
 
             {section === "skills" && (
-              <SettingsSection icon={<PsychologyIcon fontSize="small" />} title={t("settings.section.skills")} subtitle="Skill roots, enablement, and local markdown previews">
+              <SettingsSection icon={<PsychologyIcon fontSize="small" />} title={t("settings.section.skills")} subtitle={t("settings.skills.subtitle")}>
                 <SkillsSettingsPanel
                   tooling={tooling}
                   extraRoots={skillExtraRoots}
@@ -681,7 +688,7 @@ export function SettingsDrawer({
             )}
 
             {section === "plugins" && (
-              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title={t("settings.section.plugins")} subtitle="Marketplace plugins, installed plugin mentions, hooks, apps, and MCP servers">
+              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title={t("settings.section.plugins")} subtitle={t("settings.plugins.subtitle")}>
                 <CodexPluginSettingsPanel
                   key={`${open ? "open" : "closed"}:${initialPluginTab}`}
                   activeThreadId={activeThreadId}
@@ -708,11 +715,11 @@ export function SettingsDrawer({
             )}
 
             {section === "pet" && (
-              <SettingsSection icon={<PetsIcon fontSize="small" />} title={t("settings.section.pet")} subtitle="Optional companion surface independent of chat layout">
-                <SettingRow title="Three.js pet dock" description="A small independent scene can be enabled for a companion/status surface.">
+              <SettingsSection icon={<PetsIcon fontSize="small" />} title={t("settings.section.pet")} subtitle={t("settings.pet.subtitle")}>
+                <SettingRow title={t("settings.pet.threeDock")} description={t("settings.pet.threeDockDescription")}>
                   <FormControlLabel
                     control={<Switch checked={petDockEnabled} onChange={(event) => onPetDockEnabledChange(event.target.checked)} />}
-                    label="Enabled"
+                    label={t("settings.pet.enabled")}
                   />
                 </SettingRow>
                 <PetDock enabled={petDockEnabled} />
@@ -720,18 +727,18 @@ export function SettingsDrawer({
             )}
 
             {section === "privacy" && (
-              <SettingsSection icon={<SecurityIcon fontSize="small" />} title={t("settings.section.privacy")} subtitle="Secrets and dangerous mode stay audited">
+              <SettingsSection icon={<SecurityIcon fontSize="small" />} title={t("settings.section.privacy")} subtitle={t("settings.privacy.subtitle")}>
                 <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
                   <Stack spacing={1.25}>
                     <ProfileSettingsPanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
                     <AuditSettingsPanel events={auditEvents} onReload={onReloadAuditEvents} />
                   </Stack>
                 </Box>
-                <SettingRow title="Provider key handling" description="Keys are masked in the UI and excluded from exported profiles and Codex config writes.">
-                  <Chip size="small" label="Masked" color="success" variant="outlined" />
+                <SettingRow title={t("settings.privacy.providerKeyHandling")} description={t("settings.privacy.providerKeyHandlingDescription")}>
+                  <Chip size="small" label={t("settings.privacy.masked")} color="success" variant="outlined" />
                 </SettingRow>
-                <SettingRow title="Dangerous mode audit" description="Critical bypass turns are written to the local audit log.">
-                  <Chip size="small" label="Enabled" color="warning" variant="outlined" />
+                <SettingRow title={t("settings.privacy.dangerousModeAudit")} description={t("settings.privacy.dangerousModeAuditDescription")}>
+                  <Chip size="small" label={t("settings.pet.enabled")} color="warning" variant="outlined" />
                 </SettingRow>
               </SettingsSection>
             )}
@@ -1556,6 +1563,57 @@ function parseAliases(value: string): ProviderConfig["modelAliases"] {
     .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
 }
 
+type QuickCodexConfigField = (typeof CODEX_CONFIG_FIELD_META)[number];
+
+function localizeQuickCodexConfigField(
+  field: QuickCodexConfigField,
+  t: TranslateFn
+): Pick<QuickCodexConfigField, "label" | "description" | "options"> {
+  return {
+    label: translateWithFallback(t, `settings.codex.quick.${field.key}.label`, field.label),
+    description: translateWithFallback(t, `settings.codex.quick.${field.key}.description`, field.description),
+    options: localizeCodexConfigOptions(field.options, t)
+  };
+}
+
+function localizeCodexConfigOptions(
+  options: Array<{ value: string; label: string }> | undefined,
+  t: TranslateFn
+): Array<{ value: string; label: string }> | undefined {
+  return options?.map((option) => ({
+    ...option,
+    label: translateWithFallback(t, `settings.codex.option.${option.value}`, option.label)
+  }));
+}
+
+function localizeDynamicCodexConfigLabel(field: DynamicCodexConfigField, t: TranslateFn): string {
+  const direct = translateWithFallback(t, `settings.codex.dynamic.${field.keyPath}.label`, "");
+  if (direct) {
+    return direct;
+  }
+  return field.keyPath
+    .split(".")
+    .map((segment) => localizeCodexConfigSegment(segment, t))
+    .join(" / ");
+}
+
+function localizeCodexConfigSegment(segment: string, t: TranslateFn): string {
+  const words = segment.split(/[_-]+/).filter(Boolean);
+  if (words.length === 0) {
+    return segment;
+  }
+  return words.map((word) => translateWithFallback(t, `settings.codex.segment.${word.toLowerCase()}`, labelFromRawConfigWord(word))).join(" ");
+}
+
+function labelFromRawConfigWord(word: string): string {
+  return word.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function translateWithFallback(t: TranslateFn, key: string, fallback: string): string {
+  const translated = t(key as TranslationKey);
+  return translated === key ? fallback : translated;
+}
+
 function CodexConfigFieldRow({
   fieldKey,
   label,
@@ -1565,6 +1623,7 @@ function CodexConfigFieldRow({
   readOnly,
   value,
   disabled,
+  unsetLabel,
   onCommit
 }: {
   fieldKey: CodexConfigFieldKey;
@@ -1575,6 +1634,7 @@ function CodexConfigFieldRow({
   readOnly?: boolean;
   value: string;
   disabled: boolean;
+  unsetLabel: string;
   onCommit: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
@@ -1626,7 +1686,7 @@ function CodexConfigFieldRow({
           >
             {!value ? (
               <MenuItem value="">
-                <em>Unset</em>
+                <em>{unsetLabel}</em>
               </MenuItem>
             ) : null}
             {(options ?? []).map((option) => (
@@ -1665,13 +1725,18 @@ function DynamicCodexConfigFieldRow({
   field,
   value,
   disabled,
+  t,
   onCommit
 }: {
   field: DynamicCodexConfigField;
   value: unknown;
   disabled: boolean;
+  t: TranslateFn;
   onCommit: (value: JsonValue) => void;
 }) {
+  const localizedLabel = localizeDynamicCodexConfigLabel(field, t);
+  const localizedDescription = t("settings.codex.dynamicGenericDescription", { keyPath: field.keyPath });
+  const localizedOptions = localizeCodexConfigOptions(field.options, t);
   const formattedValue = useMemo(() => formatConfigValueForField(field, value), [field, value]);
   const [draft, setDraft] = useState(formattedValue);
   const [error, setError] = useState<string | null>(null);
@@ -1698,17 +1763,17 @@ function DynamicCodexConfigFieldRow({
     <Stack spacing={0.25} sx={{ minWidth: 0 }}>
       <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
         <Typography variant="body2" sx={{ fontWeight: 700 }}>
-          {field.label}
+          {localizedLabel}
         </Typography>
         <Chip size="small" label={field.keyPath} variant="outlined" />
-        {field.source === "runtime" ? <Chip size="small" label="runtime" color="warning" variant="outlined" /> : null}
+        {field.source === "runtime" ? <Chip size="small" label={t("settings.codex.runtime")} color="warning" variant="outlined" /> : null}
       </Stack>
       <Typography variant="caption" color="text.secondary">
-        {field.description}
+        {localizedDescription}
       </Typography>
       {field.defaultValue !== undefined ? (
         <Typography variant="caption" color="text.secondary">
-          Default: {formatDefaultValue(field.defaultValue)}
+          {t("settings.codex.defaultValue", { value: formatDefaultValue(field.defaultValue) })}
         </Typography>
       ) : null}
     </Stack>
@@ -1726,7 +1791,7 @@ function DynamicCodexConfigFieldRow({
               onCommit(parsed.value);
             }
           }}
-          inputProps={{ "aria-label": field.label }}
+          inputProps={{ "aria-label": localizedLabel }}
         />
       </SettingRow>
     );
@@ -1736,12 +1801,12 @@ function DynamicCodexConfigFieldRow({
     return (
       <SettingRow title={fieldCaption} description={null}>
         <FormControl size="small" sx={{ minWidth: 220 }} disabled={disabled}>
-          <InputLabel id={`dynamic-codex-config-${field.keyPath}-label`}>{field.label}</InputLabel>
+          <InputLabel id={`dynamic-codex-config-${field.keyPath}-label`}>{localizedLabel}</InputLabel>
           <Select
             labelId={`dynamic-codex-config-${field.keyPath}-label`}
-            label={field.label}
+            label={localizedLabel}
             value={formattedValue}
-            inputProps={{ "aria-label": field.label }}
+            inputProps={{ "aria-label": localizedLabel }}
             onChange={(event) => {
               const parsed = parseDynamicConfigFieldValue(field, event.target.value);
               if (!("error" in parsed)) {
@@ -1751,10 +1816,10 @@ function DynamicCodexConfigFieldRow({
           >
             {!formattedValue ? (
               <MenuItem value="">
-                <em>Unset</em>
+                <em>{t("settings.codex.unset")}</em>
               </MenuItem>
             ) : null}
-            {(field.options ?? []).map((option) => (
+            {(localizedOptions ?? []).map((option) => (
               <MenuItem key={option.value} value={option.value}>
                 {option.label}
               </MenuItem>
@@ -1775,12 +1840,12 @@ function DynamicCodexConfigFieldRow({
           multiline
           minRows={field.kind === "json" ? 4 : 3}
           maxRows={10}
-          label={field.kind === "json" ? `${field.label} JSON` : field.label}
+          label={field.kind === "json" ? `${localizedLabel} JSON` : localizedLabel}
           value={draft}
           disabled={disabled}
           error={Boolean(error)}
-          helperText={error ?? (field.kind === "json" ? "Edit as JSON and blur to save." : "Blur to save.")}
-          inputProps={{ "aria-label": field.label }}
+          helperText={error ?? (field.kind === "json" ? t("settings.codex.editJsonHelp") : t("settings.codex.blurToSave"))}
+          inputProps={{ "aria-label": localizedLabel }}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commitTextValue}
           sx={{ mt: 1 }}
@@ -1793,13 +1858,13 @@ function DynamicCodexConfigFieldRow({
     <SettingRow title={fieldCaption} description={null}>
       <TextField
         size="small"
-        label={field.label}
+        label={localizedLabel}
         type={field.kind === "number" ? "number" : "text"}
         value={draft}
         disabled={disabled}
         error={Boolean(error)}
         helperText={error}
-        inputProps={{ "aria-label": field.label }}
+        inputProps={{ "aria-label": localizedLabel }}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commitTextValue}
         onKeyDown={(event) => {
@@ -2126,10 +2191,12 @@ function SkillsSettingsPanel({
 
 function ThemeModeCards({
   themeMode,
-  onThemeModeChange
+  onThemeModeChange,
+  t
 }: {
   themeMode: ThemeMode;
   onThemeModeChange: (mode: ThemeMode) => void;
+  t: TranslateFn;
 }) {
   const cards: Array<{
     mode: ThemeMode;
@@ -2140,22 +2207,22 @@ function ThemeModeCards({
   }> = [
     {
       mode: "system",
-      label: "System",
-      description: "Follow OS light/dark preference.",
+      label: t("settings.appearance.system"),
+      description: t("settings.appearance.systemDescription"),
       icon: <ComputerIcon fontSize="small" />,
       swatches: ["#F8FAF5", "#FFFFFF", "#111827"]
     },
     {
       mode: "official-light",
-      label: "Light",
-      description: "Bright VS Code-style workspace.",
+      label: t("settings.appearance.light"),
+      description: t("settings.appearance.lightDescription"),
       icon: <LightModeIcon fontSize="small" />,
       swatches: ["#FFFFFF", "#E5E7EB", "#1877F2"]
     },
     {
       mode: "official-black",
-      label: "Dark",
-      description: "Black editor-style workspace.",
+      label: t("settings.appearance.dark"),
+      description: t("settings.appearance.darkDescription"),
       icon: <DarkModeIcon fontSize="small" />,
       swatches: ["#070A0E", "#10161D", "#61F3F3"]
     }
@@ -2232,7 +2299,8 @@ function ThemePluginManager({
   onInstallThemePlugin,
   onUninstallThemePlugin,
   onEditCustomThemePlugin,
-  onRemoveCustomThemePlugin
+  onRemoveCustomThemePlugin,
+  t
 }: {
   plugins: ThemePlugin[];
   activeThemeId: ThemeMode;
@@ -2242,6 +2310,7 @@ function ThemePluginManager({
   onUninstallThemePlugin: (id: ThemeId) => void;
   onEditCustomThemePlugin: (plugin: ThemePlugin) => void;
   onRemoveCustomThemePlugin: (id: ThemeId) => void;
+  t: TranslateFn;
 }) {
   return (
     <Box sx={{ borderTop: "1px solid", borderColor: "divider" }}>
@@ -2283,17 +2352,17 @@ function ThemePluginManager({
                     size="small"
                     label={
                       plugin.source === "official"
-                        ? "official"
+                        ? t("settings.theme.source.official")
                         : plugin.source === "customer-slot"
-                          ? "customer"
+                          ? t("settings.theme.source.customer")
                           : plugin.source === "user-defined"
-                            ? "user"
-                            : "local"
+                            ? t("settings.theme.source.user")
+                            : t("settings.theme.source.local")
                     }
                   />
-                  {active && <Chip size="small" label="active" color="primary" />}
-                  {plugin.assets && <Chip size="small" label="media" variant="outlined" />}
-                  {plugin.assets?.petImage && <Chip size="small" label="avatar" variant="outlined" />}
+                  {active && <Chip size="small" label={t("settings.theme.active")} color="primary" />}
+                  {plugin.assets && <Chip size="small" label={t("settings.theme.media")} variant="outlined" />}
+                  {plugin.assets?.petImage && <Chip size="small" label={t("settings.theme.avatar")} variant="outlined" />}
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25 }}>
                   {plugin.description}
@@ -2303,25 +2372,25 @@ function ThemePluginManager({
             <Stack direction="row" spacing={1} justifyContent={{ xs: "flex-start", sm: "flex-end" }}>
               {installed ? (
                 <Button size="small" variant={active ? "contained" : "outlined"} disabled={active} onClick={() => onThemeModeChange(plugin.id)}>
-                  {active ? "Active" : "Switch"}
+                  {active ? t("settings.theme.activeButton") : t("settings.theme.switch")}
                 </Button>
               ) : (
                 <Button size="small" variant="outlined" startIcon={<ExtensionIcon />} onClick={() => onInstallThemePlugin(plugin.id)}>
-                  Install
+                  {t("settings.theme.install")}
                 </Button>
               )}
               {removable && (
                 <Button size="small" color="inherit" onClick={() => onUninstallThemePlugin(plugin.id)}>
-                  Remove
+                  {t("settings.theme.remove")}
                 </Button>
               )}
               {plugin.source === "user-defined" && (
-                <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => onEditCustomThemePlugin(plugin)} aria-label={`Edit theme ${plugin.name}`}>
-                  Edit
+                <Button size="small" variant="outlined" startIcon={<EditIcon />} onClick={() => onEditCustomThemePlugin(plugin)} aria-label={t("settings.theme.editAria", { name: plugin.name })}>
+                  {t("settings.theme.edit")}
                 </Button>
               )}
               {deletable && (
-                <IconButton size="small" aria-label={`Delete theme ${plugin.name}`} onClick={() => onRemoveCustomThemePlugin(plugin.id)}>
+                <IconButton size="small" aria-label={t("settings.theme.deleteAria", { name: plugin.name })} onClick={() => onRemoveCustomThemePlugin(plugin.id)}>
                   <DeleteOutlineIcon fontSize="small" />
                 </IconButton>
               )}
@@ -2336,14 +2405,16 @@ function ThemePluginManager({
 function CustomThemePluginEditor({
   editingPlugin,
   onCancelEdit,
-  onSave
+  onSave,
+  t
 }: {
   editingPlugin: ThemePlugin | null;
   onCancelEdit: () => void;
   onSave: (plugin: ThemePlugin) => void;
+  t: TranslateFn;
 }) {
-  const [name, setName] = useState("My Studio");
-  const [description, setDescription] = useState("User-defined skin for this workbench.");
+  const [name, setName] = useState(t("settings.theme.myStudio"));
+  const [description, setDescription] = useState(t("settings.theme.defaultDescription"));
   const [primary, setPrimary] = useState("#0F766E");
   const [secondary, setSecondary] = useState("#F59E0B");
   const [background, setBackground] = useState("#F8FAFC");
@@ -2391,8 +2462,8 @@ function CustomThemePluginEditor({
   }, [editingPlugin]);
 
   function resetDraft() {
-    setName("My Studio");
-    setDescription("User-defined skin for this workbench.");
+    setName(t("settings.theme.myStudio"));
+    setDescription(t("settings.theme.defaultDescription"));
     setPrimary("#0F766E");
     setSecondary("#F59E0B");
     setBackground("#F8FAFC");
@@ -2430,11 +2501,11 @@ function CustomThemePluginEditor({
   function buildThemePluginDraft(overrides: Partial<ThemePlugin["assets"]> = {}): ThemePlugin | null {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Theme name is required.");
+      setError(t("settings.theme.errorNameRequired"));
       return null;
     }
     if (![primary, secondary, background].every((value) => isHexColor(value.trim()))) {
-      setError("Primary, secondary, and background must be hex colors.");
+      setError(t("settings.theme.errorPreviewHex"));
       return null;
     }
     const nextAppBackgroundImage = overrides.appBackgroundImage ?? appBackgroundImage;
@@ -2447,15 +2518,15 @@ function CustomThemePluginEditor({
     const nextPetImage = overrides.petImage ?? petImage;
     const imageFields = [nextAppBackgroundImage, nextComposerBackgroundImage, nextWelcomeBackgroundImage, nextHistoryBackgroundImage, nextHeroImage, nextCornerImage, nextPetImage].map((value) => value.trim()).filter(Boolean);
     if (!imageFields.every(isSafeThemeImageUrl)) {
-      setError("Theme image media must be http(s), blob, or data:image URLs.");
+      setError(t("settings.theme.errorImageUrl"));
       return null;
     }
     if (nextAppBackgroundVideo.trim() && !isSafeThemeVideoUrl(nextAppBackgroundVideo)) {
-      setError("Theme video background must be http(s), blob, or data:video URLs.");
+      setError(t("settings.theme.errorVideoUrl"));
       return null;
     }
     if (![toneColor, sceneColor, sceneSecondaryColor].every((value) => isHexColor(value.trim()))) {
-      setError("Theme tone and scene colors must be hex colors.");
+      setError(t("settings.theme.errorToneHex"));
       return null;
     }
     const slug = trimmed
@@ -2490,7 +2561,7 @@ function CustomThemePluginEditor({
     return {
       id,
       name: trimmed,
-      description: description.trim() || "User-defined theme plugin.",
+      description: description.trim() || t("settings.theme.defaultDescription"),
       source: "user-defined",
       installedByDefault: false,
       preview: {
@@ -2578,7 +2649,7 @@ function CustomThemePluginEditor({
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
         <AddIcon fontSize="small" color="primary" />
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-          {editing ? "Edit theme plugin" : "Define theme plugin"}
+          {editing ? t("settings.theme.editPlugin") : t("settings.theme.definePlugin")}
         </Typography>
         {editing && (
           <Button
@@ -2589,31 +2660,31 @@ function CustomThemePluginEditor({
               onCancelEdit();
             }}
           >
-            New theme
+            {t("settings.theme.newTheme")}
           </Button>
         )}
       </Stack>
       <Stack spacing={1.25}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-          <TextField size="small" label="Name" value={name} onChange={(event) => setName(event.target.value)} sx={{ flex: 1 }} inputProps={{ "aria-label": "Custom theme name" }} />
+          <TextField size="small" label={t("settings.theme.name")} value={name} onChange={(event) => setName(event.target.value)} sx={{ flex: 1 }} inputProps={{ "aria-label": t("settings.theme.name") }} />
           <TextField
             size="small"
-            label="Description"
+            label={t("settings.theme.description")}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             sx={{ flex: 1.4 }}
-            inputProps={{ "aria-label": "Custom theme description" }}
+            inputProps={{ "aria-label": t("settings.theme.description") }}
           />
         </Stack>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-          <TextField size="small" label="Primary" value={primary} onChange={(event) => setPrimary(event.target.value)} inputProps={{ "aria-label": "Custom theme primary" }} />
-          <TextField size="small" label="Secondary" value={secondary} onChange={(event) => setSecondary(event.target.value)} inputProps={{ "aria-label": "Custom theme secondary" }} />
-          <TextField size="small" label="Background" value={background} onChange={(event) => setBackground(event.target.value)} inputProps={{ "aria-label": "Custom theme background" }} />
-          <FormControlLabel control={<Switch checked={dark} onChange={(event) => setDark(event.target.checked)} inputProps={{ "aria-label": "Custom theme dark mode" }} />} label="Dark" />
+          <TextField size="small" label={t("settings.theme.primary")} value={primary} onChange={(event) => setPrimary(event.target.value)} inputProps={{ "aria-label": t("settings.theme.primary") }} />
+          <TextField size="small" label={t("settings.theme.secondary")} value={secondary} onChange={(event) => setSecondary(event.target.value)} inputProps={{ "aria-label": t("settings.theme.secondary") }} />
+          <TextField size="small" label={t("settings.theme.background")} value={background} onChange={(event) => setBackground(event.target.value)} inputProps={{ "aria-label": t("settings.theme.background") }} />
+          <FormControlLabel control={<Switch checked={dark} onChange={(event) => setDark(event.target.checked)} inputProps={{ "aria-label": t("settings.appearance.dark") }} />} label={t("settings.appearance.dark")} />
         </Stack>
         <Stack spacing={1}>
           <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-            Theme media assets
+            {t("settings.theme.mediaAssets")}
           </Typography>
           <Paper
             variant="outlined"
@@ -2641,39 +2712,39 @@ function CustomThemePluginEditor({
           >
             <Stack spacing={1} sx={{ p: 1.5, maxWidth: 440, position: "relative", zIndex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
-                Background theme preview
+                {t("settings.theme.previewTitle")}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                A selected background image will skin the shell, default workbench, and composer surfaces.
+                {t("settings.theme.previewDescription")}
               </Typography>
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
                 {[primary, secondary, background].map((color) => (
                   <Box key={color} sx={{ width: 28, height: 28, borderRadius: 0.75, bgcolor: color, border: "1px solid", borderColor: "divider" }} />
                 ))}
-                {safeBackgroundPreview && <Chip size="small" label={appBackgroundImage.startsWith("data:image/") ? "local image" : "remote image"} color="primary" />}
-                {appBackgroundImage.trim().toLowerCase().includes("gif") && <Chip size="small" label="gif ready" color="primary" variant="outlined" />}
-                {safeVideoPreview && <Chip size="small" label={appBackgroundVideo.startsWith("data:video/") ? "local video" : "remote video"} color="secondary" />}
+                {safeBackgroundPreview && <Chip size="small" label={appBackgroundImage.startsWith("data:image/") ? t("settings.theme.localImage") : t("settings.theme.remoteImage")} color="primary" />}
+                {appBackgroundImage.trim().toLowerCase().includes("gif") && <Chip size="small" label={t("settings.theme.gifReady")} color="primary" variant="outlined" />}
+                {safeVideoPreview && <Chip size="small" label={appBackgroundVideo.startsWith("data:video/") ? t("settings.theme.localVideo") : t("settings.theme.remoteVideo")} color="secondary" />}
               </Stack>
             </Stack>
           </Paper>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <TextField
               size="small"
-              label="Main chat waterfall background"
+              label={t("settings.theme.mainChatBackground")}
               value={appBackgroundImage}
               onChange={(event) => setAppBackgroundImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme app background image" }}
+              inputProps={{ "aria-label": t("settings.theme.mainChatBackground") }}
             />
             <Button
               size="small"
               variant="outlined"
               startIcon={<UploadFileIcon />}
               onClick={() => backgroundFileRef.current?.click()}
-              aria-label="Choose image file"
+              aria-label={t("settings.theme.chooseImage")}
               sx={{ flex: "0 0 auto" }}
             >
-              Choose image
+              {t("settings.theme.chooseImage")}
             </Button>
             <input
               ref={backgroundFileRef}
@@ -2706,59 +2777,59 @@ function CustomThemePluginEditor({
             />
             <TextField
               size="small"
-              label="Welcome panel background"
+              label={t("settings.theme.welcomeBackground")}
               value={welcomeBackgroundImage}
               onChange={(event) => setWelcomeBackgroundImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme welcome background image" }}
+              inputProps={{ "aria-label": t("settings.theme.welcomeBackground") }}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <TextField
               size="small"
-              label="Composer input background"
+              label={t("settings.theme.composerBackground")}
               value={composerBackgroundImage}
               onChange={(event) => setComposerBackgroundImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme composer background image" }}
+              inputProps={{ "aria-label": t("settings.theme.composerBackground") }}
             />
             <TextField
               size="small"
-              label="History list background"
+              label={t("settings.theme.historyBackground")}
               value={historyBackgroundImage}
               onChange={(event) => setHistoryBackgroundImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme history background image" }}
+              inputProps={{ "aria-label": t("settings.theme.historyBackground") }}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <TextField
               size="small"
-              label="Legacy hero image"
+              label={t("settings.theme.legacyHeroImage")}
               value={heroImage}
               onChange={(event) => setHeroImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme hero image" }}
+              inputProps={{ "aria-label": t("settings.theme.legacyHeroImage") }}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <TextField
               size="small"
-              label="Workbench background video"
+              label={t("settings.theme.workbenchVideo")}
               value={appBackgroundVideo}
               onChange={(event) => setAppBackgroundVideo(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme app background video" }}
+              inputProps={{ "aria-label": t("settings.theme.workbenchVideo") }}
             />
             <Button
               size="small"
               variant="outlined"
               startIcon={<UploadFileIcon />}
               onClick={() => videoFileRef.current?.click()}
-              aria-label="Choose video file"
+              aria-label={t("settings.theme.chooseVideo")}
               sx={{ flex: "0 0 auto" }}
             >
-              Choose video
+              {t("settings.theme.chooseVideo")}
             </Button>
             <input
               ref={videoFileRef}
@@ -2786,101 +2857,101 @@ function CustomThemePluginEditor({
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
             <TextField
               size="small"
-              label="Corner image"
+              label={t("settings.theme.cornerImage")}
               value={cornerImage}
               onChange={(event) => setCornerImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme corner image" }}
+              inputProps={{ "aria-label": t("settings.theme.cornerImage") }}
             />
             <TextField
               size="small"
-              label="Pet/avatar image"
+              label={t("settings.theme.petImage")}
               value={petImage}
               onChange={(event) => setPetImage(event.target.value)}
               sx={{ flex: 1 }}
-              inputProps={{ "aria-label": "Custom theme pet image" }}
+              inputProps={{ "aria-label": t("settings.theme.petImage") }}
             />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
             <FormControl size="small" sx={{ minWidth: 190 }}>
-              <InputLabel>Decorations</InputLabel>
+              <InputLabel>{t("settings.theme.decorations")}</InputLabel>
               <Select
                 value={decorationIntensity}
-                label="Decorations"
-                inputProps={{ "aria-label": "Custom theme decorations" }}
+                label={t("settings.theme.decorations")}
+                inputProps={{ "aria-label": t("settings.theme.decorations") }}
                 onChange={(event) => setDecorationIntensity(event.target.value as "none" | "subtle" | "rich")}
               >
-                <MenuItem value="none">None</MenuItem>
-                <MenuItem value="subtle">Subtle</MenuItem>
-                <MenuItem value="rich">Rich</MenuItem>
+                <MenuItem value="none">{t("settings.theme.none")}</MenuItem>
+                <MenuItem value="subtle">{t("settings.theme.subtle")}</MenuItem>
+                <MenuItem value="rich">{t("settings.theme.rich")}</MenuItem>
               </Select>
             </FormControl>
             <FormControlLabel
-              control={<Switch checked={petEnabled} onChange={(event) => setPetEnabled(event.target.checked)} inputProps={{ "aria-label": "Custom theme pet enabled" }} />}
-              label="Show pet/avatar"
+              control={<Switch checked={petEnabled} onChange={(event) => setPetEnabled(event.target.checked)} inputProps={{ "aria-label": t("settings.theme.showPet") }} />}
+              label={t("settings.theme.showPet")}
             />
             <FormControlLabel
-              control={<Switch checked={useBackgroundAsHero} onChange={(event) => setUseBackgroundAsHero(event.target.checked)} inputProps={{ "aria-label": "Use background as hero" }} />}
-              label="Use background as hero"
+              control={<Switch checked={useBackgroundAsHero} onChange={(event) => setUseBackgroundAsHero(event.target.checked)} inputProps={{ "aria-label": t("settings.theme.useBackgroundAsHero") }} />}
+              label={t("settings.theme.useBackgroundAsHero")}
             />
           </Stack>
           <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1, bgcolor: "background.paper" }}>
             <Stack spacing={1}>
               <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Background tuning
+                {t("settings.theme.backgroundTuning")}
               </Typography>
               <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
-                <ThemeNumberField label="Background media strength" value={backgroundLayerOpacity} onChange={setBackgroundLayerOpacity} min={0} max={100} />
-                <ThemeNumberField label="Background overlay opacity" value={backgroundOverlayOpacity} onChange={setBackgroundOverlayOpacity} min={0} max={100} />
-                <ThemeNumberField label="Effects layer opacity" value={effectsLayerOpacity} onChange={setEffectsLayerOpacity} min={0} max={100} />
-                <ThemeNumberField label="Workspace surface opacity" value={workspaceSurfaceOpacity} onChange={setWorkspaceSurfaceOpacity} min={0} max={100} />
-                <ThemeNumberField label="Hero overlay opacity" value={heroOverlayOpacity} onChange={setHeroOverlayOpacity} min={0} max={100} />
-                <ThemeNumberField label="Panel opacity" value={panelSurfaceOpacity} onChange={setPanelSurfaceOpacity} min={0} max={100} />
-                <ThemeNumberField label="Glass blur" value={blurStrength} onChange={setBlurStrength} min={0} max={40} suffix="px" />
-                <TextField size="small" label="Tone color" value={toneColor} onChange={(event) => setToneColor(event.target.value)} inputProps={{ "aria-label": "Theme tone color" }} />
-                <ThemeNumberField label="Tone opacity" value={toneOpacity} onChange={setToneOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.backgroundMediaStrength")} value={backgroundLayerOpacity} onChange={setBackgroundLayerOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.backgroundOverlayOpacity")} value={backgroundOverlayOpacity} onChange={setBackgroundOverlayOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.effectsLayerOpacity")} value={effectsLayerOpacity} onChange={setEffectsLayerOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.workspaceSurfaceOpacity")} value={workspaceSurfaceOpacity} onChange={setWorkspaceSurfaceOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.heroOverlayOpacity")} value={heroOverlayOpacity} onChange={setHeroOverlayOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.panelOpacity")} value={panelSurfaceOpacity} onChange={setPanelSurfaceOpacity} min={0} max={100} />
+                <ThemeNumberField label={t("settings.theme.glassBlur")} value={blurStrength} onChange={setBlurStrength} min={0} max={40} suffix="px" />
+                <TextField size="small" label={t("settings.theme.toneColor")} value={toneColor} onChange={(event) => setToneColor(event.target.value)} inputProps={{ "aria-label": t("settings.theme.toneColor") }} />
+                <ThemeNumberField label={t("settings.theme.toneOpacity")} value={toneOpacity} onChange={setToneOpacity} min={0} max={100} />
               </Box>
             </Stack>
           </Paper>
           <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1, bgcolor: "background.paper" }}>
             <Stack spacing={1}>
               <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                Dynamic background
+                {t("settings.theme.dynamicBackground")}
               </Typography>
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                 <FormControl size="small" sx={{ minWidth: 190 }}>
-                  <InputLabel>Dynamic background</InputLabel>
+                  <InputLabel>{t("settings.theme.dynamicBackground")}</InputLabel>
                   <Select
                     value={sceneRenderer}
-                    label="Dynamic background"
-                    inputProps={{ "aria-label": "Theme dynamic background" }}
+                    label={t("settings.theme.dynamicBackground")}
+                    inputProps={{ "aria-label": t("settings.theme.dynamicBackground") }}
                     onChange={(event) => setSceneRenderer(event.target.value as "none" | "canvas" | "three")}
                   >
-                    <MenuItem value="none">None</MenuItem>
-                    <MenuItem value="canvas">Canvas loop</MenuItem>
-                    <MenuItem value="three">Three.js loop</MenuItem>
+                    <MenuItem value="none">{t("settings.theme.none")}</MenuItem>
+                    <MenuItem value="canvas">{t("settings.theme.canvasLoop")}</MenuItem>
+                    <MenuItem value="three">{t("settings.theme.threeLoop")}</MenuItem>
                   </Select>
                 </FormControl>
                 <FormControl size="small" sx={{ minWidth: 180 }} disabled={sceneRenderer === "none"}>
-                  <InputLabel>Scene preset</InputLabel>
+                  <InputLabel>{t("settings.theme.scenePreset")}</InputLabel>
                   <Select
                     value={scenePreset}
-                    label="Scene preset"
-                    inputProps={{ "aria-label": "Theme scene preset" }}
+                    label={t("settings.theme.scenePreset")}
+                    inputProps={{ "aria-label": t("settings.theme.scenePreset") }}
                     onChange={(event) => setScenePreset(event.target.value as ThemeBackgroundScene["preset"])}
                   >
-                    <MenuItem value="aurora">Aurora</MenuItem>
-                    <MenuItem value="particles">Particles</MenuItem>
-                    <MenuItem value="orbit">Orbit</MenuItem>
+                    <MenuItem value="aurora">{t("settings.theme.aurora")}</MenuItem>
+                    <MenuItem value="particles">{t("settings.theme.particles")}</MenuItem>
+                    <MenuItem value="orbit">{t("settings.theme.orbit")}</MenuItem>
                   </Select>
                 </FormControl>
-                <TextField size="small" label="Scene color" value={sceneColor} disabled={sceneRenderer === "none"} onChange={(event) => setSceneColor(event.target.value)} inputProps={{ "aria-label": "Theme scene color" }} />
-                <TextField size="small" label="Scene secondary" value={sceneSecondaryColor} disabled={sceneRenderer === "none"} onChange={(event) => setSceneSecondaryColor(event.target.value)} inputProps={{ "aria-label": "Theme scene secondary color" }} />
+                <TextField size="small" label={t("settings.theme.sceneColor")} value={sceneColor} disabled={sceneRenderer === "none"} onChange={(event) => setSceneColor(event.target.value)} inputProps={{ "aria-label": t("settings.theme.sceneColor") }} />
+                <TextField size="small" label={t("settings.theme.sceneSecondary")} value={sceneSecondaryColor} disabled={sceneRenderer === "none"} onChange={(event) => setSceneSecondaryColor(event.target.value)} inputProps={{ "aria-label": t("settings.theme.sceneSecondary") }} />
               </Stack>
               <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
-                <ThemeNumberField label="Scene speed" value={sceneSpeed} onChange={setSceneSpeed} min={0.1} max={3} step={0.05} suffix="x" disabled={sceneRenderer === "none"} />
-                <ThemeNumberField label="Scene density" value={sceneDensity} onChange={setSceneDensity} min={10} max={100} disabled={sceneRenderer === "none"} />
-                <ThemeNumberField label="Scene opacity" value={sceneOpacity} onChange={setSceneOpacity} min={0} max={100} disabled={sceneRenderer === "none"} />
+                <ThemeNumberField label={t("settings.theme.sceneSpeed")} value={sceneSpeed} onChange={setSceneSpeed} min={0.1} max={3} step={0.05} suffix="x" disabled={sceneRenderer === "none"} />
+                <ThemeNumberField label={t("settings.theme.sceneDensity")} value={sceneDensity} onChange={setSceneDensity} min={10} max={100} disabled={sceneRenderer === "none"} />
+                <ThemeNumberField label={t("settings.theme.sceneOpacity")} value={sceneOpacity} onChange={setSceneOpacity} min={0} max={100} disabled={sceneRenderer === "none"} />
               </Box>
             </Stack>
           </Paper>
@@ -2906,15 +2977,15 @@ function CustomThemePluginEditor({
                 onSave(plugin);
               }
             }}
-            aria-label="Save custom theme plugin"
+            aria-label={editing ? t("settings.theme.saveChanges") : t("settings.theme.savePlugin")}
           >
-            {editing ? "Save changes" : "Save plugin"}
+            {editing ? t("settings.theme.saveChanges") : t("settings.theme.savePlugin")}
           </Button>
-          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportThemeDraft} aria-label="Export custom theme plugin">
-            Export JSON
+          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportThemeDraft} aria-label={t("settings.theme.exportJson")}>
+            {t("settings.theme.exportJson")}
           </Button>
-          <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => themeImportRef.current?.click()} aria-label="Import custom theme plugin">
-            Import JSON
+          <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => themeImportRef.current?.click()} aria-label={t("settings.theme.importJson")}>
+            {t("settings.theme.importJson")}
           </Button>
           <input
             ref={themeImportRef}

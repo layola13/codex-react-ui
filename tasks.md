@@ -7,17 +7,20 @@
 - [x] Rename composer status icon accessibility text so it no longer collides with the real Send button.
 - [x] Prevent the first homepage viewport from creating a browser-level vertical scrollbar; keep scrolling inside workbench panels.
 - [x] Add PNG Codex PWA icons to the manifest so Chrome can show the native URL-bar install affordance.
-- [ ] Split theme media into separate background slots for main chat waterfall, composer input, welcome panel, and history list; keep old single-image themes as fallback.
+- [x] Split theme media into separate background slots for main chat waterfall, composer input, welcome panel, and history list; keep old single-image themes as fallback.
 - [ ] Add zip-based theme export/import with `theme.json` plus media assets, while preserving JSON import compatibility.
-- [ ] Design and implement dedicated Codex history management for `~/.codex/sessions` year/month session files: derive titles/summaries from session contents, list them in the history area, and support opening/resuming from the UI.
-- [ ] Review `/root/projects/codex` source for how Codex discovers, names, and summarizes session history before implementing the history manager.
-- [ ] Fix New Chat startup flow so every new conversation first shows a workspace selection panel, defaults to `~/`, and blocks sending until the user confirms the workspace.
-- [ ] Keep the composer text area editable while Codex is not ready or workspace selection is pending; only the Send action should be blocked with a clear inline reason.
-- [ ] Show the current relay/provider in the main UI so users can immediately see which middle relay/channel is active.
-- [ ] Move Settings out of the top-right toolbar into a left-bottom account/app area with avatar-ready layout, direct Settings access, and no required secondary menu.
-- [ ] Add PWA install support so Chrome-like browsers can install the web UI as a standalone local app.
-- [ ] Rework the chat panel into a true chat waterfall: only `/goal` stays pinned at the top; normal messages, request/status surfaces, and history content scroll together.
-- [ ] Add thinking/reasoning rendering that previews the first 3 lines by default and can expand for full details, using `/root/projects/cherry-studio` chat-panel behavior as reference.
+- [ ] Design and implement dedicated Codex history management for `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and `~/.codex/archived_sessions`: list by Codex's thread list semantics, not by opaque filename.
+- [ ] Use Codex's `session_index.jsonl` as the primary title source for history rows; fall back to rollout `preview` / first user message; fall back again to timestamp + short UUID.
+- [ ] Add history operations for open/resume by `thread/resume`, rename via `thread/name/set` + `session_index.jsonl` compatibility, search by title/preview/cwd/provider/source, and archive/delete where backend support exists.
+- [x] Review `/root/projects/codex` source for how Codex discovers, names, and summarizes session history before implementing the history manager.
+- [x] Fix New Chat startup flow so every new conversation first shows a workspace selection panel, defaults to `~/`, and blocks sending until the user confirms the workspace.
+- [x] Keep the composer text area editable while Codex is not ready or workspace selection is pending; only the Send action should be blocked with a clear inline reason.
+- [x] Show the current relay/provider in the main UI so users can immediately see which middle relay/channel is active.
+- [x] Move Settings out of the top-right toolbar into a left-bottom account/app area with avatar-ready layout, direct Settings access, and no required secondary menu.
+- [x] Add PWA install support so Chrome-like browsers can install the web UI as a standalone local app.
+- [x] Rework the chat panel into a true chat waterfall: only `/goal` stays pinned at the top; normal messages, request/status surfaces, and history content scroll together.
+- [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
+- [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
 - [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.
 - [ ] Verify the above with a real browser screenshot after New Chat, workspace confirmation, typing, relay display, settings location, install affordance, sticky goal, and thinking preview.
 - [x] Move package management and runtime/build scripts from pnpm/concurrently/tsx/Vite/Fastify to Bun, generate `bun.lock`, and verify `bun run typecheck`, `bun run build`, real server launch, and browser screenshot.
