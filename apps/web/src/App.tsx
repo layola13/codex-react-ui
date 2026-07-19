@@ -3125,7 +3125,12 @@ function formatDiffNotice(sha: string | undefined, diff: string): string {
 }
 
 function renameThreadEntry(threads: ClientState["threads"], threadId: string, name: string): ClientState["threads"] {
-  return threads.map((thread) => (thread.id === threadId ? { ...thread, preview: name, updatedAt: Math.floor(Date.now() / 1000) } : thread));
+  const updatedAt = Math.floor(Date.now() / 1000);
+  const found = threads.some((thread) => thread.id === threadId);
+  if (!found) {
+    return [{ id: threadId, preview: name, updatedAt, status: "idle" }, ...threads];
+  }
+  return threads.map((thread) => (thread.id === threadId ? { ...thread, preview: name, updatedAt } : thread));
 }
 
 function readStoredBoolean(key: string, fallback: boolean): boolean {

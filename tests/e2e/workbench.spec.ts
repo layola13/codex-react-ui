@@ -1547,7 +1547,7 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
   await composer.fill("/rename Focused slash work");
   await send.click();
   await expect(page.getByTestId("slash-command-result")).toContainText("Thread renamed");
-  await expect(page.getByRole("tab", { name: "Focused slash work" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab").filter({ hasText: "Focused slash work" })).toHaveAttribute("aria-selected", "true");
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { name?: string } }> }).__codexUiOutbound ?? [];
     return messages.some((message) => message.method === "thread/name/set" && message.params?.name === "Focused slash work");

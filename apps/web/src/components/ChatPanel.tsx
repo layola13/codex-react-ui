@@ -1043,7 +1043,13 @@ function WorkbenchItemView({ item, t, reasoning, activeThinking = false }: { ite
                 : isUser
                   ? (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.1)
                   : (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.66 : 0.6),
-              borderColor: isUser ? "primary.main" : "divider"
+              borderColor: isUser ? "primary.main" : "divider",
+              boxShadow: (theme) =>
+                isToolLike
+                  ? theme.customShadows?.z1
+                  : isAssistant
+                    ? theme.customShadows?.z4
+                    : theme.customShadows?.z1
             }}
           >
             <Stack direction="row" alignItems="center" spacing={1}>
@@ -1147,7 +1153,8 @@ function ReasoningPreview({ item, t }: { item: WorkbenchItem; t: TranslateFn }) 
           p: 1,
           borderRadius: 1,
           bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.5 : 0.66),
-          borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.16 : 0.12)
+          borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.16 : 0.12),
+          boxShadow: (theme) => theme.customShadows?.z1
         }}
       >
         <Stack direction="row" alignItems="flex-start" spacing={1}>

@@ -365,8 +365,8 @@ export function SettingsDrawer({
               {t("settings.subtitle")}
             </Typography>
           </Box>
-          <Button size="small" startIcon={<CloseIcon />} onClick={onClose} aria-label={t("settings.close")}>
-            {t("settings.close")}
+          <Button size="small" startIcon={<CloseIcon />} onClick={onClose} aria-label={t("settings.closeSettings")}>
+            {t("settings.closeSettings")}
           </Button>
         </Stack>
 
@@ -2421,7 +2421,7 @@ function CustomThemePluginEditor({
     setError(null);
   }
 
-  function buildThemePluginDraft(): ThemePlugin | null {
+  function buildThemePluginDraft(overrides: Partial<ThemePlugin["assets"]> = {}): ThemePlugin | null {
     const trimmed = name.trim();
     if (!trimmed) {
       setError("Theme name is required.");
@@ -2431,12 +2431,17 @@ function CustomThemePluginEditor({
       setError("Primary, secondary, and background must be hex colors.");
       return null;
     }
-    const imageFields = [appBackgroundImage, heroImage, cornerImage, petImage].map((value) => value.trim()).filter(Boolean);
+    const nextAppBackgroundImage = overrides.appBackgroundImage ?? appBackgroundImage;
+    const nextAppBackgroundVideo = overrides.appBackgroundVideo ?? appBackgroundVideo;
+    const nextHeroImage = overrides.heroImage ?? heroImage;
+    const nextCornerImage = overrides.cornerImage ?? cornerImage;
+    const nextPetImage = overrides.petImage ?? petImage;
+    const imageFields = [nextAppBackgroundImage, nextHeroImage, nextCornerImage, nextPetImage].map((value) => value.trim()).filter(Boolean);
     if (!imageFields.every(isSafeThemeImageUrl)) {
       setError("Theme image media must be http(s), blob, or data:image URLs.");
       return null;
     }
-    if (appBackgroundVideo.trim() && !isSafeThemeVideoUrl(appBackgroundVideo)) {
+    if (nextAppBackgroundVideo.trim() && !isSafeThemeVideoUrl(nextAppBackgroundVideo)) {
       setError("Theme video background must be http(s), blob, or data:video URLs.");
       return null;
     }
@@ -2451,11 +2456,11 @@ function CustomThemePluginEditor({
       .slice(0, 28);
     const id = editingPlugin?.id ?? (`user-${slug || "theme"}-${Math.random().toString(36).slice(2, 7)}` as ThemeId);
     const assets = removeEmptyThemeAssets({
-      appBackgroundImage: appBackgroundImage.trim(),
-      appBackgroundVideo: appBackgroundVideo.trim(),
-      heroImage: heroImage.trim(),
-      cornerImage: cornerImage.trim(),
-      petImage: petImage.trim()
+      appBackgroundImage: nextAppBackgroundImage.trim(),
+      appBackgroundVideo: nextAppBackgroundVideo.trim(),
+      heroImage: nextHeroImage.trim(),
+      cornerImage: nextCornerImage.trim(),
+      petImage: nextPetImage.trim()
     });
     const backgroundScene =
       sceneRenderer === "none"
@@ -2484,7 +2489,7 @@ function CustomThemePluginEditor({
       dark,
       assets,
       layout: {
-        heroEnabled: Boolean(heroImage.trim()) || (useBackgroundAsHero && Boolean(appBackgroundImage.trim())),
+        heroEnabled: Boolean(nextHeroImage.trim()) || (useBackgroundAsHero && Boolean(nextAppBackgroundImage.trim())),
         petEnabled,
         decorationIntensity,
         backgroundLayerOpacity: percentToUnit(backgroundLayerOpacity),
@@ -2671,7 +2676,13 @@ function CustomThemePluginEditor({
                   .then((url) => {
                     setAppBackgroundImage(url);
                     setAppBackgroundVideo("");
-                    setError(null);
+                    const plugin = buildThemePluginDraft({
+                      appBackgroundImage: url,
+                      appBackgroundVideo: ""
+                    });
+                    if (plugin) {
+                      onSave(plugin);
+                    }
                   })
                   .catch((imageError) => {
                     setError(imageError instanceof Error ? imageError.message : String(imageError));
