@@ -86,6 +86,7 @@ import {
   ChatPanel,
   type GoalBannerState,
   type GoalStatus,
+  type RequestMonitorEntry,
   type ThreadTokenUsageState,
   type TokenUsageBreakdown,
   type WorkbenchModeState,
@@ -415,13 +416,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     const [account, modelResult, threadResult] = await Promise.all([
       client.rpc("account/read", { refreshToken: false }),
       client.rpc("model/list", {}),
-      client.rpc("thread/list", { limit: 50 })
+      loadAllThreads(client)
     ]);
     dispatch({ type: "account", account });
     const models = asRecord(modelResult).data ?? asRecord(modelResult).models;
     dispatch({ type: "models", models: Array.isArray(models) ? (models as ClientState["models"]) : [] });
-    const threads = asRecord(threadResult).data ?? asRecord(threadResult).threads;
-    dispatch({ type: "threads", threads: Array.isArray(threads) ? normalizeThreads(threads) : [] });
+    dispatch({ type: "threads", threads: threadResult });
   }, [client]);
 
   const loadCodexConfig = useCallback(async () => {
@@ -1832,13 +1832,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           </Box>
         )}
         <ChatPanel
-          turns={mainTurns}
-          threads={nonSideChatThreads}
+          turns={allTurns}
+          threads={historyThreads}
           activeThreadId={state.activeThreadId}
           errors={state.errors}
           goal={activeGoal}
           slashNotice={slashNotice}
           stats={statsState}
+          requestMonitor={requestMonitor}
           statsOpen={Boolean(statsPanelScope)}
           modes={modeState}
           activeThemePlugin={activeThemePlugin}
@@ -1943,9 +1944,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const statusColor =
     state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
   const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((threadId): threadId is string => Boolean(threadId)));
-  const nonSideChatThreads = state.threads.filter((thread) => !sideChatThreadIds.has(thread.id));
-  const mainThreads = nonSideChatThreads.filter((thread) => !thread.parentThreadId);
-  const mainTurns = state.turns.filter((turn) => !sideChatThreadIds.has(turn.threadId));
+  const historyThreads = state.threads;
+  const mainThreads = historyThreads.filter((thread) => !sideChatThreadIds.has(thread.id) && !thread.parentThreadId);
+  const allTurns = state.turns;
   const activeGoal = state.activeThreadId ? threadGoals[state.activeThreadId] ?? null : null;
   const modeState: WorkbenchModeState = {
     fast: fastModeEnabled,
@@ -1961,9 +1962,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const effectiveSelectedModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
   const activeProvider = state.providers.find((provider) => provider.id === activeProviderId);
   const permissionLabel = permissionPresets.find((preset) => preset.id === permission)?.label ?? permission;
-  const activeThreadTurns = state.activeThreadId ? mainTurns.filter((turn) => turn.threadId === state.activeThreadId) : [];
+  const activeThreadTurns = state.activeThreadId ? allTurns.filter((turn) => turn.threadId === state.activeThreadId) : [];
   const activeThreadUsage = state.activeThreadId ? threadTokenUsage[state.activeThreadId] : undefined;
   const projectUsage = sumTokenBreakdowns(Object.values(threadTokenUsage).map((usage) => usage.total));
+  const requestMonitor = buildRequestMonitorEntries(allTurns, historyThreads, threadTokenUsage);
   const statsState: WorkbenchStatsState = {
     scope: statsPanelScope ?? "status",
     activeThreadId: state.activeThreadId,
@@ -1973,8 +1975,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     permissionLabel,
     sessionTurns: activeThreadTurns.length,
     sessionItems: activeThreadTurns.reduce((total, turn) => total + turn.items.length, 0),
-    projectThreads: mainThreads.length,
-    projectTurns: mainTurns.length,
+    projectThreads: historyThreads.length,
+    projectTurns: allTurns.length,
     threadUsage: activeThreadUsage,
     projectUsage,
     goal: activeGoal,
@@ -2191,7 +2193,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         >
           <Button
             role="tab"
-            aria-selected={state.activeThreadId === null}
+            aria-selected={state.activeThreadId === null || dangerDialogIntent?.source === "new-chat"}
             size="small"
             startIcon={<AddIcon />}
             onClick={() => requestNewSession(permission)}
@@ -2200,16 +2202,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               px: 1.25,
               flex: "0 0 auto",
               borderRadius: 1.5,
-              color: state.activeThreadId === null ? "primary.main" : "text.secondary",
-              bgcolor: state.activeThreadId === null ? "action.selected" : "transparent",
+              color: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "primary.main" : "text.secondary",
+              bgcolor: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "action.selected" : "transparent",
               border: "1px solid",
-              borderColor: state.activeThreadId === null ? "primary.main" : "transparent"
+              borderColor: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "primary.main" : "transparent"
             }}
           >
             New task
           </Button>
           {taskTabs.map((thread) => {
-            const active = state.activeThreadId === thread.id;
+            const active = state.activeThreadId === thread.id && dangerDialogIntent?.source !== "new-chat";
             return (
               <Button
                 key={thread.id}
@@ -3054,4 +3056,73 @@ function encodeBase64Text(value: string): string {
     binary += String.fromCharCode(byte);
   }
   return window.btoa(binary);
+}
+
+async function loadAllThreads(client: CodexSocketClient): Promise<ClientState["threads"]> {
+  const threads: ClientState["threads"] = [];
+  for (const archived of [false, true]) {
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 32; guard += 1) {
+      const response = await client.rpc("thread/list", {
+        cursor,
+        limit: 200,
+        archived,
+        sourceKinds: ["cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown"],
+        useStateDbOnly: true
+      });
+      const record = asRecord(response);
+      const batch = Array.isArray(record.data)
+        ? normalizeThreads(record.data)
+        : Array.isArray(record.threads)
+          ? normalizeThreads(record.threads)
+          : [];
+      for (const thread of batch) {
+        if (!threads.some((entry) => entry.id === thread.id)) {
+          threads.push(thread);
+        }
+      }
+      const nextCursor = typeof record.nextCursor === "string" ? record.nextCursor : null;
+      if (!nextCursor || nextCursor === cursor) {
+        break;
+      }
+      cursor = nextCursor;
+    }
+  }
+  return threads.sort((a, b) => (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0));
+}
+
+function buildRequestMonitorEntries(
+  turns: ClientState["turns"],
+  threads: ClientState["threads"],
+  tokenUsage: Record<string, ThreadTokenUsageState>
+): RequestMonitorEntry[] {
+  const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+  return turns.slice(0, 24).map((turn) => {
+    const thread = threadById.get(turn.threadId);
+    const usage = tokenUsage[turn.threadId];
+    return {
+      id: turn.id,
+      threadId: turn.threadId,
+      title: thread?.preview || thread?.id || turn.id,
+      source: threadSourceLabel(thread),
+      status: turn.status,
+      provider: thread?.modelProvider ?? "default",
+      model: thread?.model ?? "Engine default",
+      lastTokens: usage?.last,
+      totalTokens: usage?.total
+    };
+  });
+}
+
+function threadSourceLabel(thread?: ClientState["threads"][number]): string {
+  if (!thread) {
+    return "unknown";
+  }
+  if (thread.parentThreadId) {
+    return "agent";
+  }
+  if (thread.agentNickname || thread.agentRole) {
+    return "sidechat";
+  }
+  return "main";
 }

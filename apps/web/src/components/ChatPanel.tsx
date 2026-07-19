@@ -78,6 +78,18 @@ export type WorkbenchStatsState = {
   modes: WorkbenchModeState;
 };
 
+export type RequestMonitorEntry = {
+  id: string;
+  threadId: string;
+  title: string;
+  source: string;
+  status: string;
+  provider: string;
+  model: string;
+  lastTokens?: TokenUsageBreakdown;
+  totalTokens?: TokenUsageBreakdown;
+};
+
 export type WorkbenchModeState = {
   fast: boolean;
   plan: boolean;
@@ -98,6 +110,7 @@ type Props = {
   goal?: GoalBannerState | null;
   slashNotice?: SlashCommandNoticeState | null;
   stats?: WorkbenchStatsState | null;
+  requestMonitor?: RequestMonitorEntry[];
   statsOpen?: boolean;
   modes?: WorkbenchModeState;
   activeThemePlugin?: ThemePlugin | null;
@@ -149,6 +162,7 @@ export function ChatPanel({
   goal,
   slashNotice,
   stats,
+  requestMonitor = [],
   statsOpen = false,
   modes = { fast: false, plan: false, goalActive: false },
   activeThemePlugin,
@@ -228,6 +242,7 @@ export function ChatPanel({
             goal={goal}
             slashNotice={slashNotice}
             stats={stats}
+            requestMonitor={requestMonitor}
             statsOpen={statsOpen}
             modes={modes}
             onStatsClose={onStatsClose}
@@ -243,9 +258,7 @@ export function ChatPanel({
             error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null
           ))}
           {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
-          {displayTurns.length === 0 && (
-            <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} onPromptSelect={onPromptSelect} />
-          )}
+          {displayTurns.length === 0 && <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} onPromptSelect={onPromptSelect} />}
           {displayTurns.map((turn) => (
             <Paper
               key={turn.id}
@@ -279,6 +292,7 @@ function ChatTopStatusSurface({
   goal,
   slashNotice,
   stats,
+  requestMonitor,
   statsOpen,
   modes,
   onStatsClose,
@@ -290,6 +304,7 @@ function ChatTopStatusSurface({
   goal?: GoalBannerState | null;
   slashNotice?: SlashCommandNoticeState | null;
   stats?: WorkbenchStatsState | null;
+  requestMonitor: RequestMonitorEntry[];
   statsOpen: boolean;
   modes: WorkbenchModeState;
   onStatsClose?: () => void;
@@ -341,6 +356,7 @@ function ChatTopStatusSurface({
             </Typography>
           </Alert>
         )}
+        <RequestMonitorTable entries={requestMonitor} />
         {(modes.fast || modes.plan) && (
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
             {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label="Fast" data-testid="fast-mode-badge" />}
@@ -874,6 +890,119 @@ function DefaultWorkbenchEmpty({
       </Box>
     </Box>
   );
+}
+
+function RequestMonitorTable({ entries }: { entries: RequestMonitorEntry[] }) {
+  return (
+    <Paper
+      data-testid="homepage-request-monitor"
+      variant="outlined"
+      sx={{
+        borderRadius: 1,
+        overflow: "hidden",
+        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.78)
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 1.25, py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+        <AssessmentIcon fontSize="small" color="primary" />
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+            Requests
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Live turn status and token usage
+          </Typography>
+        </Box>
+        <Chip size="small" label={`${entries.length} tracked`} />
+      </Stack>
+      {entries.length === 0 ? (
+        <Box sx={{ px: 1.25, py: 1.5 }}>
+          <Typography variant="body2" color="text.secondary">
+            No requests yet. New turns will appear here with last and total tokens.
+          </Typography>
+        </Box>
+      ) : (
+        <Box sx={{ overflowX: "auto" }}>
+          <Box
+            component="table"
+            sx={{
+              width: "100%",
+              minWidth: 720,
+              borderCollapse: "collapse",
+              "& th, & td": {
+                px: 1.25,
+                py: 0.85,
+                borderBottom: "1px solid",
+                borderColor: "divider",
+                textAlign: "left",
+                verticalAlign: "middle"
+              },
+              "& th": {
+                typography: "caption",
+                color: "text.secondary",
+                fontWeight: 800,
+                bgcolor: "action.hover"
+              },
+              "& td": {
+                typography: "body2"
+              },
+              "& tr:last-of-type td": {
+                borderBottom: 0
+              }
+            }}
+          >
+            <thead>
+              <tr>
+                <th>Request</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>Model</th>
+                <th>Last tokens</th>
+                <th>Total tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td>
+                    <Typography variant="body2" sx={{ fontWeight: 750, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.id}
+                    </Typography>
+                  </td>
+                  <td>
+                    <Chip size="small" label={entry.source} variant="outlined" />
+                  </td>
+                  <td>
+                    <Chip size="small" label={entry.status} color={entry.status === "failed" ? "error" : entry.status === "inProgress" ? "warning" : "default"} />
+                  </td>
+                  <td>
+                    <Typography variant="body2" sx={{ maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.model || "Engine default"}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {entry.provider || "default"}
+                    </Typography>
+                  </td>
+                  <td>{formatUsageCell(entry.lastTokens)}</td>
+                  <td>{formatUsageCell(entry.totalTokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Box>
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
+function formatUsageCell(usage?: TokenUsageBreakdown): string {
+  if (!usage) {
+    return "waiting";
+  }
+  return `${formatNumber(usage.totalTokens)} total / ${formatNumber(usage.outputTokens)} out`;
 }
 
 function renderWorkbenchItem(item: WorkbenchItem) {

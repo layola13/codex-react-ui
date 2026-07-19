@@ -70,9 +70,11 @@ export function HistorySidebar({ threads, activeThreadId, currentPermission, onS
             <ListItemText
               primary={thread.preview || thread.id}
               secondary={
-                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
+                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                  <Chip size="small" label={threadSourceLabel(thread)} variant="outlined" />
                   <Chip size="small" label={thread.status ?? "stored"} />
-                  {thread.model && <Typography variant="caption">{thread.model}</Typography>}
+                  {thread.model && <Chip size="small" label={thread.model} variant="outlined" />}
+                  {thread.modelProvider && <Typography variant="caption">{thread.modelProvider}</Typography>}
                 </Stack>
               }
               primaryTypographyProps={{ noWrap: true, fontWeight: activeThreadId === thread.id ? 700 : 500 }}
@@ -82,4 +84,14 @@ export function HistorySidebar({ threads, activeThreadId, currentPermission, onS
       </List>
     </Box>
   );
+}
+
+function threadSourceLabel(thread: ThreadEntry): string {
+  if (thread.parentThreadId) {
+    return "agent";
+  }
+  if (thread.agentNickname || thread.agentRole) {
+    return "sidechat";
+  }
+  return "main";
 }
