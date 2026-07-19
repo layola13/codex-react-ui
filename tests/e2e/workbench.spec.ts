@@ -1139,7 +1139,7 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   await expect(page.getByRole("button", { name: "Install" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Install" }).first().click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "dream-rose");
-  await page.getByLabel("Skin theme").click();
+  await page.getByLabel("Skin").click();
   await page.getByRole("option", { name: "Official Black" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
   await page.getByRole("button", { name: "Remove" }).click();
@@ -1188,17 +1188,17 @@ test("applies user theme media plugins to the default workbench", async ({ page 
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();
-  await page.getByLabel("Custom theme name").fill("Sakura Builder");
-  await page.getByLabel("Custom theme primary").fill("#DB2777");
-  await page.getByLabel("Custom theme secondary").fill("#2563EB");
-  await page.getByLabel("Custom theme background").fill("#FFF7FB");
-  await page.getByLabel("Custom theme app background image").fill(heroImage);
-  await page.getByLabel("Custom theme hero image").fill(heroImage);
-  await page.getByLabel("Custom theme corner image").fill(avatarImage);
-  await page.getByLabel("Custom theme pet image").fill(avatarImage);
-  await page.getByLabel("Custom theme decorations").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Sakura Builder");
+  await page.getByRole("textbox", { name: "Primary" }).fill("#DB2777");
+  await page.getByRole("textbox", { name: "Secondary", exact: true }).fill("#2563EB");
+  await page.getByRole("textbox", { name: "Background", exact: true }).fill("#FFF7FB");
+  await page.getByLabel("Main chat waterfall background").fill(heroImage);
+  await page.getByLabel("Legacy hero image").fill(heroImage);
+  await page.getByLabel("Corner image").fill(avatarImage);
+  await page.getByLabel("Pet/avatar image").fill(avatarImage);
+  await page.getByLabel("Decorations").click();
   await page.getByRole("option", { name: "Rich" }).click();
-  await page.getByLabel("Save custom theme plugin").click();
+  await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-sakura-builder-/);
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
@@ -1217,10 +1217,10 @@ test("supports uploaded background images and user theme switching", async ({ pa
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();
-  await page.getByLabel("Custom theme name").fill("Reference Rose");
-  await page.getByLabel("Custom theme primary").fill("#D94F75");
-  await page.getByLabel("Custom theme secondary").fill("#B76E79");
-  await page.getByLabel("Custom theme background").fill("#FFF4F7");
+  await page.getByRole("textbox", { name: "Name" }).fill("Reference Rose");
+  await page.getByRole("textbox", { name: "Primary" }).fill("#D94F75");
+  await page.getByRole("textbox", { name: "Secondary", exact: true }).fill("#B76E79");
+  await page.getByRole("textbox", { name: "Background", exact: true }).fill("#FFF4F7");
   await page.getByLabel("Background image file").setInputFiles("/root/projects/codex-react-ui/snapshot/参考/HNVjQXebIAI_AwK.jpg");
   await expect(page.getByTestId("custom-theme-background-preview")).toContainText("local image");
   await expect(page.getByLabel("Theme background overlay opacity")).toHaveValue("0");
@@ -1237,12 +1237,12 @@ test("supports uploaded background images and user theme switching", async ({ pa
   await page.getByLabel("Theme hero overlay opacity").fill("18");
   await page.getByLabel("Theme panel opacity").fill("72");
   await page.getByLabel("Theme glass blur").fill("6");
-  await page.getByLabel("Theme tone color").fill("#D94F75");
-  await page.getByLabel("Theme dynamic background").click();
+  await page.getByLabel("Tone color").fill("#D94F75");
+  await page.getByLabel("Dynamic background").click();
   await page.getByRole("option", { name: "Three.js loop" }).click();
-  await page.getByLabel("Theme scene preset").click();
+  await page.getByLabel("Scene preset").click();
   await page.getByRole("option", { name: "Orbit" }).click();
-  await page.getByLabel("Save custom theme plugin").click();
+  await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
 
   const storedTheme = await page.evaluate(() => {
@@ -1269,22 +1269,22 @@ test("supports uploaded background images and user theme switching", async ({ pa
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();
-  await page.getByLabel("Skin theme").click();
+  await page.getByLabel("Skin").click();
   await page.getByRole("option", { name: "Official Black" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
-  await page.getByLabel("Skin theme").click();
-  await page.getByRole("option", { name: "Reference Rose" }).click();
+  await page.getByLabel("Skin").click();
+  await page.getByRole("option", { name: "Reference Rose" }).last().click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
 
-  await page.getByLabel("Edit theme Reference Rose").click();
+  await page.getByRole("button", { name: "Edit theme Reference Rose" }).last().click();
   await expect(page.getByText("Edit theme plugin")).toBeVisible();
-  await expect(page.getByLabel("Custom theme app background image")).toHaveValue(/^data:image\/jpeg;base64,/);
-  await expect(page.getByLabel("Custom theme app background video")).toHaveValue(/^data:video\/mp4;base64,/);
-  await expect(page.getByLabel("Theme dynamic background")).toHaveText("Three.js loop");
-  await page.getByLabel("Custom theme secondary").fill("#2563EB");
-  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.getByLabel("Main chat waterfall background")).toHaveValue(/^data:image\/jpeg;base64,/);
+  await expect(page.getByLabel("Workbench background video")).toHaveValue(/^data:video\/mp4;base64,/);
+  await expect(page.getByLabel("Dynamic background")).toHaveText("Three.js loop");
+  await page.getByRole("textbox", { name: "Secondary", exact: true }).fill("#2563EB");
+  await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
-  await expect(page.getByLabel("Edit theme Reference Rose")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit theme Reference Rose" }).last()).toBeVisible();
 
   const importedTheme = {
     name: "Imported Mint",
@@ -1314,13 +1314,13 @@ test("supports uploaded background images and user theme switching", async ({ pa
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(importedTheme))
   });
-  await expect(page.getByLabel("Custom theme name")).toHaveValue("Imported Mint");
-  await expect(page.getByLabel("Custom theme app background video")).toHaveValue("https://example.com/theme-loop.webm");
-  await expect(page.getByLabel("Theme dynamic background")).toHaveText("Canvas loop");
-  await page.getByLabel("Save custom theme plugin").click();
+  await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("Imported Mint");
+  await expect(page.getByLabel("Workbench background video")).toHaveValue("https://example.com/theme-loop.webm");
+  await expect(page.getByLabel("Dynamic background")).toHaveText("Canvas loop");
+  await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-imported-mint-/);
-  await page.getByLabel("Skin theme").click();
-  await expect(page.getByRole("option", { name: "Reference Rose" })).toBeVisible();
+  await page.getByLabel("Skin").click();
+  await expect(page.getByRole("option", { name: "Reference Rose" }).last()).toBeVisible();
   await expect(page.getByRole("option", { name: "Imported Mint" })).toBeVisible();
   await page.keyboard.press("Escape");
 });
@@ -1808,15 +1808,15 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
   // Theme remains independent of config writes.
   await page.getByLabel("Open Appearance settings").click();
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
-  await page.getByLabel("Custom theme name").fill("Aurora Studio");
-  await page.getByLabel("Custom theme primary").fill("#0EA5E9");
-  await page.getByLabel("Custom theme secondary").fill("#F97316");
-  await page.getByLabel("Custom theme background").fill("#0B1220");
+  await page.getByRole("textbox", { name: "Name" }).fill("Aurora Studio");
+  await page.getByRole("textbox", { name: "Primary" }).fill("#0EA5E9");
+  await page.getByRole("textbox", { name: "Secondary", exact: true }).fill("#F97316");
+  await page.getByRole("textbox", { name: "Background", exact: true }).fill("#0B1220");
   await page.getByRole("switch", { name: "Dark" }).check();
-  await page.getByLabel("Save custom theme plugin").click();
+  await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-aurora-studio-/);
 
-  await page.getByLabel("Skin theme").click();
+  await page.getByLabel("Skin").click();
   await page.getByRole("option", { name: "Official Black" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
 
@@ -2332,7 +2332,7 @@ test("matches desktop and mobile workbench screenshots", async ({ page }) => {
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();
-  await page.getByLabel("Skin theme").click();
+  await page.getByLabel("Skin").click();
   await page.getByRole("option", { name: "Atmospheric Codex" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "atmospheric-codex");
   await page.getByRole("button", { name: "Close settings" }).click();
@@ -2343,7 +2343,7 @@ test("matches desktop and mobile workbench screenshots", async ({ page }) => {
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();
-  await page.getByLabel("Skin theme").click();
+  await page.getByLabel("Skin").click();
   await page.getByRole("option", { name: "Official Black" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", "official-black");
   await page.getByRole("button", { name: "Close settings" }).click();
