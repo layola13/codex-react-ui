@@ -1,18 +1,14 @@
 import { Box, Chip, Divider, List, ListItemButton, ListItemText, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import type { PermissionPresetId } from "@codex-ui/shared";
 import type { ThreadEntry } from "../state/codexClient";
-import { NewChatButton } from "./NewChatButton";
 
 type Props = {
   threads: ThreadEntry[];
   activeThreadId: string | null;
-  currentPermission: PermissionPresetId;
   onSelect: (threadId: string) => void;
-  onNew: (permission: PermissionPresetId) => void;
 };
 
-export function HistorySidebar({ threads, activeThreadId, currentPermission, onSelect, onNew }: Props) {
+export function HistorySidebar({ threads, activeThreadId, onSelect }: Props) {
   return (
     <Box
       sx={{
@@ -29,23 +25,9 @@ export function HistorySidebar({ threads, activeThreadId, currentPermission, onS
         <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 800 }}>
           Conversations
         </Typography>
-        <NewChatButton currentPermission={currentPermission} label="New" onNew={onNew} />
       </Stack>
       <Divider />
       <List dense sx={{ overflow: "auto", flex: 1, p: 1.25 }}>
-        <ListItemButton
-          selected={activeThreadId === null}
-          onClick={() => onNew(currentPermission)}
-          sx={{
-            mb: 1,
-            border: "1px solid",
-            borderColor: activeThreadId === null ? "primary.main" : "divider",
-            bgcolor: activeThreadId === null ? "action.selected" : "background.paper",
-            boxShadow: (theme) => (activeThreadId === null ? theme.customShadows?.z4 : "none")
-          }}
-        >
-          <ListItemText primary="New conversation" secondary="Use New Chat menu for full access modes" />
-        </ListItemButton>
         {threads.map((thread) => (
           <ListItemButton
             key={thread.id}

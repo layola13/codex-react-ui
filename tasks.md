@@ -2,6 +2,7 @@
 
 ## Now
 
+- [x] Remove duplicate new conversation entry points by keeping top-level New Chat, converting the task-tab new action to a compact plus button, and making Conversations a history-only list.
 - [x] Refine Settings -> Relay channel management so the default view is the Channels list, Add/Edit opens the Model Channel form separately, and rows support activate, test, edit, and delete.
 - [x] Fix Settings -> Plugins so API-key mode no longer surfaces remote catalog auth warnings; local Code Index marketplace now shows without alerts.
 - [x] Refresh the `aihub.top` relay key in both UI and database, then revalidate the updated provider with a real request.

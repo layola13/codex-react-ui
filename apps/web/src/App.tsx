@@ -2221,25 +2221,29 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             borderColor: "divider"
           }}
         >
-          <Button
-            role="tab"
-            aria-selected={state.activeThreadId === null || dangerDialogIntent?.source === "new-chat"}
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => requestNewSession(permission)}
-            sx={{
-              my: 0.625,
-              px: 1.25,
-              flex: "0 0 auto",
-              borderRadius: 1.5,
-              color: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "primary.main" : "text.secondary",
-              bgcolor: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "action.selected" : "transparent",
-              border: "1px solid",
-              borderColor: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "primary.main" : "transparent"
-            }}
-          >
-            New task
-          </Button>
+          <Tooltip title="New task">
+            <Button
+              role="tab"
+              aria-label="New task"
+              aria-selected={state.activeThreadId === null || dangerDialogIntent?.source === "new-chat"}
+              size="small"
+              onClick={() => requestNewSession(permission)}
+              sx={{
+                my: 0.625,
+                px: 0,
+                minWidth: 36,
+                width: 36,
+                flex: "0 0 auto",
+                borderRadius: 1.5,
+                color: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "primary.main" : "text.secondary",
+                bgcolor: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "action.selected" : "transparent",
+                border: "1px solid",
+                borderColor: (state.activeThreadId === null || dangerDialogIntent?.source === "new-chat") ? "primary.main" : "transparent"
+              }}
+            >
+              <AddIcon fontSize="small" />
+            </Button>
+          </Tooltip>
           {taskTabs.map((thread) => {
             const active = state.activeThreadId === thread.id && dangerDialogIntent?.source !== "new-chat";
             return (
@@ -2293,9 +2297,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                     <HistorySidebar
                       threads={mainThreads}
                       activeThreadId={state.activeThreadId}
-                      currentPermission={permission}
                       onSelect={(threadId) => selectTaskTab(threadId)}
-                      onNew={requestNewSession}
                     />
                   </Box>
                 </Panel>
@@ -2325,9 +2327,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               <HistorySidebar
                 threads={mainThreads}
                 activeThreadId={state.activeThreadId}
-                currentPermission={permission}
                 onSelect={(threadId) => selectTaskTab(threadId)}
-                onNew={requestNewSession}
               />
             )}
             {renderCenterPanel()}
