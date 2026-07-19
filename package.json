@@ -17,7 +17,7 @@
     "readme:autopush:status": "bash scripts/readme-autopush.sh status",
     "readme:autopush:run-once": "bash scripts/readme-autopush.sh run-once",
     "typecheck": "bun --filter @codex-ui/shared --filter @codex-ui/server --filter @codex-ui/web --parallel typecheck",
-    "test:e2e": "bunx playwright test",
+    "test:e2e": "node ./node_modules/@playwright/test/cli.js test",
     "start": "bun --filter @codex-ui/server start",
     "lint": "bun --filter @codex-ui/shared --filter @codex-ui/server --filter @codex-ui/web --parallel lint",
     "check:codex-config-schema": "bun scripts/sync-codex-config-schema.mjs",
