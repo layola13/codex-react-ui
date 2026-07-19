@@ -7,6 +7,10 @@
 - [x] Rename composer status icon accessibility text so it no longer collides with the real Send button.
 - [x] Prevent the first homepage viewport from creating a browser-level vertical scrollbar; keep scrolling inside workbench panels.
 - [x] Add PNG Codex PWA icons to the manifest so Chrome can show the native URL-bar install affordance.
+- [ ] Split theme media into separate background slots for main chat waterfall, composer input, welcome panel, and history list; keep old single-image themes as fallback.
+- [ ] Add zip-based theme export/import with `theme.json` plus media assets, while preserving JSON import compatibility.
+- [ ] Design and implement dedicated Codex history management for `~/.codex/sessions` year/month session files: derive titles/summaries from session contents, list them in the history area, and support opening/resuming from the UI.
+- [ ] Review `/root/projects/codex` source for how Codex discovers, names, and summarizes session history before implementing the history manager.
 - [ ] Fix New Chat startup flow so every new conversation first shows a workspace selection panel, defaults to `~/`, and blocks sending until the user confirms the workspace.
 - [ ] Keep the composer text area editable while Codex is not ready or workspace selection is pending; only the Send action should be blocked with a clear inline reason.
 - [ ] Show the current relay/provider in the main UI so users can immediately see which middle relay/channel is active.

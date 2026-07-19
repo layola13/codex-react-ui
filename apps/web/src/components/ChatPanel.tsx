@@ -115,6 +115,7 @@ type Props = {
   statsOpen?: boolean;
   modes?: WorkbenchModeState;
   activeThemePlugin?: ThemePlugin | null;
+  welcomeBackgroundImage?: string;
   welcomeDismissed?: boolean;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
@@ -178,6 +179,7 @@ export function ChatPanel({
   statsOpen = false,
   modes = { fast: false, plan: false, goalActive: false },
   activeThemePlugin,
+  welcomeBackgroundImage,
   welcomeDismissed = false,
   t,
   onPromptSelect,
@@ -325,7 +327,7 @@ export function ChatPanel({
             )}
             {statsOpen && stats && <StatsPanel stats={stats} t={t} onClose={onStatsClose} />}
             {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
-            {showEmptyConversation && <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} t={t} onPromptSelect={onPromptSelect} />}
+            {showEmptyConversation && <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} welcomeBackgroundImage={welcomeBackgroundImage} t={t} onPromptSelect={onPromptSelect} />}
             <Stack spacing={1} data-testid="conversation-waterfall">
               {displayItems.map(({ key, item, reasoning, activeThinking }) => (
                 <Box key={key} data-testid={`conversation-item-${sanitizeTestId(item.id)}`}>
@@ -719,16 +721,18 @@ function AgentConversationHeader({ agent, onClose }: { agent: AgentSession; onCl
 function EmptyConversation({
   selectedAgent,
   activeThemePlugin,
+  welcomeBackgroundImage,
   t,
   onPromptSelect
 }: {
   selectedAgent: AgentSession | null;
   activeThemePlugin?: ThemePlugin | null;
+  welcomeBackgroundImage?: string;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
 }) {
   if (!selectedAgent) {
-    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} t={t} onPromptSelect={onPromptSelect} />;
+    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} welcomeBackgroundImage={welcomeBackgroundImage} t={t} onPromptSelect={onPromptSelect} />;
   }
   return (
     <Paper
@@ -752,17 +756,19 @@ function EmptyConversation({
 
 function DefaultWorkbenchEmpty({
   activeThemePlugin,
+  welcomeBackgroundImage,
   t,
   onPromptSelect
 }: {
   activeThemePlugin?: ThemePlugin | null;
+  welcomeBackgroundImage?: string;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
 }) {
   const heroImage =
     activeThemePlugin?.layout?.heroEnabled === false
       ? undefined
-      : safeThemeAssetUrl(activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage);
+      : safeThemeAssetUrl(welcomeBackgroundImage ?? activeThemePlugin?.assets?.welcomeBackgroundImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage);
   const cornerImage = safeThemeAssetUrl(activeThemePlugin?.assets?.cornerImage);
   const richDecorations = activeThemePlugin?.layout?.decorationIntensity === "rich";
   const themeTuning = themeVisualTuning(activeThemePlugin);

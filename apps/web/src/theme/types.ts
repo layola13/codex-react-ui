@@ -36,6 +36,9 @@ export type ThemePlugin = {
   assets?: {
     appBackgroundImage?: string;
     appBackgroundVideo?: string;
+    composerBackgroundImage?: string;
+    welcomeBackgroundImage?: string;
+    historyBackgroundImage?: string;
     heroImage?: string;
     cornerImage?: string;
     petImage?: string;

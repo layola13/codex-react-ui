@@ -37,7 +37,14 @@ const STANDARD_SURFACE_TUNING: ThemeVisualTuning = {
 };
 
 export function themeVisualTuning(plugin?: ThemePlugin | null): ThemeVisualTuning {
-  const hasUserMedia = Boolean(plugin?.assets?.appBackgroundImage || plugin?.assets?.appBackgroundVideo || plugin?.assets?.heroImage);
+  const hasUserMedia = Boolean(
+    plugin?.assets?.appBackgroundImage ||
+      plugin?.assets?.appBackgroundVideo ||
+      plugin?.assets?.composerBackgroundImage ||
+      plugin?.assets?.welcomeBackgroundImage ||
+      plugin?.assets?.historyBackgroundImage ||
+      plugin?.assets?.heroImage
+  );
   const defaults = hasUserMedia ? REFERENCE_BACKGROUND_TUNING : STANDARD_SURFACE_TUNING;
   const layout = plugin?.layout ?? {};
   const previewTone = isHexColor(plugin?.preview.primary) ? plugin?.preview.primary : defaults.toneColor;

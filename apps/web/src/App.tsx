@@ -1964,6 +1964,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   );
   const activeThemePlugin = allThemePlugins.find((plugin) => plugin.id === themeMode) ?? null;
   const shellBackgroundImage = safeThemeAssetUrl(activeThemePlugin?.assets?.appBackgroundImage);
+  const composerBackgroundImage = safeThemeAssetUrl(activeThemePlugin?.assets?.composerBackgroundImage ?? activeThemePlugin?.assets?.appBackgroundImage);
+  const welcomeBackgroundImage = safeThemeAssetUrl(activeThemePlugin?.assets?.welcomeBackgroundImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage);
+  const historyBackgroundImage = safeThemeAssetUrl(activeThemePlugin?.assets?.historyBackgroundImage ?? activeThemePlugin?.assets?.appBackgroundImage);
   const shellBackgroundVideo = safeThemeVideoUrl(activeThemePlugin?.assets?.appBackgroundVideo);
   const backgroundScene = activeThemePlugin?.layout?.backgroundScene;
   const themeTuning = themeVisualTuning(activeThemePlugin);
@@ -2050,6 +2053,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           statsOpen={Boolean(statsPanelScope)}
           modes={modeState}
           activeThemePlugin={activeThemePlugin}
+          welcomeBackgroundImage={welcomeBackgroundImage}
           welcomeDismissed={welcomeDismissed}
           t={t}
           onPromptSelect={usePromptSuggestion}
@@ -2104,6 +2108,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             pendingMention={pendingMention}
             suggestedPrompt={composerSuggestion}
             activeThemePlugin={activeThemePlugin}
+            backgroundImage={composerBackgroundImage}
             t={t}
             modeBadges={modeState}
             dangerBypassConfirmed={dangerBypassConfirmed}
@@ -2516,6 +2521,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       activeThreadId={state.activeThreadId}
                       providerLabel={activeProviderLabel}
                       installAvailable={Boolean(installPromptEvent) && !appInstalled}
+                      backgroundImage={historyBackgroundImage}
                       t={t}
                       onSelect={(threadId) => selectTaskTab(threadId)}
                       onInstallApp={() => void handleInstallApp()}
@@ -2551,6 +2557,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 activeThreadId={state.activeThreadId}
                 providerLabel={activeProviderLabel}
                 installAvailable={Boolean(installPromptEvent) && !appInstalled}
+                backgroundImage={historyBackgroundImage}
                 t={t}
                 onSelect={(threadId) => selectTaskTab(threadId)}
                 onInstallApp={() => void handleInstallApp()}

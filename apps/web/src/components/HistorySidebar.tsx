@@ -10,13 +10,14 @@ type Props = {
   activeThreadId: string | null;
   providerLabel: string;
   installAvailable?: boolean;
+  backgroundImage?: string;
   t: TranslateFn;
   onSelect: (threadId: string) => void;
   onInstallApp?: () => void;
   onOpenSettings: () => void;
 };
 
-export function HistorySidebar({ threads, activeThreadId, providerLabel, installAvailable = false, t, onSelect, onInstallApp, onOpenSettings }: Props) {
+export function HistorySidebar({ threads, activeThreadId, providerLabel, installAvailable = false, backgroundImage, t, onSelect, onInstallApp, onOpenSettings }: Props) {
   return (
     <Box
       data-testid="history-sidebar"
@@ -28,7 +29,16 @@ export function HistorySidebar({ threads, activeThreadId, providerLabel, install
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.46 : 0.36)
+        bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.46 : 0.36),
+        backgroundImage: backgroundImage
+          ? (theme) =>
+              [
+                `linear-gradient(${alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.68 : 0.72)}, ${alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.68 : 0.72)})`,
+                `url("${backgroundImage}")`
+              ].join(", ")
+          : undefined,
+        backgroundSize: backgroundImage ? "cover" : undefined,
+        backgroundPosition: backgroundImage ? "center" : undefined
       }}
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5 }}>

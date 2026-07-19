@@ -2349,6 +2349,9 @@ function CustomThemePluginEditor({
   const [background, setBackground] = useState("#F8FAFC");
   const [appBackgroundImage, setAppBackgroundImage] = useState("");
   const [appBackgroundVideo, setAppBackgroundVideo] = useState("");
+  const [composerBackgroundImage, setComposerBackgroundImage] = useState("");
+  const [welcomeBackgroundImage, setWelcomeBackgroundImage] = useState("");
+  const [historyBackgroundImage, setHistoryBackgroundImage] = useState("");
   const [heroImage, setHeroImage] = useState("");
   const [cornerImage, setCornerImage] = useState("");
   const [petImage, setPetImage] = useState("");
@@ -2395,6 +2398,9 @@ function CustomThemePluginEditor({
     setBackground("#F8FAFC");
     setAppBackgroundImage("");
     setAppBackgroundVideo("");
+    setComposerBackgroundImage("");
+    setWelcomeBackgroundImage("");
+    setHistoryBackgroundImage("");
     setHeroImage("");
     setCornerImage("");
     setPetImage("");
@@ -2433,10 +2439,13 @@ function CustomThemePluginEditor({
     }
     const nextAppBackgroundImage = overrides.appBackgroundImage ?? appBackgroundImage;
     const nextAppBackgroundVideo = overrides.appBackgroundVideo ?? appBackgroundVideo;
+    const nextComposerBackgroundImage = overrides.composerBackgroundImage ?? composerBackgroundImage;
+    const nextWelcomeBackgroundImage = overrides.welcomeBackgroundImage ?? welcomeBackgroundImage;
+    const nextHistoryBackgroundImage = overrides.historyBackgroundImage ?? historyBackgroundImage;
     const nextHeroImage = overrides.heroImage ?? heroImage;
     const nextCornerImage = overrides.cornerImage ?? cornerImage;
     const nextPetImage = overrides.petImage ?? petImage;
-    const imageFields = [nextAppBackgroundImage, nextHeroImage, nextCornerImage, nextPetImage].map((value) => value.trim()).filter(Boolean);
+    const imageFields = [nextAppBackgroundImage, nextComposerBackgroundImage, nextWelcomeBackgroundImage, nextHistoryBackgroundImage, nextHeroImage, nextCornerImage, nextPetImage].map((value) => value.trim()).filter(Boolean);
     if (!imageFields.every(isSafeThemeImageUrl)) {
       setError("Theme image media must be http(s), blob, or data:image URLs.");
       return null;
@@ -2458,6 +2467,9 @@ function CustomThemePluginEditor({
     const assets = removeEmptyThemeAssets({
       appBackgroundImage: nextAppBackgroundImage.trim(),
       appBackgroundVideo: nextAppBackgroundVideo.trim(),
+      composerBackgroundImage: nextComposerBackgroundImage.trim(),
+      welcomeBackgroundImage: nextWelcomeBackgroundImage.trim(),
+      historyBackgroundImage: nextHistoryBackgroundImage.trim(),
       heroImage: nextHeroImage.trim(),
       cornerImage: nextCornerImage.trim(),
       petImage: nextPetImage.trim()
@@ -2489,7 +2501,7 @@ function CustomThemePluginEditor({
       dark,
       assets,
       layout: {
-        heroEnabled: Boolean(nextHeroImage.trim()) || (useBackgroundAsHero && Boolean(nextAppBackgroundImage.trim())),
+        heroEnabled: Boolean(nextHeroImage.trim() || nextWelcomeBackgroundImage.trim()) || (useBackgroundAsHero && Boolean(nextAppBackgroundImage.trim())),
         petEnabled,
         decorationIntensity,
         backgroundLayerOpacity: percentToUnit(backgroundLayerOpacity),
@@ -2514,6 +2526,9 @@ function CustomThemePluginEditor({
     setBackground(plugin.preview.background);
     setAppBackgroundImage(plugin.assets?.appBackgroundImage ?? "");
     setAppBackgroundVideo(plugin.assets?.appBackgroundVideo ?? "");
+    setComposerBackgroundImage(plugin.assets?.composerBackgroundImage ?? "");
+    setWelcomeBackgroundImage(plugin.assets?.welcomeBackgroundImage ?? "");
+    setHistoryBackgroundImage(plugin.assets?.historyBackgroundImage ?? "");
     setHeroImage(plugin.assets?.heroImage ?? "");
     setCornerImage(plugin.assets?.cornerImage ?? "");
     setPetImage(plugin.assets?.petImage ?? "");
@@ -2644,7 +2659,7 @@ function CustomThemePluginEditor({
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
             <TextField
               size="small"
-              label="Workbench background image"
+              label="Main chat waterfall background"
               value={appBackgroundImage}
               onChange={(event) => setAppBackgroundImage(event.target.value)}
               sx={{ flex: 1 }}
@@ -2691,7 +2706,35 @@ function CustomThemePluginEditor({
             />
             <TextField
               size="small"
-              label="Hero image"
+              label="Welcome panel background"
+              value={welcomeBackgroundImage}
+              onChange={(event) => setWelcomeBackgroundImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme welcome background image" }}
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <TextField
+              size="small"
+              label="Composer input background"
+              value={composerBackgroundImage}
+              onChange={(event) => setComposerBackgroundImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme composer background image" }}
+            />
+            <TextField
+              size="small"
+              label="History list background"
+              value={historyBackgroundImage}
+              onChange={(event) => setHistoryBackgroundImage(event.target.value)}
+              sx={{ flex: 1 }}
+              inputProps={{ "aria-label": "Custom theme history background image" }}
+            />
+          </Stack>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <TextField
+              size="small"
+              label="Legacy hero image"
               value={heroImage}
               onChange={(event) => setHeroImage(event.target.value)}
               sx={{ flex: 1 }}
@@ -3026,6 +3069,9 @@ function normalizeImportedThemePlugin(value: unknown): ThemePlugin {
   const assets = removeEmptyThemeAssets({
     appBackgroundImage: typeof rawAssets.appBackgroundImage === "string" ? rawAssets.appBackgroundImage.trim() : "",
     appBackgroundVideo: typeof rawAssets.appBackgroundVideo === "string" ? rawAssets.appBackgroundVideo.trim() : "",
+    composerBackgroundImage: typeof rawAssets.composerBackgroundImage === "string" ? rawAssets.composerBackgroundImage.trim() : "",
+    welcomeBackgroundImage: typeof rawAssets.welcomeBackgroundImage === "string" ? rawAssets.welcomeBackgroundImage.trim() : "",
+    historyBackgroundImage: typeof rawAssets.historyBackgroundImage === "string" ? rawAssets.historyBackgroundImage.trim() : "",
     heroImage: typeof rawAssets.heroImage === "string" ? rawAssets.heroImage.trim() : "",
     cornerImage: typeof rawAssets.cornerImage === "string" ? rawAssets.cornerImage.trim() : "",
     petImage: typeof rawAssets.petImage === "string" ? rawAssets.petImage.trim() : ""
@@ -3036,8 +3082,8 @@ function normalizeImportedThemePlugin(value: unknown): ThemePlugin {
   if (assets?.appBackgroundVideo && !isSafeThemeVideoUrl(assets.appBackgroundVideo)) {
     throw new Error("Imported theme background video must be http(s), blob, or data:video.");
   }
-  if ([assets?.heroImage, assets?.cornerImage, assets?.petImage].some((entry) => entry && !isSafeThemeImageUrl(entry))) {
-    throw new Error("Imported theme hero, corner, and pet media must be http(s), blob, or data:image.");
+  if ([assets?.composerBackgroundImage, assets?.welcomeBackgroundImage, assets?.historyBackgroundImage, assets?.heroImage, assets?.cornerImage, assets?.petImage].some((entry) => entry && !isSafeThemeImageUrl(entry))) {
+    throw new Error("Imported theme image media must be http(s), blob, or data:image.");
   }
   const rawLayout = isPlainRecord(value.layout) ? value.layout : {};
   const decorationIntensity =

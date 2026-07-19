@@ -35,6 +35,7 @@ type Props = {
   pendingMention: ComposerMention | null;
   suggestedPrompt?: { id: string; text: string } | null;
   activeThemePlugin?: ThemePlugin | null;
+  backgroundImage?: string;
   sendBlockedReason?: string;
   t: TranslateFn;
   modeBadges?: {
@@ -60,6 +61,7 @@ export function Composer({
   pendingMention,
   suggestedPrompt,
   activeThemePlugin,
+  backgroundImage,
   sendBlockedReason,
   t,
   modeBadges = { fast: false, plan: false, goalActive: false },
@@ -108,7 +110,7 @@ export function Composer({
   }, [onSuggestedPromptConsumed, onUserActivity, suggestedPrompt]);
 
   const composerBackdrop = safeThemeAssetUrl(
-    activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage
+    backgroundImage ?? activeThemePlugin?.assets?.composerBackgroundImage ?? activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage
   );
   const themeTuning = themeVisualTuning(activeThemePlugin);
 
