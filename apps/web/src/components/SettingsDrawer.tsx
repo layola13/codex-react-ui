@@ -694,6 +694,7 @@ export function SettingsDrawer({
                   activeThreadId={activeThreadId}
                   tooling={tooling}
                   toolingLoading={toolingLoading}
+                  t={t}
                   initialTab={initialPluginTab}
                   pluginDetails={pluginDetails}
                   pluginSkillPreviews={pluginSkillPreviews}

@@ -34,6 +34,7 @@ import type {
   PluginMarketplace,
   ToolingState
 } from "../state/codexClient";
+import type { TranslateFn } from "../i18n";
 
 export type CodexPluginSettingsTab = "marketplace" | "installed" | "mcp" | "hooks" | "apps";
 
@@ -41,6 +42,7 @@ type Props = {
   activeThreadId: string | null;
   tooling: ToolingState;
   toolingLoading: boolean;
+  t: TranslateFn;
   initialTab?: CodexPluginSettingsTab;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
@@ -63,6 +65,7 @@ export function CodexPluginSettingsPanel({
   activeThreadId,
   tooling,
   toolingLoading,
+  t,
   initialTab = "marketplace",
   pluginDetails,
   pluginSkillPreviews,
@@ -95,26 +98,26 @@ export function CodexPluginSettingsPanel({
       <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "stretch", md: "center" }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography variant="h6" sx={{ fontSize: 18, fontWeight: 850 }}>
-            Codex plugin settings
+            {t("settings.plugins.panelTitle")}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Manage Codex plugins, hooks, plugin apps, and MCP servers discovered by the local Codex engine.
+            {t("settings.plugins.panelDescription")}
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           <Button size="small" startIcon={<RefreshIcon />} onClick={onReloadTooling}>
-            Refresh
+            {t("settings.plugins.refresh")}
           </Button>
           {toolingLoading && <CircularProgress size={18} />}
         </Stack>
       </Stack>
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <Chip size="small" label={`${installedPlugins.length} installed`} color={installedPlugins.length ? "success" : "default"} />
-        <Chip size="small" label={`${pluginCount} available`} variant="outlined" />
-        <Chip size="small" label={`${tooling.mcpServers.length} MCP servers`} variant="outlined" />
-        <Chip size="small" label={`${hookCount} hooks`} variant="outlined" />
-        <Chip size="small" label={`${authAppCount} app auth`} color={authAppCount ? "warning" : "default"} variant="outlined" />
+        <Chip size="small" label={t("settings.plugins.count.installed", { count: installedPlugins.length })} color={installedPlugins.length ? "success" : "default"} />
+        <Chip size="small" label={t("settings.plugins.count.available", { count: pluginCount })} variant="outlined" />
+        <Chip size="small" label={t("settings.plugins.count.mcpServers", { count: tooling.mcpServers.length })} variant="outlined" />
+        <Chip size="small" label={t("settings.plugins.count.hooks", { count: hookCount })} variant="outlined" />
+        <Chip size="small" label={t("settings.plugins.count.appAuth", { count: authAppCount })} color={authAppCount ? "warning" : "default"} variant="outlined" />
       </Stack>
 
       {tooling.marketplaceErrors.map((message) => (
@@ -129,19 +132,20 @@ export function CodexPluginSettingsPanel({
           onChange={(_, value) => setTab(value)}
           variant="scrollable"
           scrollButtons="auto"
-          aria-label="Codex plugin settings tabs"
+          aria-label={t("settings.plugins.tabsAria")}
           sx={{ px: 1, borderBottom: "1px solid", borderColor: "divider" }}
         >
-          <Tab value="marketplace" label={`Marketplace ${pluginCount}`} />
-          <Tab value="installed" label={`Installed ${installedPlugins.length}`} />
-          <Tab value="mcp" label={`MCP ${tooling.mcpServers.length}`} />
-          <Tab value="hooks" label={`Hooks ${hookCount}`} />
-          <Tab value="apps" label={`Apps ${tooling.apps.length}`} />
+          <Tab value="marketplace" label={t("settings.plugins.tab.marketplace", { count: pluginCount })} />
+          <Tab value="installed" label={t("settings.plugins.tab.installed", { count: installedPlugins.length })} />
+          <Tab value="mcp" label={t("settings.plugins.tab.mcp", { count: tooling.mcpServers.length })} />
+          <Tab value="hooks" label={t("settings.plugins.tab.hooks", { count: hookCount })} />
+          <Tab value="apps" label={t("settings.plugins.tab.apps", { count: tooling.apps.length })} />
         </Tabs>
         <Box sx={{ p: { xs: 1.25, sm: 1.5 } }}>
           {tab === "marketplace" && (
             <PluginMarketplaceSettings
               tooling={tooling}
+              t={t}
               pluginDetails={pluginDetails}
               pluginSkillPreviews={pluginSkillPreviews}
               pluginAuthNotices={pluginAuthNotices}
@@ -155,6 +159,7 @@ export function CodexPluginSettingsPanel({
           {tab === "installed" && (
             <InstalledPluginSettings
               installedPlugins={installedPlugins}
+              t={t}
               pluginDetails={pluginDetails}
               pluginSkillPreviews={pluginSkillPreviews}
               onReadPluginDetail={onReadPluginDetail}
@@ -167,6 +172,7 @@ export function CodexPluginSettingsPanel({
             <McpSettings
               activeThreadId={activeThreadId}
               tooling={tooling}
+              t={t}
               mcpResourceContents={mcpResourceContents}
               mcpOauthUrls={mcpOauthUrls}
               onReloadMcp={onReloadMcp}
@@ -175,8 +181,8 @@ export function CodexPluginSettingsPanel({
               onCallMcpTool={onCallMcpTool}
             />
           )}
-          {tab === "hooks" && <HooksSettings hookGroups={tooling.hookGroups} />}
-          {tab === "apps" && <PluginAppsSettings apps={tooling.apps} />}
+          {tab === "hooks" && <HooksSettings hookGroups={tooling.hookGroups} t={t} />}
+          {tab === "apps" && <PluginAppsSettings apps={tooling.apps} t={t} />}
         </Box>
       </Paper>
     </Stack>
@@ -185,6 +191,7 @@ export function CodexPluginSettingsPanel({
 
 function PluginMarketplaceSettings({
   tooling,
+  t,
   pluginDetails,
   pluginSkillPreviews,
   pluginAuthNotices,
@@ -195,6 +202,7 @@ function PluginMarketplaceSettings({
   onUninstallPlugin
 }: {
   tooling: ToolingState;
+  t: TranslateFn;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
   pluginAuthNotices: Record<string, PluginInstallAuthNotice>;
@@ -211,27 +219,28 @@ function PluginMarketplaceSettings({
     <Stack spacing={1.25}>
       <TextField
         size="small"
-        label="Search Codex plugins"
+        label={t("settings.plugins.search")}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
       />
       {filteredMarketplaces.length === 0 && (
         <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
-          No Codex plugins match the current inventory and search.
+          {t("settings.plugins.noMarketplaceMatch")}
         </Typography>
       )}
       {filteredMarketplaces.map((marketplace) => (
         <Paper key={marketplaceKey(marketplace)} variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
-          <MarketplaceHeader marketplace={marketplace} />
+          <MarketplaceHeader marketplace={marketplace} t={t} />
           <Stack spacing={1} sx={{ mt: 1 }}>
-            {marketplace.plugins.length === 0 && <Typography color="text.secondary">No plugins in this marketplace.</Typography>}
+            {marketplace.plugins.length === 0 && <Typography color="text.secondary">{t("settings.plugins.noMarketplacePlugins")}</Typography>}
             {marketplace.plugins.map((plugin) => (
               <PluginCard
                 key={plugin.id}
                 marketplace={marketplace}
                 plugin={plugin}
                 featured={tooling.featuredPluginIds.includes(plugin.id)}
+                t={t}
                 detail={pluginDetails[plugin.id]}
                 authNotice={pluginAuthNotices[plugin.id]}
                 skillPreviewByKey={pluginSkillPreviews}
@@ -251,6 +260,7 @@ function PluginMarketplaceSettings({
 
 function InstalledPluginSettings({
   installedPlugins,
+  t,
   pluginDetails,
   pluginSkillPreviews,
   onReadPluginDetail,
@@ -259,6 +269,7 @@ function InstalledPluginSettings({
   onUninstallPlugin
 }: {
   installedPlugins: Array<{ key: string; marketplace: PluginMarketplace; plugin: PluginEntry }>;
+  t: TranslateFn;
   pluginDetails: Record<string, PluginDetailEntry>;
   pluginSkillPreviews: Record<string, string>;
   onReadPluginDetail: Props["onReadPluginDetail"];
@@ -273,17 +284,17 @@ function InstalledPluginSettings({
     <Stack spacing={1.25}>
       <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-          Composer plugin mentions
+          {t("settings.plugins.composerMentionsTitle")}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Insert an installed and enabled Codex plugin mention into the main composer.
+          {t("settings.plugins.composerMentionsDescription")}
         </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
           <FormControl size="small" sx={{ flex: 1, minWidth: 180 }}>
-            <InputLabel>Installed plugin</InputLabel>
+            <InputLabel>{t("settings.plugins.installedPlugin")}</InputLabel>
             <Select
               value={selectedMention?.key ?? ""}
-              label="Installed plugin"
+              label={t("settings.plugins.installedPlugin")}
               onChange={(event) => setSelectedMentionKey(event.target.value)}
               disabled={installedPlugins.length === 0}
             >
@@ -300,13 +311,13 @@ function InstalledPluginSettings({
             disabled={!selectedMention}
             onClick={() => selectedMention && onInsertPluginMention(selectedMention.marketplace, selectedMention.plugin)}
           >
-            Insert mention
+            {t("settings.plugins.insertMention")}
           </Button>
         </Stack>
       </Paper>
       {installedPlugins.length === 0 && (
         <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
-          No installed Codex plugins are enabled for this workspace.
+          {t("settings.plugins.noInstalled")}
         </Typography>
       )}
       {installedPlugins.map((entry) => (
@@ -315,6 +326,7 @@ function InstalledPluginSettings({
           marketplace={entry.marketplace}
           plugin={entry.plugin}
           featured={false}
+          t={t}
           detail={pluginDetails[entry.plugin.id]}
           skillPreviewByKey={pluginSkillPreviews}
           onReadPluginDetail={onReadPluginDetail}
@@ -332,6 +344,7 @@ function PluginCard({
   marketplace,
   plugin,
   featured,
+  t,
   detail,
   authNotice,
   skillPreviewByKey,
@@ -344,6 +357,7 @@ function PluginCard({
   marketplace: PluginMarketplace;
   plugin: PluginEntry;
   featured: boolean;
+  t: TranslateFn;
   detail?: PluginDetailEntry;
   authNotice?: PluginInstallAuthNotice;
   skillPreviewByKey: Record<string, string>;
@@ -375,31 +389,31 @@ function PluginCard({
         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent={{ xs: "flex-start", md: "flex-end" }}>
           {plugin.installed ? (
             <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => onUninstallPlugin(plugin)}>
-              Uninstall
+              {t("settings.plugins.uninstall")}
             </Button>
           ) : (
             <Button size="small" variant="contained" startIcon={<DownloadIcon />} disabled={unavailable} onClick={() => onInstallPlugin(marketplace, plugin)}>
-              Install
+              {t("settings.plugins.install")}
             </Button>
           )}
           <Button size="small" onClick={() => onReadPluginDetail(marketplace, plugin)}>
-            Details
+            {t("settings.plugins.details")}
           </Button>
           <Button size="small" disabled={!plugin.installed || !plugin.enabled} onClick={() => onInsertPluginMention(marketplace, plugin)}>
-            Mention
+            {t("settings.plugins.mention")}
           </Button>
         </Stack>
       </Stack>
 
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-        <Chip size="small" label={plugin.installed ? "installed" : "available"} color={plugin.installed ? "success" : "default"} />
-        {plugin.installed && <Chip size="small" label={plugin.enabled ? "enabled" : "disabled"} />}
-        {featured && <Chip size="small" label="featured" color="primary" />}
-        {unavailable && <Chip size="small" label={plugin.availability} color="warning" />}
-        <Chip size="small" label={`auth ${plugin.authPolicy}`} variant="outlined" />
-        <Chip size="small" label={`install ${plugin.installPolicy}`} variant="outlined" />
-        {plugin.installPolicySource && <Chip size="small" label={plugin.installPolicySource} variant="outlined" />}
-        {plugin.category && <Chip size="small" label={plugin.category} />}
+        <Chip size="small" label={plugin.installed ? t("settings.plugins.installed") : t("settings.plugins.available")} color={plugin.installed ? "success" : "default"} />
+        {plugin.installed && <Chip size="small" label={plugin.enabled ? t("settings.plugins.enabled") : t("settings.plugins.disabled")} />}
+        {featured && <Chip size="small" label={t("settings.plugins.featured")} color="primary" />}
+        {unavailable && <Chip size="small" label={t("settings.plugins.unavailable", { reason: translatePluginAvailability(plugin.availability, t) })} color="warning" />}
+        <Chip size="small" label={t("settings.plugins.auth", { value: translatePluginAuthPolicy(plugin.authPolicy, t) })} variant="outlined" />
+        <Chip size="small" label={t("settings.plugins.installPolicy", { value: translatePluginInstallPolicy(plugin.installPolicy, t) })} variant="outlined" />
+        {plugin.installPolicySource && <Chip size="small" label={translatePluginPolicySource(plugin.installPolicySource, t)} variant="outlined" />}
+        {plugin.category && <Chip size="small" label={translatePluginCategory(plugin.category, t)} />}
         {(plugin.localVersion || plugin.version) && <Chip size="small" label={plugin.localVersion ?? plugin.version} />}
       </Stack>
 
@@ -416,25 +430,25 @@ function PluginCard({
       {plugin.capabilities.length > 0 && (
         <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
           {plugin.capabilities.slice(0, 6).map((capability) => (
-            <Chip key={capability} size="small" variant="outlined" label={capability} />
+            <Chip key={capability} size="small" variant="outlined" label={translatePluginCapability(capability, t)} />
           ))}
         </Stack>
       )}
 
       {plugin.websiteUrl && (
         <Button size="small" href={plugin.websiteUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />} sx={{ mt: 1 }}>
-          Website
+          {t("settings.plugins.website")}
         </Button>
       )}
 
       {authNotice && authNotice.apps.length > 0 && (
         <Box sx={{ mt: 1, borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
           <Typography variant="caption" sx={{ fontWeight: 800 }}>
-            Authentication needed after install
+            {t("settings.plugins.authenticationNeeded")}
           </Typography>
           <Stack spacing={0.75} sx={{ mt: 0.75 }}>
             {authNotice.apps.map((app) => (
-              <AppSummaryRow key={app.id} app={app} />
+              <AppSummaryRow key={app.id} app={app} t={t} />
             ))}
           </Stack>
         </Box>
@@ -445,6 +459,7 @@ function PluginCard({
           marketplace={marketplace}
           plugin={plugin}
           detail={detail}
+          t={t}
           skillPreviewByKey={skillPreviewByKey}
           onReadPluginSkill={onReadPluginSkill}
         />
@@ -457,12 +472,14 @@ function PluginDetailView({
   marketplace,
   plugin,
   detail,
+  t,
   skillPreviewByKey,
   onReadPluginSkill
 }: {
   marketplace: PluginMarketplace;
   plugin: PluginEntry;
   detail: PluginDetailEntry;
+  t: TranslateFn;
   skillPreviewByKey: Record<string, string>;
   onReadPluginSkill: Props["onReadPluginSkill"];
 }) {
@@ -474,22 +491,22 @@ function PluginDetailView({
         </Typography>
       )}
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-        <Chip size="small" label={`skills ${detail.skills.length}`} />
-        <Chip size="small" label={`hooks ${detail.hooks.length}`} />
-        <Chip size="small" label={`apps ${detail.apps.length}`} />
-        <Chip size="small" label={`templates ${detail.appTemplates.length}`} />
-        <Chip size="small" label={`mcp ${detail.mcpServers.length}`} />
-        {detail.scheduledTaskCount != null && <Chip size="small" label={`tasks ${detail.scheduledTaskCount}`} />}
+        <Chip size="small" label={t("settings.plugins.skills", { count: detail.skills.length })} />
+        <Chip size="small" label={t("settings.plugins.hooks", { count: detail.hooks.length })} />
+        <Chip size="small" label={t("settings.plugins.apps", { count: detail.apps.length })} />
+        <Chip size="small" label={t("settings.plugins.templates", { count: detail.appTemplates.length })} />
+        <Chip size="small" label={t("settings.plugins.mcp", { count: detail.mcpServers.length })} />
+        {detail.scheduledTaskCount != null && <Chip size="small" label={t("settings.plugins.tasks", { count: detail.scheduledTaskCount })} />}
       </Stack>
       {detail.shareUrl && (
         <Button size="small" href={detail.shareUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />} sx={{ mt: 1 }}>
-          Share
+          {t("settings.plugins.share")}
         </Button>
       )}
       {detail.apps.length > 0 && (
         <Stack spacing={0.75} sx={{ mt: 1 }}>
           {detail.apps.map((app) => (
-            <AppSummaryRow key={app.id} app={app} />
+            <AppSummaryRow key={app.id} app={app} t={t} />
           ))}
         </Stack>
       )}
@@ -501,7 +518,7 @@ function PluginDetailView({
                 {template.name}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
-                {[template.category, template.reason && `unavailable ${template.reason}`].filter(Boolean).join(" / ")}
+                {[template.category, template.reason && t("settings.plugins.unavailable", { reason: template.reason })].filter(Boolean).join(" / ")}
               </Typography>
             </Box>
           ))}
@@ -515,10 +532,10 @@ function PluginDetailView({
               <Box key={skill.name} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
-                    {skill.name} {skill.enabled ? "" : "(disabled)"}
+                    {skill.name} {skill.enabled ? "" : `(${t("settings.plugins.disabled")})`}
                   </Typography>
                   <Button size="small" disabled={!skill.remoteReadable} onClick={() => onReadPluginSkill(marketplace, plugin, skill.name)}>
-                    Preview
+                    {t("settings.plugins.preview")}
                   </Button>
                 </Stack>
                 {skillPreviewByKey[previewKey] && (
@@ -538,6 +555,7 @@ function PluginDetailView({
 function McpSettings({
   activeThreadId,
   tooling,
+  t,
   mcpResourceContents,
   mcpOauthUrls,
   onReloadMcp,
@@ -547,6 +565,7 @@ function McpSettings({
 }: {
   activeThreadId: string | null;
   tooling: ToolingState;
+  t: TranslateFn;
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
   onReloadMcp: Props["onReloadMcp"];
@@ -562,7 +581,7 @@ function McpSettings({
   const submitToolCall = async (serverName: string, toolName: string, rawArgs: string): Promise<void> => {
     const key = toolCallKey(serverName, toolName);
     if (!activeThreadId) {
-      setToolErrors((current) => ({ ...current, [key]: "Select a conversation before calling an MCP tool." }));
+      setToolErrors((current) => ({ ...current, [key]: t("settings.plugins.selectConversationInfo") }));
       return;
     }
     setCallingTool(key);
@@ -582,20 +601,20 @@ function McpSettings({
       <Stack direction="row" alignItems="center" spacing={1}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-            MCP servers
+            {t("settings.plugins.mcpTitle")}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Servers are resolved from Codex config and enabled plugin selections.
+            {t("settings.plugins.mcpDescription")}
           </Typography>
         </Box>
         <Button size="small" startIcon={<RefreshIcon />} onClick={onReloadMcp}>
-          Reload MCP
+          {t("settings.plugins.reloadMcp")}
         </Button>
       </Stack>
-      {!activeThreadId && <Alert severity="info">Select a conversation to enable direct MCP tool calls.</Alert>}
+      {!activeThreadId && <Alert severity="info">{t("settings.plugins.selectConversationInfo")}</Alert>}
       {tooling.mcpServers.length === 0 && (
         <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
-          No MCP servers are currently configured or contributed by enabled plugins.
+          {t("settings.plugins.noMcpServers")}
         </Typography>
       )}
       {tooling.mcpServers.map((server) => {
@@ -613,20 +632,20 @@ function McpSettings({
                   </Typography>
                 )}
               </Box>
-              <Chip size="small" label={server.authStatus} color={server.authStatus === "notLoggedIn" ? "warning" : "default"} />
+              <Chip size="small" label={translateMcpAuthStatus(server.authStatus, t)} color={server.authStatus === "notLoggedIn" ? "warning" : "default"} />
             </Stack>
             <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-              <Chip size="small" label={`tools ${server.tools.length}`} />
-              <Chip size="small" label={`resources ${server.resources.length}`} />
-              <Chip size="small" label={`templates ${server.resourceTemplates.length}`} />
+              <Chip size="small" label={t("settings.plugins.count.tools", { count: server.tools.length })} />
+              <Chip size="small" label={t("settings.plugins.count.resources", { count: server.resources.length })} />
+              <Chip size="small" label={t("settings.plugins.templates", { count: server.resourceTemplates.length })} />
             </Stack>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
               <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => onStartMcpOauth(server.name)}>
-                OAuth
+                {t("settings.plugins.oauth")}
               </Button>
               {authUrl && (
                 <Button size="small" href={authUrl} target="_blank" rel="noreferrer">
-                  Auth URL
+                  {t("settings.plugins.authUrl")}
                 </Button>
               )}
             </Stack>
@@ -656,7 +675,7 @@ function McpSettings({
                       </Typography>
                       <TextField
                         size="small"
-                        label="Arguments JSON"
+                        label={t("settings.plugins.argumentsJson")}
                         multiline
                         minRows={3}
                         fullWidth
@@ -666,9 +685,9 @@ function McpSettings({
                       />
                       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                         <Button size="small" variant="contained" startIcon={<PlayArrowIcon />} disabled={disabled} onClick={() => void submitToolCall(server.name, tool.name, value)}>
-                          Call tool
+                          {t("settings.plugins.callTool")}
                         </Button>
-                        <Chip size="small" label={disabled ? "select conversation" : "ready"} color={disabled ? "warning" : "success"} />
+                        <Chip size="small" label={disabled ? t("settings.plugins.selectConversation") : t("settings.plugins.ready")} color={disabled ? "warning" : "success"} />
                       </Stack>
                       {toolErrors[key] && (
                         <Alert severity="error" sx={{ mt: 1 }}>
@@ -698,7 +717,7 @@ function McpSettings({
                           {resource.title ?? resource.name}
                         </Typography>
                         <Button size="small" disabled={!uri} onClick={() => uri && onReadMcpResource(server.name, uri)}>
-                          Read
+                          {t("settings.plugins.read")}
                         </Button>
                       </Stack>
                       {contents && (
@@ -718,7 +737,7 @@ function McpSettings({
   );
 }
 
-function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
+function HooksSettings({ hookGroups, t }: { hookGroups: HookGroup[]; t: TranslateFn }) {
   const hookCount = hookGroups.reduce((count, group) => count + group.hooks.length, 0);
 
   return (
@@ -726,17 +745,17 @@ function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
       <Stack direction="row" alignItems="center" spacing={1}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-            Codex hooks
+            {t("settings.plugins.hooksTitle")}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Hooks are resolved from Codex config and installed plugin contributions for the current workspace.
+            {t("settings.plugins.hooksDescription")}
           </Typography>
         </Box>
-        <Chip size="small" label={`${hookCount} hooks`} />
+        <Chip size="small" label={t("settings.plugins.hooks", { count: hookCount })} />
       </Stack>
       {hookCount === 0 && (
         <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
-          No Codex hooks are currently returned by the local engine for this workspace.
+          {t("settings.plugins.noHooks")}
         </Typography>
       )}
       {hookGroups.map((group) => (
@@ -747,7 +766,7 @@ function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
                 {group.cwd}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {group.hooks.length} hooks / {group.warnings.length} warnings / {group.errors.length} errors
+                {t("settings.plugins.hookSummary", { hooks: group.hooks.length, warnings: group.warnings.length, errors: group.errors.length })}
               </Typography>
             </Box>
             <Chip size="small" label={group.hooks.length} color={group.hooks.length ? "primary" : "default"} />
@@ -776,7 +795,7 @@ function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent={{ xs: "flex-start", sm: "flex-end" }}>
-                  <Chip size="small" label={hook.enabled ? "enabled" : "disabled"} color={hook.enabled ? "success" : "default"} />
+                  <Chip size="small" label={hook.enabled ? t("settings.plugins.enabled") : t("settings.plugins.disabled")} color={hook.enabled ? "success" : "default"} />
                   <Chip
                     size="small"
                     label={hook.trustStatus}
@@ -788,11 +807,11 @@ function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
 
               <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
                 <Chip size="small" label={hook.handlerType} />
-                <Chip size="small" label={hook.isManaged ? "managed" : "user"} variant="outlined" />
-                <Chip size="small" label={`source ${hook.source}`} variant="outlined" />
-                {hook.matcher && <Chip size="small" label={`matcher ${hook.matcher}`} variant="outlined" />}
-                {hook.timeoutSec != null && <Chip size="small" label={`timeout ${hook.timeoutSec}s`} variant="outlined" />}
-                {hook.pluginId && <Chip size="small" label={`plugin ${hook.pluginId}`} variant="outlined" />}
+                <Chip size="small" label={hook.isManaged ? t("settings.plugins.managed") : t("settings.plugins.user")} variant="outlined" />
+                <Chip size="small" label={t("settings.plugins.source", { value: hook.source })} variant="outlined" />
+                {hook.matcher && <Chip size="small" label={t("settings.plugins.matcher", { value: hook.matcher })} variant="outlined" />}
+                {hook.timeoutSec != null && <Chip size="small" label={t("settings.plugins.timeout", { value: hook.timeoutSec })} variant="outlined" />}
+                {hook.pluginId && <Chip size="small" label={t("settings.plugins.plugin", { value: hook.pluginId })} variant="outlined" />}
               </Stack>
 
               {hook.statusMessage && (
@@ -821,24 +840,24 @@ function HooksSettings({ hookGroups }: { hookGroups: HookGroup[] }) {
   );
 }
 
-function PluginAppsSettings({ apps }: { apps: PluginAppEntry[] }) {
+function PluginAppsSettings({ apps, t }: { apps: PluginAppEntry[]; t: TranslateFn }) {
   return (
     <Stack spacing={1.25}>
       {apps.length === 0 && (
         <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
-          No plugin apps are currently exposed by installed Codex plugins.
+          {t("settings.plugins.noApps")}
         </Typography>
       )}
       {apps.map((app) => (
         <Paper key={app.id} variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
-          <AppSummaryRow app={app} />
+          <AppSummaryRow app={app} t={t} />
         </Paper>
       ))}
     </Stack>
   );
 }
 
-function MarketplaceHeader({ marketplace }: { marketplace: PluginMarketplace }) {
+function MarketplaceHeader({ marketplace, t }: { marketplace: PluginMarketplace; t: TranslateFn }) {
   return (
     <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -851,7 +870,7 @@ function MarketplaceHeader({ marketplace }: { marketplace: PluginMarketplace }) 
           </Typography>
         )}
       </Box>
-      <Chip size="small" label={`${marketplace.plugins.length} plugins`} />
+      <Chip size="small" label={t("settings.plugins.count.plugins", { count: marketplace.plugins.length })} />
     </Stack>
   );
 }
@@ -874,7 +893,7 @@ function PluginLogo({ plugin }: { plugin: PluginEntry }) {
   );
 }
 
-function AppSummaryRow({ app }: { app: PluginAppEntry }) {
+function AppSummaryRow({ app, t }: { app: PluginAppEntry; t: TranslateFn }) {
   return (
     <Box sx={{ borderTop: "1px solid", borderColor: "divider", pt: 0.75 }}>
       <Stack direction="row" spacing={1} alignItems="center">
@@ -883,14 +902,14 @@ function AppSummaryRow({ app }: { app: PluginAppEntry }) {
             {app.name}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
-            {[app.category, app.developer, app.isEnabled === false ? "disabled" : null, app.isAccessible === false ? "needs access" : null]
+            {[app.category, app.developer, app.isEnabled === false ? t("settings.plugins.disabled") : null, app.isAccessible === false ? t("settings.plugins.needsAccess") : null]
               .filter(Boolean)
               .join(" / ")}
           </Typography>
         </Box>
         {app.installUrl && (
           <Button size="small" href={app.installUrl} target="_blank" rel="noreferrer" endIcon={<OpenInNewIcon />}>
-            Connect
+            {t("settings.plugins.connect")}
           </Button>
         )}
       </Stack>
@@ -901,6 +920,91 @@ function AppSummaryRow({ app }: { app: PluginAppEntry }) {
       )}
     </Box>
   );
+}
+
+function translateMcpAuthStatus(status: string, t: TranslateFn): string {
+  switch (status) {
+    case "unsupported":
+      return t("settings.plugins.authStatus.unsupported");
+    case "notLoggedIn":
+      return t("settings.plugins.authStatus.notLoggedIn");
+    case "bearerToken":
+      return t("settings.plugins.authStatus.bearerToken");
+    case "oAuth":
+      return t("settings.plugins.authStatus.oAuth");
+    default:
+      return t("settings.plugins.authStatus.unknown");
+  }
+}
+
+function translatePluginAvailability(value: string, t: TranslateFn): string {
+  switch (value) {
+    case "AVAILABLE":
+      return t("settings.plugins.availability.AVAILABLE");
+    case "DISABLED_BY_ADMIN":
+      return t("settings.plugins.availability.DISABLED_BY_ADMIN");
+    default:
+      return value;
+  }
+}
+
+function translatePluginAuthPolicy(value: string, t: TranslateFn): string {
+  switch (value) {
+    case "ON_INSTALL":
+      return t("settings.plugins.authPolicy.ON_INSTALL");
+    case "ON_USE":
+      return t("settings.plugins.authPolicy.ON_USE");
+    default:
+      return value;
+  }
+}
+
+function translatePluginInstallPolicy(value: string, t: TranslateFn): string {
+  switch (value) {
+    case "NOT_AVAILABLE":
+      return t("settings.plugins.installPolicyValue.NOT_AVAILABLE");
+    case "AVAILABLE":
+      return t("settings.plugins.installPolicyValue.AVAILABLE");
+    case "INSTALLED_BY_DEFAULT":
+      return t("settings.plugins.installPolicyValue.INSTALLED_BY_DEFAULT");
+    default:
+      return value;
+  }
+}
+
+function translatePluginPolicySource(value: string, t: TranslateFn): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("workspace_setting")) {
+    return t("settings.plugins.policySource.WORKSPACE_SETTING");
+  }
+  if (normalized.includes("implicit_canonical_app")) {
+    return t("settings.plugins.policySource.IMPLICIT_CANONICAL_APP");
+  }
+  if (normalized.includes("developertools") || normalized.includes("developer tools")) {
+    return t("settings.plugins.policySource.DeveloperTools");
+  }
+  return value;
+}
+
+function translatePluginCategory(value: string, t: TranslateFn): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("developertools") || normalized.includes("developer tools")) {
+    return t("settings.plugins.category.DeveloperTools");
+  }
+  return value;
+}
+
+function translatePluginCapability(value: string, t: TranslateFn): string {
+  switch (value) {
+    case "Interactive":
+      return t("settings.plugins.capability.Interactive");
+    case "Read":
+      return t("settings.plugins.capability.Read");
+    case "Write":
+      return t("settings.plugins.capability.Write");
+    default:
+      return value;
+  }
 }
 
 function installedPluginEntries(tooling: ToolingState): Array<{ key: string; marketplace: PluginMarketplace; plugin: PluginEntry }> {
