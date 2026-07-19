@@ -54,6 +54,18 @@ The verified baseline for this landing target is:
   - `pnpm exec playwright test tests/e2e/workbench.spec.ts` (22/22 Chromium tests)
   - `pnpm --filter @codex-ui/web build`
   - screenshot evidence: `snapshot/slash-command-status-goal-plan.png`
+- `/new danger` follow-up verification:
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "routes /new danger through the danger confirmation flow"`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "routes main slash commands|routes /new danger through the danger confirmation flow"`
+  - `pnpm --filter @codex-ui/web typecheck`
+  - `pnpm --filter @codex-ui/web build`
+- Codex config schema follow-up verification:
+  - `pnpm sync:codex-config-schema`
+  - `pnpm check:codex-config-schema`
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "shows dangerous permission audit records|saves skill extra roots|uses installed-only plugin mentions|browses and edits files|keeps workspace files explorer|runs terminal commands|matches desktop and mobile workbench screenshots"`
+- Playwright stability verification:
+  - Playwright now runs the managed web server through `pnpm --filter @codex-ui/web build && pnpm --filter @codex-ui/web preview`.
+  - `pnpm exec playwright test tests/e2e/workbench.spec.ts` (23/23 Chromium tests)
 
 The Slash Command parity slice is implemented and verified.
 

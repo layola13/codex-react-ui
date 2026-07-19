@@ -1,5 +1,36 @@
 # Progress
 
+## 2026-07-19
+
+- Playwright verification stability follow-up:
+  - Changed Playwright's managed web server from `vite dev` to `pnpm --filter @codex-ui/web build && pnpm --filter @codex-ui/web preview` so the long e2e suite runs against the production bundle instead of a hot-reload dev server.
+  - This resolved the prior full-suite `ERR_CONNECTION_REFUSED` failure mode on later tests that appeared after the dev server exited mid-run.
+  - Verification passed:
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts` (23/23 Chromium tests)
+
+## 2026-07-19
+
+- Schema and verification follow-up:
+  - Re-synced `apps/web/src/state/codexConfigSchema.json` from `/root/projects/codex/codex-rs/core/config.schema.json` after `pnpm check:codex-config-schema` reported the bundled schema was stale.
+  - Re-ran the schema gate and confirmed the bundled schema is current: 93 top-level settings.
+  - Re-ran the full Playwright suite after the sync; the suite's first pass hit a transient `ERR_CONNECTION_REFUSED` on several later tests, but the affected tests passed when re-run individually, so the code change itself was not the failure source.
+  - Verification passed:
+    - `pnpm sync:codex-config-schema`
+    - `pnpm check:codex-config-schema`
+    - `pnpm --filter @codex-ui/web typecheck`
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "shows dangerous permission audit records|saves skill extra roots|uses installed-only plugin mentions|browses and edits files|keeps workspace files explorer|runs terminal commands|matches desktop and mobile workbench screenshots"`
+    - `pnpm --filter @codex-ui/web build`
+
+## 2026-07-19
+
+- Slash Command parity follow-up:
+  - Tightened the `/new danger` tab-selection behavior so opening the Danger Bypass confirmation from an existing thread presents the pending `New task` tab as selected and does not keep the previous thread tab visually active.
+  - Updated the focused Playwright regression to assert the tab state while the confirmation dialog is open, before any `thread/start` or `turn/start` message is emitted.
+  - Verification passed:
+    - `pnpm exec playwright test tests/e2e/workbench.spec.ts -g "routes /new danger through the danger confirmation flow"`
+    - `pnpm --filter @codex-ui/web typecheck`
+
 ## 2026-07-18
 
 - Slash Command parity follow-up:

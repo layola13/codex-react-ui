@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 const mockProvider = {
@@ -98,6 +98,16 @@ function withoutTestAllOf(schema: TestJsonSchema): TestJsonSchema {
   return rest;
 }
 
+async function confirmWorkspace(page: Page, cwd = "~/"): Promise<void> {
+  const panel = page.getByTestId("workspace-selection-panel");
+  if (!(await panel.isVisible({ timeout: 1000 }).catch(() => false))) {
+    return;
+  }
+  await panel.getByLabel("Workspace").fill(cwd);
+  await panel.getByRole("button", { name: "Use workspace" }).click();
+  await expect(panel).toHaveCount(0);
+}
+
 let providerApiList = [mockProvider];
 let auditApiEvents: Array<{
   id: string;
@@ -120,6 +130,7 @@ test.beforeEach(async ({ page }) => {
 
   await page.addInitScript(() => {
     const outbound = ((window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound = []);
+    const sockets = ((window as unknown as { __codexUiSockets: unknown[] }).__codexUiSockets = []);
     let threadStartCount = 0;
     let turnStartCount = 0;
     let tokenTotal = 0;
@@ -142,6 +153,7 @@ test.beforeEach(async ({ page }) => {
 
       public constructor(public readonly url: string) {
         super();
+        sockets.push(this);
         setTimeout(() => {
           this.readyState = MockWebSocket.OPEN;
           const event = new Event("open");
@@ -856,7 +868,9 @@ test.beforeEach(async ({ page }) => {
         case "fs/readDirectory": {
           const path = (params as { path?: string } | undefined)?.path ?? "/root/projects";
           const entries =
-            path === "/root/projects"
+            path === "/root"
+              ? [{ fileName: "projects", isDirectory: true, isFile: false }]
+              : path === "/root/projects"
               ? [
                   { fileName: "src", isDirectory: true, isFile: false },
                   { fileName: "README.md", isDirectory: false, isFile: true }
@@ -1032,7 +1046,7 @@ test("creates a Full Auto chat through the New Chat danger dialog", async ({ pag
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Create Full Auto chat");
   await expect(dialog).toContainText("Current cwd");
-  await expect(dialog).toContainText("/root/projects");
+  await expect(dialog).toContainText("~/");
   await expect(dialog).toContainText("Model");
   await expect(dialog).toContainText("gpt-5.6-sol");
   await expect(dialog).toContainText("Reasoning");
@@ -1059,6 +1073,7 @@ test("creates a Full Auto chat through the New Chat danger dialog", async ({ pag
 
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("danger-session-badge")).toContainText("Full Auto");
+  await confirmWorkspace(page);
 
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Run this in full auto");
   await page.getByRole("button", { name: "Send" }).click();
@@ -1143,6 +1158,21 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   });
 });
 
+test("reconnects websocket after a disconnect and refreshes basics", async ({ page }) => {
+  await page.goto("/");
+  await page.waitForFunction(() => (window as unknown as { __codexUiSockets?: unknown[] }).__codexUiSockets?.length === 1);
+  await page.evaluate(() => {
+    (window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound.length = 0;
+    const socket = (window as unknown as { __codexUiSockets: Array<{ close: () => void }> }).__codexUiSockets[0];
+    socket.close();
+  });
+  await page.waitForFunction(() => (window as unknown as { __codexUiSockets?: unknown[] }).__codexUiSockets?.length >= 2);
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string }> }).__codexUiOutbound;
+    return messages?.some((message) => message.type === "rpc" && message.method === "account/read");
+  });
+});
+
 test("applies user theme media plugins to the default workbench", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   const heroImage =
@@ -1154,6 +1184,7 @@ test("applies user theme media plugins to the default workbench", async ({ page 
   await expect(page.getByTestId("default-workbench-empty")).toBeVisible();
   await page.getByTestId("default-prompt-card-explore").click();
   await expect(page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...")).toHaveValue(/Explore this repository/);
+  await expect(page.getByTestId("default-workbench-empty")).toHaveCount(0);
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Appearance settings").click();
@@ -1172,7 +1203,7 @@ test("applies user theme media plugins to the default workbench", async ({ page 
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
 
-  await expect(page.getByTestId("default-workbench-empty")).toBeVisible();
+  await expect(page.getByTestId("default-workbench-empty")).toHaveCount(0);
   await expect(page.getByTestId("theme-pet-dock")).toBeVisible();
   await page.screenshot({
     path: "snapshot/theme-plugin-applied.png",
@@ -1296,6 +1327,7 @@ test("supports uploaded background images and user theme switching", async ({ pa
 
 test("supports drag and drop image attachments in the composer", async ({ page }) => {
   await page.goto("/");
+  await confirmWorkspace(page);
 
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
   const dataTransfer = await page.evaluateHandle(() => {
@@ -1439,6 +1471,7 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
 test("routes main slash commands to fast status goal and plan UI", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
+  await confirmWorkspace(page);
 
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
   const send = page.getByRole("button", { name: "Send" });
@@ -1571,6 +1604,7 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
 test("routes /new danger through the danger confirmation flow", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
+  await confirmWorkspace(page);
   await expect(page.getByRole("tab", { name: "Mock thread" })).toBeVisible();
 
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
@@ -1586,8 +1620,8 @@ test("routes /new danger through the danger confirmation flow", async ({ page })
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("Create Full Auto chat");
   await expect(page.getByRole("button", { name: "Create Full Auto Chat" })).toBeDisabled();
-  await expect(page.getByRole("tab", { name: "New task" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "false");
+  await expect(page.getByRole("tab", { name: "New task", includeHidden: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Mock thread", includeHidden: true })).toHaveAttribute("aria-selected", "false");
 
   let outbound = await page.evaluate(
     () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { sandbox?: string; approvalPolicy?: string } }> }).__codexUiOutbound ?? []
@@ -1600,6 +1634,7 @@ test("routes /new danger through the danger confirmation flow", async ({ page })
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("danger-session-badge")).toContainText("Full Auto");
   await expect(page.getByRole("tab", { name: "New task" })).toHaveAttribute("aria-selected", "true");
+  await confirmWorkspace(page);
 
   await composer.fill("Start danger slash chat");
   await send.click();
@@ -1906,6 +1941,7 @@ test("exposes every bundled Codex schema setting in All config", async ({ page }
 
 test("resolves chained provider aliases before starting a turn", async ({ page }) => {
   await page.goto("/");
+  await confirmWorkspace(page);
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Relay settings").click();
@@ -1959,6 +1995,7 @@ test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
 
 test("manages Codex plugins and MCP servers from Settings with slash command entry points", async ({ page }) => {
   await page.goto("/");
+  await confirmWorkspace(page);
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Plugins settings").click();
@@ -2126,6 +2163,7 @@ test("saves skill extra roots and previews local markdown", async ({ page }) => 
 
 test("uses installed-only plugin mentions and shows plugin app auth state", async ({ page }) => {
   await page.goto("/");
+  await confirmWorkspace(page);
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Plugins settings").click();
   await page.getByRole("tab", { name: "Installed 1" }).click();
@@ -2175,6 +2213,7 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
 
 test("browses and edits files through filesystem RPCs", async ({ page }) => {
   await page.goto("/");
+  await confirmWorkspace(page, "/root/projects");
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Workspace settings").click();
 
@@ -2207,6 +2246,7 @@ test("browses and edits files through filesystem RPCs", async ({ page }) => {
 
 test("keeps workspace files explorer and editor panes resizable", async ({ page }) => {
   await page.goto("/");
+  await confirmWorkspace(page, "/root/projects");
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Workspace settings").click();
   await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();

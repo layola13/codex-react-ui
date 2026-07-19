@@ -2,6 +2,11 @@
 
 ## Now
 
+- [x] Verify and fix the reported blank homepage with a real browser run; prioritize service worker/cache issues and any console errors.
+- [x] Change the PWA service worker to avoid cache-first HTML app-shell responses, so stale cached `index.html` cannot white-screen the latest build.
+- [x] Rename composer status icon accessibility text so it no longer collides with the real Send button.
+- [x] Prevent the first homepage viewport from creating a browser-level vertical scrollbar; keep scrolling inside workbench panels.
+- [x] Add PNG Codex PWA icons to the manifest so Chrome can show the native URL-bar install affordance.
 - [ ] Fix New Chat startup flow so every new conversation first shows a workspace selection panel, defaults to `~/`, and blocks sending until the user confirms the workspace.
 - [ ] Keep the composer text area editable while Codex is not ready or workspace selection is pending; only the Send action should be blocked with a clear inline reason.
 - [ ] Show the current relay/provider in the main UI so users can immediately see which middle relay/channel is active.

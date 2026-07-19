@@ -6,11 +6,12 @@ import LockOpenIcon from "@mui/icons-material/LockOpen";
 import ShieldIcon from "@mui/icons-material/Shield";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import type { PermissionPresetId } from "@codex-ui/shared";
+import type { TranslateFn } from "../i18n";
 
 type NewChatMode = {
   id: PermissionPresetId;
-  label: string;
-  description: string;
+  labelKey: Parameters<TranslateFn>[0];
+  descriptionKey: Parameters<TranslateFn>[0];
   icon: ReactNode;
   danger?: boolean;
 };
@@ -19,34 +20,36 @@ type Props = {
   currentPermission: PermissionPresetId;
   label?: string;
   size?: "small" | "medium";
+  t: TranslateFn;
   onNew: (permission: PermissionPresetId) => void;
 };
 
 const newChatModes: NewChatMode[] = [
   {
     id: "workspaceAsk",
-    label: "Workspace Chat",
-    description: "workspace-write + approval prompts",
+    labelKey: "newChat.workspace",
+    descriptionKey: "newChat.workspaceDescription",
     icon: <ShieldIcon fontSize="small" color="primary" />
   },
   {
     id: "fullAsk",
-    label: "Full Access",
-    description: "danger-full-access + approval prompts",
+    labelKey: "newChat.fullAccess",
+    descriptionKey: "newChat.fullAccessDescription",
     icon: <LockOpenIcon fontSize="small" color="warning" />
   },
   {
     id: "dangerBypass",
-    label: "Full Access / Danger Bypass",
-    description: "danger-full-access + approvalPolicy never",
+    labelKey: "newChat.danger",
+    descriptionKey: "newChat.dangerDescription",
     icon: <WarningAmberIcon fontSize="small" color="error" />,
     danger: true
   }
 ];
 
-export function NewChatButton({ currentPermission, label = "New Chat", size = "small", onNew }: Props) {
+export function NewChatButton({ currentPermission, label, size = "small", t, onNew }: Props) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const open = Boolean(anchorEl);
+  const buttonLabel = label ?? t("newChat.label");
 
   function openMenu(event: MouseEvent<HTMLButtonElement>) {
     setAnchorEl(event.currentTarget);
@@ -63,11 +66,11 @@ export function NewChatButton({ currentPermission, label = "New Chat", size = "s
 
   return (
     <>
-      <ButtonGroup size={size} variant="outlined" aria-label="New Chat">
+      <ButtonGroup size={size} variant="outlined" aria-label={t("newChat.aria")}>
         <Button startIcon={<AddIcon />} onClick={() => onNew(currentPermission)}>
-          {label}
+          {buttonLabel}
         </Button>
-        <Button aria-label="Choose New Chat mode" aria-haspopup="menu" aria-expanded={open ? "true" : undefined} onClick={openMenu} sx={{ px: 0.75 }}>
+        <Button aria-label={t("newChat.chooseMode")} aria-haspopup="menu" aria-expanded={open ? "true" : undefined} onClick={openMenu} sx={{ px: 0.75 }}>
           <ArrowDropDownIcon fontSize="small" />
         </Button>
       </ButtonGroup>
@@ -75,17 +78,17 @@ export function NewChatButton({ currentPermission, label = "New Chat", size = "s
         anchorEl={anchorEl}
         open={open}
         onClose={closeMenu}
-        MenuListProps={{ "aria-label": "New Chat modes", dense: true }}
+        MenuListProps={{ "aria-label": t("newChat.modes"), dense: true }}
         PaperProps={{ sx: { minWidth: 300 } }}
       >
         {newChatModes.map((mode) => (
           <MenuItem key={mode.id} selected={currentPermission === mode.id} onClick={() => choose(mode.id)}>
             <ListItemIcon>{mode.icon}</ListItemIcon>
             <ListItemText
-              primary={mode.label}
+              primary={t(mode.labelKey)}
               secondary={
                 <Typography variant="caption" color={mode.danger ? "error.main" : "text.secondary"}>
-                  {mode.description}
+                  {t(mode.descriptionKey)}
                 </Typography>
               }
             />

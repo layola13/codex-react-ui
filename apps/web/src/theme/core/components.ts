@@ -6,19 +6,27 @@ export function components(palette: ThemePalette, divider: string): Components<T
   return {
     MuiCssBaseline: {
       styleOverrides: {
+        html: {
+          height: "100%",
+          overflow: "hidden"
+        },
         body: {
           backgroundColor: palette.defaultBg,
           color: palette.textPrimary,
           margin: 0,
           fontFamily: '"Plus Jakarta Sans", "Manrope", sans-serif',
-          minHeight: "100vh",
+          height: "100%",
+          minHeight: "100%",
+          overflow: "hidden",
           backgroundImage: palette.dark
             ? "radial-gradient(ellipse at top right, rgba(97, 243, 243, 0.05), transparent 70%)"
             : "radial-gradient(ellipse at top right, rgba(0, 54, 26, 0.03), transparent 70%)",
           backgroundAttachment: "fixed"
         },
         "#root": {
-          minHeight: "100vh"
+          height: "100%",
+          minHeight: 0,
+          overflow: "hidden"
         },
         "*": {
           boxSizing: "border-box"

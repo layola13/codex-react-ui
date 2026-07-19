@@ -98,6 +98,7 @@ import type {
 import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
+import type { TranslateFn, TranslationKey } from "../i18n";
 
 export type ReasoningOption = {
   value: string;
@@ -151,6 +152,7 @@ type Props = {
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
   auditEvents: DangerousPermissionAuditEvent[];
+  t: TranslateFn;
   onClose: () => void;
   onThemeModeChange: (mode: ThemeMode) => void;
   onInstallThemePlugin: (id: ThemeId) => void;
@@ -191,17 +193,17 @@ type Props = {
   onUninstallPlugin: (plugin: PluginEntry) => void;
 };
 
-const NAV_ITEMS: Array<{ id: SettingsSectionId; label: string; icon: ReactNode }> = [
-  { id: "codex", label: "Codex Engine", icon: <StorageIcon fontSize="small" /> },
-  { id: "appearance", label: "Appearance", icon: <ColorLensIcon fontSize="small" /> },
-  { id: "layout", label: "Layout", icon: <DashboardCustomizeIcon fontSize="small" /> },
-  { id: "workspace", label: "Workspace", icon: <StorageIcon fontSize="small" /> },
-  { id: "session", label: "Session", icon: <TuneIcon fontSize="small" /> },
-  { id: "relay", label: "Relay", icon: <MemoryIcon fontSize="small" /> },
-  { id: "skills", label: "Skills", icon: <PsychologyIcon fontSize="small" /> },
-  { id: "plugins", label: "Plugins", icon: <ExtensionIcon fontSize="small" /> },
-  { id: "pet", label: "Pet Dock", icon: <PetsIcon fontSize="small" /> },
-  { id: "privacy", label: "Privacy", icon: <SecurityIcon fontSize="small" /> }
+const NAV_ITEMS: Array<{ id: SettingsSectionId; labelKey: TranslationKey; icon: ReactNode }> = [
+  { id: "codex", labelKey: "settings.nav.codex", icon: <StorageIcon fontSize="small" /> },
+  { id: "appearance", labelKey: "settings.nav.appearance", icon: <ColorLensIcon fontSize="small" /> },
+  { id: "layout", labelKey: "settings.nav.layout", icon: <DashboardCustomizeIcon fontSize="small" /> },
+  { id: "workspace", labelKey: "settings.nav.workspace", icon: <StorageIcon fontSize="small" /> },
+  { id: "session", labelKey: "settings.nav.session", icon: <TuneIcon fontSize="small" /> },
+  { id: "relay", labelKey: "settings.nav.relay", icon: <MemoryIcon fontSize="small" /> },
+  { id: "skills", labelKey: "settings.nav.skills", icon: <PsychologyIcon fontSize="small" /> },
+  { id: "plugins", labelKey: "settings.nav.plugins", icon: <ExtensionIcon fontSize="small" /> },
+  { id: "pet", labelKey: "settings.nav.pet", icon: <PetsIcon fontSize="small" /> },
+  { id: "privacy", labelKey: "settings.nav.privacy", icon: <SecurityIcon fontSize="small" /> }
 ];
 
 export function SettingsDrawer({
@@ -238,6 +240,7 @@ export function SettingsDrawer({
   mcpResourceContents,
   mcpOauthUrls,
   auditEvents,
+  t,
   onClose,
   onThemeModeChange,
   onInstallThemePlugin,
@@ -321,15 +324,17 @@ export function SettingsDrawer({
 
   return (
     <Drawer
-      anchor="right"
+      anchor="left"
       open={open}
       onClose={onClose}
       PaperProps={{
         sx: {
-          width: { xs: "100%", sm: "min(960px, 100vw)" },
+          width: "100vw",
+          height: "100vh",
           maxWidth: "100vw",
+          maxHeight: "100vh",
           bgcolor: "background.default",
-          borderLeft: "1px solid",
+          borderRight: "1px solid",
           borderColor: "divider"
         }
       }}
@@ -354,14 +359,14 @@ export function SettingsDrawer({
           <SettingsSuggestIcon color="primary" />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="h6" sx={{ fontSize: 18, fontWeight: 800 }}>
-              Settings
+              {t("settings.title")}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Live Codex user config, theme plugins, and resizable workbench preferences
+              {t("settings.subtitle")}
             </Typography>
           </Box>
-          <Button size="small" startIcon={<CloseIcon />} onClick={onClose} aria-label="Close settings">
-            Close
+          <Button size="small" startIcon={<CloseIcon />} onClick={onClose} aria-label={t("settings.close")}>
+            {t("settings.close")}
           </Button>
         </Stack>
 
@@ -382,27 +387,30 @@ export function SettingsDrawer({
             }}
           >
             <List dense disablePadding sx={{ py: 1 }}>
-              {NAV_ITEMS.map((item) => (
+              {NAV_ITEMS.map((item) => {
+                const label = t(item.labelKey);
+                return (
                 <ListItemButton
                   key={item.id}
                   selected={section === item.id}
                   onClick={() => setSection(item.id)}
-                  aria-label={`Open ${item.label} settings`}
+                  aria-label={t("settings.openSection", { section: label })}
                   sx={{ mx: 1, borderRadius: 1 }}
                 >
                   <ListItemIcon sx={{ minWidth: 34 }}>{item.icon}</ListItemIcon>
                   <ListItemText
-                    primary={item.label}
+                    primary={label}
                     primaryTypographyProps={{ variant: "body2", fontWeight: section === item.id ? 700 : 600 }}
                   />
                 </ListItemButton>
-              ))}
+                );
+              })}
             </List>
           </Box>
 
           <Box sx={{ overflow: "auto", px: { xs: 1.5, sm: 2.5 }, py: 2, bgcolor: "background.default" }}>
             {section === "codex" && (
-              <SettingsSection icon={<StorageIcon fontSize="small" />} title="Codex Engine Config" subtitle="Synced through config/read and config/batchWrite">
+              <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.codex")} subtitle="Synced through config/read and config/batchWrite">
                 <SettingRow
                   title="User config sync"
                   description="Curated fields write into the real Codex user config.toml with reloadUserConfig. Theme skins and API keys never enter this path."
@@ -519,7 +527,7 @@ export function SettingsDrawer({
             )}
 
             {section === "appearance" && (
-              <SettingsSection icon={<ColorLensIcon fontSize="small" />} title="Appearance" subtitle="Official skins plus installable and user-defined theme plugins">
+              <SettingsSection icon={<ColorLensIcon fontSize="small" />} title={t("settings.section.appearance")} subtitle="Official skins plus installable and user-defined theme plugins">
                 <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
                   <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 850 }}>
                     Theme
@@ -577,7 +585,7 @@ export function SettingsDrawer({
             )}
 
             {section === "layout" && (
-              <SettingsSection icon={<DashboardCustomizeIcon fontSize="small" />} title="Layout" subtitle="Main workbench layout preferences; the right runtime workspace opens from the toolbar">
+              <SettingsSection icon={<DashboardCustomizeIcon fontSize="small" />} title={t("settings.section.layout")} subtitle="Main workbench layout preferences; the right runtime workspace opens from the toolbar">
                 <SettingRow title="History panel" description="Show or hide the left conversation panel. Width is draggable on desktop.">
                   <Switch
                     checked={leftPanelVisible}
@@ -595,7 +603,7 @@ export function SettingsDrawer({
             )}
 
             {section === "workspace" && (
-              <SettingsSection icon={<StorageIcon fontSize="small" />} title="Workspace Files" subtitle="Browse and edit workspace files from Settings">
+              <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.workspace")} subtitle="Browse and edit workspace files from Settings">
                 <WorkspaceFilesSettingsPanel
                   cwd={cwd}
                   fileDirectories={fileDirectories}
@@ -611,7 +619,7 @@ export function SettingsDrawer({
             )}
 
             {section === "session" && (
-              <SettingsSection icon={<TuneIcon fontSize="small" />} title="Session Model And Reasoning" subtitle="Per-session overrides used by the next turn">
+              <SettingsSection icon={<TuneIcon fontSize="small" />} title={t("settings.section.session")} subtitle="Per-session overrides used by the next turn">
                 <SettingRow title="Selected model" description="Session model for the next turn (toolbar). Engine default is managed in Codex Engine Config.">
                   <Chip size="small" label={selectedModel || "Not selected"} />
                 </SettingRow>
@@ -660,7 +668,7 @@ export function SettingsDrawer({
             )}
 
             {section === "skills" && (
-              <SettingsSection icon={<PsychologyIcon fontSize="small" />} title="Skills" subtitle="Skill roots, enablement, and local markdown previews">
+              <SettingsSection icon={<PsychologyIcon fontSize="small" />} title={t("settings.section.skills")} subtitle="Skill roots, enablement, and local markdown previews">
                 <SkillsSettingsPanel
                   tooling={tooling}
                   extraRoots={skillExtraRoots}
@@ -673,7 +681,7 @@ export function SettingsDrawer({
             )}
 
             {section === "plugins" && (
-              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title="Codex Plugins" subtitle="Marketplace plugins, installed plugin mentions, hooks, apps, and MCP servers">
+              <SettingsSection icon={<ExtensionIcon fontSize="small" />} title={t("settings.section.plugins")} subtitle="Marketplace plugins, installed plugin mentions, hooks, apps, and MCP servers">
                 <CodexPluginSettingsPanel
                   key={`${open ? "open" : "closed"}:${initialPluginTab}`}
                   activeThreadId={activeThreadId}
@@ -700,7 +708,7 @@ export function SettingsDrawer({
             )}
 
             {section === "pet" && (
-              <SettingsSection icon={<PetsIcon fontSize="small" />} title="Pet Dock" subtitle="Optional companion surface independent of chat layout">
+              <SettingsSection icon={<PetsIcon fontSize="small" />} title={t("settings.section.pet")} subtitle="Optional companion surface independent of chat layout">
                 <SettingRow title="Three.js pet dock" description="A small independent scene can be enabled for a companion/status surface.">
                   <FormControlLabel
                     control={<Switch checked={petDockEnabled} onChange={(event) => onPetDockEnabledChange(event.target.checked)} />}
@@ -712,7 +720,7 @@ export function SettingsDrawer({
             )}
 
             {section === "privacy" && (
-              <SettingsSection icon={<SecurityIcon fontSize="small" />} title="Privacy And Safety" subtitle="Secrets and dangerous mode stay audited">
+              <SettingsSection icon={<SecurityIcon fontSize="small" />} title={t("settings.section.privacy")} subtitle="Secrets and dangerous mode stay audited">
                 <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
                   <Stack spacing={1.25}>
                     <ProfileSettingsPanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />

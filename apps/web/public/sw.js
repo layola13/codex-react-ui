@@ -1,5 +1,5 @@
-const CACHE_NAME = "codex-react-ui-pwa-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE_NAME = "codex-react-ui-pwa-v2";
+const APP_SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -27,13 +27,35 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws")) {
     return;
   }
+
+  const isNavigation =
+    request.mode === "navigate" ||
+    request.destination === "document" ||
+    (request.headers.get("accept") ?? "").includes("text/html");
+
+  if (isNavigation) {
+    event.respondWith(
+      fetch(request).catch(
+        () =>
+          new Response(
+            '<!doctype html><meta charset="utf-8"><title>Codex UI offline</title><body>Codex UI is offline. Reconnect and refresh.</body>',
+            { headers: { "Content-Type": "text/html; charset=utf-8" } }
+          )
+      )
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(request).then((cached) =>
-      cached ?? fetch(request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+    caches.match(request).then((cached) => {
+      const fetched = fetch(request).then((response) => {
+        if (response.ok && response.type === "basic") {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
         return response;
-      })
-    )
+      });
+      return cached ?? fetched;
+    })
   );
 });

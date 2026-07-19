@@ -307,6 +307,11 @@ export const initialClientState: ClientState = {
 
 export class CodexSocketClient extends EventTarget {
   private socket: WebSocket | null = null;
+  private token: string | null = null;
+  private reconnectTimer: number | null = null;
+  private reconnectAttempt = 0;
+  private connectPromise: Promise<void> | null = null;
+  private closedByClient = false;
   private nextClientId = 1;
   private pending = new Map<
     string,
@@ -317,21 +322,61 @@ export class CodexSocketClient extends EventTarget {
   >();
 
   public async connect(token: string): Promise<void> {
-    if (this.socket && this.socket.readyState <= WebSocket.OPEN) {
-      return;
+    this.token = token;
+    this.closedByClient = false;
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      return Promise.resolve();
     }
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+    this.connectPromise = this.openSocket(token);
+    return this.connectPromise;
+  }
+
+  public disconnect(): void {
+    this.closedByClient = true;
+    this.clearReconnectTimer();
+    this.rejectPending("WebSocket disconnected");
+    this.socket?.close();
+    this.socket = null;
+    this.connectPromise = null;
+    this.dispatch("connected", false);
+  }
+
+  private openSocket(token: string): Promise<void> {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`);
     this.socket = socket;
-    await new Promise<void>((resolve, reject) => {
+    let opened = false;
+    return new Promise<void>((resolve, reject) => {
       socket.addEventListener("open", () => {
+        if (this.socket !== socket) {
+          return;
+        }
+        opened = true;
+        this.connectPromise = null;
+        this.reconnectAttempt = 0;
+        this.clearReconnectTimer();
         this.dispatch("connected", true);
         resolve();
       });
-      socket.addEventListener("error", () => reject(new Error("WebSocket connection failed")), {
-        once: true
+      socket.addEventListener("error", () => {
+        if (!opened) {
+          reject(new Error("WebSocket connection failed"));
+        }
+      }, { once: true });
+      socket.addEventListener("close", () => {
+        if (this.socket === socket) {
+          this.socket = null;
+        }
+        this.connectPromise = null;
+        this.dispatch("connected", false);
+        this.rejectPending("WebSocket disconnected");
+        if (!this.closedByClient) {
+          this.scheduleReconnect();
+        }
       });
-      socket.addEventListener("close", () => this.dispatch("connected", false));
       socket.addEventListener("message", (event) => this.handleMessage(event.data));
     });
   }
@@ -427,6 +472,44 @@ export class CodexSocketClient extends EventTarget {
 
   private dispatch<T>(type: string, detail: T): void {
     this.dispatchEvent(new CustomEvent(type, { detail }));
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.token || this.reconnectTimer !== null) {
+      return;
+    }
+    const delay = Math.min(30_000, 750 * 2 ** Math.min(this.reconnectAttempt, 5));
+    this.reconnectAttempt += 1;
+    this.dispatch("reconnecting", { attempt: this.reconnectAttempt, delayMs: delay });
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.token || this.closedByClient || this.socket?.readyState === WebSocket.OPEN) {
+        return;
+      }
+      this.connectPromise = this.openSocket(this.token).catch(() => {
+        this.connectPromise = null;
+        this.scheduleReconnect();
+      });
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer === null) {
+      return;
+    }
+    window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+  }
+
+  private rejectPending(message: string): void {
+    if (this.pending.size === 0) {
+      return;
+    }
+    const error = { code: -32000, message };
+    for (const pending of this.pending.values()) {
+      pending.reject(error);
+    }
+    this.pending.clear();
   }
 }
 

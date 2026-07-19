@@ -1,0 +1,16 @@
+{
+  "providerChip": "Real Relay 4 aihub.top",
+  "workspacePanelValue": "~/",
+  "typedValue": "UI typing verification: composer remains editable while workspace is pending.",
+  "sendDisabledBefore": true,
+  "leftBottomVisible": true,
+  "installButtonVisible": true,
+  "cwdAfterConfirm": "gpt-5.5",
+  "sendDisabledAfter": false,
+  "manifestHref": "/manifest.webmanifest",
+  "swController": "registered",
+  "historyCount": 18,
+  "foundCodeBlock": false,
+  "foundThinking": true,
+  "issues": []
+}

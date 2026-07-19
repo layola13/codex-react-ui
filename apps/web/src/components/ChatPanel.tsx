@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Avatar, Badge, Box, Button, Chip, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import { Alert, Avatar, Badge, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
@@ -24,6 +24,7 @@ import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
 import { themeVisualTuning, type ThemePlugin } from "../theme";
 import { MarkdownMessage } from "./MarkdownMessage";
+import type { TranslateFn } from "../i18n";
 
 type AgentSession = {
   id: string;
@@ -114,6 +115,8 @@ type Props = {
   statsOpen?: boolean;
   modes?: WorkbenchModeState;
   activeThemePlugin?: ThemePlugin | null;
+  welcomeDismissed?: boolean;
+  t: TranslateFn;
   onPromptSelect?: (text: string) => void;
   onAgentThreadSelect?: (threadId: string) => void;
   onStatsClose?: () => void;
@@ -123,36 +126,45 @@ type Props = {
   onGoalClear?: () => void;
 };
 
-const emptyPromptCards = [
+type DisplayConversationItem = {
+  key: string;
+  item: WorkbenchItem;
+  reasoning?: string;
+  activeThinking?: boolean;
+};
+
+function emptyPromptCards(t: TranslateFn) {
+  return [
   {
     id: "explore",
-    label: "Explore code",
-    detail: "Map the architecture and important files.",
-    prompt: "Explore this repository and summarize the architecture, key entry points, and likely places to modify.",
+    label: t("chat.prompt.explore.label"),
+    detail: t("chat.prompt.explore.detail"),
+    prompt: t("chat.prompt.explore.prompt"),
     icon: <TravelExploreIcon fontSize="small" />
   },
   {
     id: "build",
-    label: "Build feature",
-    detail: "Plan, implement, and verify a focused change.",
-    prompt: "Build a new feature in this project. Start by inspecting the relevant files, then implement and verify the change.",
+    label: t("chat.prompt.build.label"),
+    detail: t("chat.prompt.build.detail"),
+    prompt: t("chat.prompt.build.prompt"),
     icon: <BuildIcon fontSize="small" />
   },
   {
     id: "review",
-    label: "Review changes",
-    detail: "Find risks, regressions, and missing tests.",
-    prompt: "/review",
+    label: t("chat.prompt.review.label"),
+    detail: t("chat.prompt.review.detail"),
+    prompt: t("chat.prompt.review.prompt"),
     icon: <RateReviewIcon fontSize="small" />
   },
   {
     id: "fix",
-    label: "Fix failures",
-    detail: "Reproduce the issue and land a tested fix.",
-    prompt: "Find and fix the current failure. Reproduce it first, make the smallest safe change, and run the relevant tests.",
+    label: t("chat.prompt.fix.label"),
+    detail: t("chat.prompt.fix.detail"),
+    prompt: t("chat.prompt.fix.prompt"),
     icon: <BugReportIcon fontSize="small" />
   }
-] as const;
+  ];
+}
 
 export function ChatPanel({
   turns,
@@ -166,6 +178,8 @@ export function ChatPanel({
   statsOpen = false,
   modes = { fast: false, plan: false, goalActive: false },
   activeThemePlugin,
+  welcomeDismissed = false,
+  t,
   onPromptSelect,
   onAgentThreadSelect,
   onStatsClose,
@@ -177,6 +191,7 @@ export function ChatPanel({
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [closedAgentIds, setClosedAgentIds] = useState<string[]>([]);
   const [acknowledgedAgentIds, setAcknowledgedAgentIds] = useState<string[]>([]);
+  const [requestsOpen, setRequestsOpen] = useState(false);
 
   useEffect(() => {
     setSelectedAgentId(null);
@@ -194,11 +209,13 @@ export function ChatPanel({
     }
   }, [selectedAgentId, visibleAgents]);
 
-  const displayTurns = selectedAgent
-    ? agentConversationTurns(turns, activeThreadId, selectedAgent)
-    : mainConversationTurns(turns, activeThreadId);
+  const displayItems = selectedAgent
+    ? agentConversationItems(turns, activeThreadId, selectedAgent)
+    : mainConversationItems(turns, activeThreadId);
+  const hasAnyVisibleThreadActivity = hasThreadActivity(turns, activeThreadId);
+  const showEmptyConversation = displayItems.length === 0 && !welcomeDismissed && (selectedAgent || !hasAnyVisibleThreadActivity);
   const hasParallelAgents = visibleAgents.length > 0;
-  const showTopStatus = Boolean(goal || slashNotice || statsOpen || modes.fast || modes.plan || requestMonitor.length > 0);
+  const showStickyGoal = Boolean(goal);
 
   function selectAgent(agent: AgentSession) {
     setSelectedAgentId(agent.id);
@@ -236,146 +253,123 @@ export function ChatPanel({
           onCloseAgent={closeAgent}
         />
       )}
-      <Box sx={{ minHeight: 0, display: "grid", gridTemplateRows: showTopStatus ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)" }}>
-        {showTopStatus && (
-          <ChatTopStatusSurface
-            goal={goal}
-            slashNotice={slashNotice}
-            stats={stats}
-            requestMonitor={requestMonitor}
-            statsOpen={statsOpen}
-            modes={modes}
-            onStatsClose={onStatsClose}
-            onSlashNoticeClose={onSlashNoticeClose}
-            onGoalEdit={onGoalEdit}
-            onGoalStatusChange={onGoalStatusChange}
-            onGoalClear={onGoalClear}
-          />
-        )}
-      <Box sx={{ minHeight: 0, overflow: "auto", p: { xs: 1.5, sm: 2.5, lg: 3 } }}>
-        <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
-          {errors.map((error, index) => (
-            error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null
-          ))}
-          {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
-          {displayTurns.length === 0 && <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} onPromptSelect={onPromptSelect} />}
-          {displayTurns.map((turn) => (
-            <Paper
-              key={turn.id}
-              variant="outlined"
-              sx={{
-                p: 1.5,
-                borderRadius: 1,
-                bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.72),
-                boxShadow: (theme) => theme.customShadows?.z4
-              }}
-            >
-              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                <Chip size="small" label={turn.status} color={turn.status === "failed" ? "error" : "default"} />
-                <Typography variant="caption" color="text.secondary">
-                  {turn.id}
-                </Typography>
-              </Stack>
-              <Stack spacing={1}>
-                {turn.items.map((item) => renderWorkbenchItem(item))}
-              </Stack>
-            </Paper>
-          ))}
-        </Stack>
-      </Box>
-      </Box>
-    </Box>
-  );
-}
-
-function ChatTopStatusSurface({
-  goal,
-  slashNotice,
-  stats,
-  requestMonitor,
-  statsOpen,
-  modes,
-  onStatsClose,
-  onSlashNoticeClose,
-  onGoalEdit,
-  onGoalStatusChange,
-  onGoalClear
-}: {
-  goal?: GoalBannerState | null;
-  slashNotice?: SlashCommandNoticeState | null;
-  stats?: WorkbenchStatsState | null;
-  requestMonitor: RequestMonitorEntry[];
-  statsOpen: boolean;
-  modes: WorkbenchModeState;
-  onStatsClose?: () => void;
-  onSlashNoticeClose?: () => void;
-  onGoalEdit?: () => void;
-  onGoalStatusChange?: (status: GoalStatus) => void;
-  onGoalClear?: () => void;
-}) {
-  return (
-    <Box
-      data-testid="chat-top-status-surface"
-      sx={{
-        borderBottom: "1px solid",
-        borderColor: "divider",
-        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.82),
-        backdropFilter: "blur(18px)",
-        px: { xs: 1, sm: 1.5, lg: 2 },
-        py: 1
-      }}
-    >
-      <Stack spacing={1} sx={{ maxWidth: 1120, mx: "auto" }}>
+      <Box sx={{ minHeight: 0, display: "grid", gridTemplateRows: showStickyGoal ? "auto minmax(0, 1fr)" : "minmax(0, 1fr)" }}>
         {goal && (
-          <GoalBanner
-            goal={goal}
-            onEdit={onGoalEdit}
-            onStatusChange={onGoalStatusChange}
-            onClear={onGoalClear}
-          />
-        )}
-        {slashNotice && (
-          <Alert
-            data-testid="slash-command-result"
-            severity={slashNotice.severity}
-            onClose={onSlashNoticeClose}
+          <Box
+            data-testid="chat-sticky-goal-surface"
             sx={{
-              alignItems: "flex-start",
-              "& .MuiAlert-message": {
-                minWidth: 0,
-                whiteSpace: "pre-wrap",
-                overflowWrap: "anywhere"
-              }
+              borderBottom: "1px solid",
+              borderColor: "divider",
+              bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.72 : 0.82),
+              backdropFilter: "blur(18px)",
+              px: { xs: 1, sm: 1.5, lg: 2 },
+              py: 1
             }}
           >
-            <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
-              {slashNotice.title}
-            </Typography>
-            <Typography variant="body2" component="div">
-              {slashNotice.message}
-            </Typography>
-          </Alert>
+            <Box sx={{ maxWidth: 1120, mx: "auto" }}>
+              <GoalBanner
+                goal={goal}
+                t={t}
+                onEdit={onGoalEdit}
+                onStatusChange={onGoalStatusChange}
+                onClear={onGoalClear}
+              />
+            </Box>
+          </Box>
         )}
-        <RequestMonitorTable entries={requestMonitor} />
-        {(modes.fast || modes.plan) && (
-          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
-            {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label="Fast" data-testid="fast-mode-badge" />}
-            {modes.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label="Plan" data-testid="plan-mode-badge" />}
+        <Box sx={{ minHeight: 0, overflow: "auto", p: { xs: 1.5, sm: 2.5, lg: 3 } }}>
+          <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
+            {errors.map((error, index) => (
+              error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null
+            ))}
+            {slashNotice && (
+              <Alert
+                data-testid="slash-command-result"
+                severity={slashNotice.severity}
+                onClose={onSlashNoticeClose}
+                sx={{
+                  alignItems: "flex-start",
+                  "& .MuiAlert-message": {
+                    minWidth: 0,
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere"
+                  }
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+                  {slashNotice.title}
+                </Typography>
+                <Typography variant="body2" component="div">
+                  {slashNotice.message}
+                </Typography>
+              </Alert>
+            )}
+            <Stack direction="row" alignItems="center" justifyContent="flex-end">
+              <Button
+                data-testid="request-monitor-button"
+                size="small"
+                variant="outlined"
+                startIcon={<AssessmentIcon />}
+                onClick={() => setRequestsOpen(true)}
+                sx={{ borderRadius: 1 }}
+              >
+                {t("chat.requests")}
+                <Chip size="small" label={requestMonitor.length} sx={{ ml: 1, height: 20 }} />
+              </Button>
+            </Stack>
+            {(modes.fast || modes.plan) && (
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
+                {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label={t("app.fast")} data-testid="fast-mode-badge" />}
+                {modes.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label={t("app.plan")} data-testid="plan-mode-badge" />}
+              </Stack>
+            )}
+            {statsOpen && stats && <StatsPanel stats={stats} t={t} onClose={onStatsClose} />}
+            {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
+            {showEmptyConversation && <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} t={t} onPromptSelect={onPromptSelect} />}
+            <Stack spacing={1} data-testid="conversation-waterfall">
+              {displayItems.map(({ key, item, reasoning, activeThinking }) => (
+                <Box key={key} data-testid={`conversation-item-${sanitizeTestId(item.id)}`}>
+                  {renderWorkbenchItem(item, t, { reasoning, activeThinking })}
+                </Box>
+              ))}
+            </Stack>
           </Stack>
-        )}
-        {statsOpen && stats && <StatsPanel stats={stats} onClose={onStatsClose} />}
-      </Stack>
+        </Box>
+      </Box>
+      <Dialog
+        open={requestsOpen}
+        onClose={() => setRequestsOpen(false)}
+        fullWidth
+        maxWidth="lg"
+        data-testid="request-monitor-dialog"
+      >
+        <DialogTitle sx={{ pr: 6 }}>
+          {t("chat.requests")}
+          <IconButton
+            aria-label={t("chat.closeRequests")}
+            onClick={() => setRequestsOpen(false)}
+            sx={{ position: "absolute", right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 0, pb: 2 }}>
+          <RequestMonitorTable entries={requestMonitor} t={t} />
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
 
 function GoalBanner({
   goal,
+  t,
   onEdit,
   onStatusChange,
   onClear
 }: {
   goal: GoalBannerState;
+  t: TranslateFn;
   onEdit?: () => void;
   onStatusChange?: (status: GoalStatus) => void;
   onClear?: () => void;
@@ -397,7 +391,7 @@ function GoalBanner({
           <FlagIcon fontSize="small" color={complete ? "success" : paused ? "disabled" : "primary"} />
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="caption" color="text.secondary" sx={{ display: "block", fontWeight: 800, textTransform: "uppercase" }}>
-              Goal
+              {t("chat.goal")}
             </Typography>
             <Typography sx={{ fontWeight: 750, overflowWrap: "anywhere", lineHeight: 1.35 }}>{goal.objective}</Typography>
           </Box>
@@ -409,23 +403,23 @@ function GoalBanner({
           {typeof goal.timeUsedSeconds === "number" && goal.timeUsedSeconds > 0 && (
             <Chip size="small" variant="outlined" label={formatDuration(goal.timeUsedSeconds)} />
           )}
-          <Tooltip title="Edit goal">
-            <IconButton size="small" aria-label="Edit goal" onClick={onEdit}>
+          <Tooltip title={t("chat.editGoal")}>
+            <IconButton size="small" aria-label={t("chat.editGoal")} onClick={onEdit}>
               <EditIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={paused ? "Resume goal" : "Pause goal"}>
+          <Tooltip title={paused ? t("chat.resumeGoal") : t("chat.pauseGoal")}>
             <IconButton
               size="small"
-              aria-label={paused ? "Resume goal" : "Pause goal"}
+              aria-label={paused ? t("chat.resumeGoal") : t("chat.pauseGoal")}
               onClick={() => onStatusChange?.(paused ? "active" : "paused")}
               disabled={complete}
             >
               {paused ? <PlayCircleIcon fontSize="small" /> : <PauseCircleIcon fontSize="small" />}
             </IconButton>
           </Tooltip>
-          <Tooltip title="Clear goal">
-            <IconButton size="small" aria-label="Clear goal" onClick={onClear}>
+          <Tooltip title={t("chat.clearGoal")}>
+            <IconButton size="small" aria-label={t("chat.clearGoal")} onClick={onClear}>
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -435,7 +429,7 @@ function GoalBanner({
   );
 }
 
-function StatsPanel({ stats, onClose }: { stats: WorkbenchStatsState; onClose?: () => void }) {
+function StatsPanel({ stats, t, onClose }: { stats: WorkbenchStatsState; t: TranslateFn; onClose?: () => void }) {
   return (
     <Paper
       data-testid="slash-stats-panel"
@@ -451,14 +445,14 @@ function StatsPanel({ stats, onClose }: { stats: WorkbenchStatsState; onClose?: 
           <AssessmentIcon fontSize="small" color="primary" />
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
-              {stats.scope === "stats" ? "Project Stats" : "Session Status"}
+              {stats.scope === "stats" ? t("chat.projectStats") : t("chat.sessionStatus")}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
-              {stats.activeThreadId ? `Thread ${stats.activeThreadId}` : "No active thread yet"}
+              {stats.activeThreadId ? `Thread ${stats.activeThreadId}` : t("chat.noActiveThread")}
             </Typography>
           </Box>
           <Button size="small" onClick={onClose}>
-            Close
+            {t("chat.close")}
           </Button>
         </Stack>
         <Box
@@ -725,14 +719,16 @@ function AgentConversationHeader({ agent, onClose }: { agent: AgentSession; onCl
 function EmptyConversation({
   selectedAgent,
   activeThemePlugin,
+  t,
   onPromptSelect
 }: {
   selectedAgent: AgentSession | null;
   activeThemePlugin?: ThemePlugin | null;
+  t: TranslateFn;
   onPromptSelect?: (text: string) => void;
 }) {
   if (!selectedAgent) {
-    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} onPromptSelect={onPromptSelect} />;
+    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} t={t} onPromptSelect={onPromptSelect} />;
   }
   return (
     <Paper
@@ -756,9 +752,11 @@ function EmptyConversation({
 
 function DefaultWorkbenchEmpty({
   activeThemePlugin,
+  t,
   onPromptSelect
 }: {
   activeThemePlugin?: ThemePlugin | null;
+  t: TranslateFn;
   onPromptSelect?: (text: string) => void;
 }) {
   const heroImage =
@@ -816,14 +814,14 @@ function DefaultWorkbenchEmpty({
             <Stack direction="row" spacing={1} alignItems="center">
               <AutoAwesomeIcon color="primary" />
               <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 800 }}>
-                Codex Workbench
+                {t("chat.emptyBrand")}
               </Typography>
             </Stack>
             <Typography component="h2" sx={{ fontSize: { xs: 34, md: 48 }, lineHeight: 1.08, fontWeight: 850 }}>
-              What should we build?
+              {t("chat.emptyTitle")}
             </Typography>
             <Typography color="text.secondary" sx={{ maxWidth: 540, fontSize: 16 }}>
-              Start from a focused coding workflow, or type your own request in the composer below.
+              {t("chat.emptySubtitle")}
             </Typography>
           </Stack>
           <Box
@@ -833,7 +831,7 @@ function DefaultWorkbenchEmpty({
               gap: 1.25
             }}
           >
-            {emptyPromptCards.map((card) => (
+            {emptyPromptCards(t).map((card) => (
               <Button
                 key={card.id}
                 data-testid={`default-prompt-card-${card.id}`}
@@ -892,7 +890,7 @@ function DefaultWorkbenchEmpty({
   );
 }
 
-function RequestMonitorTable({ entries }: { entries: RequestMonitorEntry[] }) {
+function RequestMonitorTable({ entries, t }: { entries: RequestMonitorEntry[]; t: TranslateFn }) {
   return (
     <Paper
       data-testid="homepage-request-monitor"
@@ -907,18 +905,18 @@ function RequestMonitorTable({ entries }: { entries: RequestMonitorEntry[] }) {
         <AssessmentIcon fontSize="small" color="primary" />
         <Box sx={{ minWidth: 0, flex: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
-            Requests
+            {t("chat.requests")}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Live turn status and token usage
+            {t("chat.requestsSubtitle")}
           </Typography>
         </Box>
-        <Chip size="small" label={`${entries.length} tracked`} />
+        <Chip size="small" label={t("chat.requestsTracked", { count: entries.length })} />
       </Stack>
       {entries.length === 0 ? (
         <Box sx={{ px: 1.25, py: 1.5 }}>
           <Typography variant="body2" color="text.secondary">
-            No requests yet. New turns will appear here with last and total tokens.
+            {t("chat.requestsEmpty")}
           </Typography>
         </Box>
       ) : (
@@ -953,12 +951,12 @@ function RequestMonitorTable({ entries }: { entries: RequestMonitorEntry[] }) {
           >
             <thead>
               <tr>
-                <th>Request</th>
-                <th>Source</th>
-                <th>Status</th>
-                <th>Model</th>
-                <th>Last tokens</th>
-                <th>Total tokens</th>
+                <th>{t("chat.request")}</th>
+                <th>{t("chat.source")}</th>
+                <th>{t("chat.status")}</th>
+                <th>{t("chat.requestModel")}</th>
+                <th>{t("chat.lastTokens")}</th>
+                <th>{t("chat.totalTokens")}</th>
               </tr>
             </thead>
             <tbody>
@@ -980,14 +978,14 @@ function RequestMonitorTable({ entries }: { entries: RequestMonitorEntry[] }) {
                   </td>
                   <td>
                     <Typography variant="body2" sx={{ maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {entry.model || "Engine default"}
+                      {entry.model || t("chat.engineDefault")}
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ display: "block", maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {entry.provider || "default"}
+                      {entry.provider || t("chat.default")}
                     </Typography>
                   </td>
-                  <td>{formatUsageCell(entry.lastTokens)}</td>
-                  <td>{formatUsageCell(entry.totalTokens)}</td>
+                  <td>{formatUsageCell(entry.lastTokens, t)}</td>
+                  <td>{formatUsageCell(entry.totalTokens, t)}</td>
                 </tr>
               ))}
             </tbody>
@@ -998,87 +996,222 @@ function RequestMonitorTable({ entries }: { entries: RequestMonitorEntry[] }) {
   );
 }
 
-function formatUsageCell(usage?: TokenUsageBreakdown): string {
+function formatUsageCell(usage: TokenUsageBreakdown | undefined, t: TranslateFn): string {
   if (!usage) {
-    return "waiting";
+    return t("chat.waiting");
   }
   return `${formatNumber(usage.totalTokens)} total / ${formatNumber(usage.outputTokens)} out`;
 }
 
-function renderWorkbenchItem(item: WorkbenchItem) {
+function renderWorkbenchItem(item: WorkbenchItem, t: TranslateFn, options: { reasoning?: string; activeThinking?: boolean } = {}) {
+  return <WorkbenchItemView item={item} t={t} reasoning={options.reasoning} activeThinking={options.activeThinking} />;
+}
+
+function WorkbenchItemView({ item, t, reasoning, activeThinking = false }: { item: WorkbenchItem; t: TranslateFn; reasoning?: string; activeThinking?: boolean }) {
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const isUser = item.type === "userMessage";
+  const isAssistant = item.type === "agentMessage";
+  const isToolLike = !isUser && !isAssistant && item.type !== "reasoning";
+  const align = isUser ? "flex-end" : "flex-start";
+  const reasoningContent = reasoning?.trim() ?? "";
   return (
-    <Paper
+    <Box
       key={item.id}
-      variant="outlined"
+      data-testid={`workbench-item-${sanitizeTestId(item.type)}`}
       sx={{
-        p: 1.35,
-        borderRadius: 1,
-        bgcolor:
-          item.type === "agentMessage"
-            ? (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.86)
-            : item.type === "userMessage"
-              ? "action.selected"
-              : (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.66 : 0.6)
+        display: "flex",
+        justifyContent: isToolLike ? "stretch" : align
       }}
     >
-      <Stack direction="row" alignItems="center" spacing={1}>
-        {item.type === "commandExecution" ? (
-          <TerminalIcon fontSize="small" />
-        ) : item.type === "fileChange" ? (
-          <InsertDriveFileIcon fontSize="small" />
-        ) : item.type === "userMessage" ? (
-          <PersonIcon fontSize="small" />
+      <Box
+        sx={{
+          width: isToolLike ? "100%" : "fit-content",
+          maxWidth: isUser ? { xs: "92%", md: "76%" } : { xs: "96%", md: "84%" },
+          minWidth: 0
+        }}
+      >
+        {item.type === "reasoning" && activeThinking ? (
+          <ReasoningPreview item={item} t={t} />
         ) : (
-          <SmartToyIcon fontSize="small" />
-        )}
-        <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
-          {item.title}
-        </Typography>
-        {item.agentName && <Chip size="small" label={item.agentName} />}
-        {item.status && <Chip size="small" label={item.status} />}
-      </Stack>
-      {item.text && item.type === "commandExecution" && (
-        <Typography
-          component="pre"
-          sx={{
-            mt: 1,
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: 12,
-            m: 0,
-            pt: 1
-          }}
-        >
-          {item.text}
-        </Typography>
-      )}
-      {item.text && item.type !== "commandExecution" && <MarkdownMessage text={item.text} />}
-      {item.type === "mcpToolCall" && renderMcpToolCall(item)}
-      {item.images && item.images.length > 0 && (
-        <Stack direction="row" spacing={1} sx={{ mt: 1, overflowX: "auto" }}>
-          {item.images.map((image, index) => (
-            <Paper key={`${image.url}-${index}`} variant="outlined" sx={{ width: 160, flex: "0 0 auto", overflow: "hidden" }}>
-              {isRenderableImageUrl(image.url) ? (
-                <Box
-                  component="img"
-                  src={image.url}
-                  alt={image.name ?? `Attached image ${index + 1}`}
-                  sx={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }}
-                />
+          <Paper
+            variant="outlined"
+            sx={{
+              p: isAssistant || isUser ? 1.35 : 1.2,
+              borderRadius: isUser ? "14px 14px 4px 14px" : isAssistant ? "14px 14px 14px 4px" : 1,
+              bgcolor: isAssistant
+                ? (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.88)
+                : isUser
+                  ? (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.1)
+                  : (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.66 : 0.6),
+              borderColor: isUser ? "primary.main" : "divider"
+            }}
+          >
+            <Stack direction="row" alignItems="center" spacing={1}>
+              {item.type === "commandExecution" ? (
+                <TerminalIcon fontSize="small" />
+              ) : item.type === "fileChange" ? (
+                <InsertDriveFileIcon fontSize="small" />
+              ) : item.type === "userMessage" ? (
+                <PersonIcon fontSize="small" />
               ) : (
-                <Box sx={{ p: 1.25 }}>
-                  <Typography variant="caption" sx={{ overflowWrap: "anywhere" }}>
-                    {image.name ?? image.url}
-                  </Typography>
-                </Box>
+                <SmartToyIcon fontSize="small" />
               )}
-            </Paper>
-          ))}
-        </Stack>
+              <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
+                {item.title}
+              </Typography>
+              {item.agentName && <Chip size="small" label={item.agentName} />}
+              {item.status && <Chip size="small" label={item.status} />}
+              {isAssistant && reasoningContent && (
+                <Button size="small" variant="text" startIcon={<SmartToyIcon fontSize="small" />} onClick={() => setThinkingOpen(true)} sx={{ borderRadius: 1 }}>
+                  {t("chat.thinking")}
+                </Button>
+              )}
+            </Stack>
+            {item.text && item.type === "commandExecution" && (
+              <Typography
+                component="pre"
+                sx={{
+                  mt: 1,
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 12,
+                  m: 0,
+                  pt: 1
+                }}
+              >
+                {item.text}
+              </Typography>
+            )}
+            {item.text && item.type !== "commandExecution" && <MarkdownMessage text={item.text} />}
+            {item.type === "mcpToolCall" && renderMcpToolCall(item)}
+            {item.images && item.images.length > 0 && (
+              <Stack direction="row" spacing={1} sx={{ mt: 1, overflowX: "auto" }}>
+                {item.images.map((image, index) => (
+                  <Paper key={`${image.url}-${index}`} variant="outlined" sx={{ width: 160, flex: "0 0 auto", overflow: "hidden" }}>
+                    {isRenderableImageUrl(image.url) ? (
+                      <Box
+                        component="img"
+                        src={image.url}
+                        alt={image.name ?? `Attached image ${index + 1}`}
+                        sx={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }}
+                      />
+                    ) : (
+                      <Box sx={{ p: 1.25 }}>
+                        <Typography variant="caption" sx={{ overflowWrap: "anywhere" }}>
+                          {image.name ?? image.url}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </Paper>
+        )}
+      </Box>
+      {isAssistant && reasoningContent && (
+        <Dialog open={thinkingOpen} onClose={() => setThinkingOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <SmartToyIcon color="primary" />
+              <Typography component="span" variant="h6" sx={{ fontWeight: 850 }}>
+                {t("chat.thinking")}
+              </Typography>
+            </Stack>
+          </DialogTitle>
+          <DialogContent dividers>
+            <Box sx={{ maxHeight: "70vh", overflow: "auto" }}>
+              <MarkdownMessage text={reasoningContent} />
+            </Box>
+          </DialogContent>
+        </Dialog>
       )}
-    </Paper>
+    </Box>
   );
+}
+
+function ReasoningPreview({ item, t }: { item: WorkbenchItem; t: TranslateFn }) {
+  const content = reasoningText(item);
+  const preview = content.split(/\r?\n/).slice(0, 3).join("\n").trim();
+  if (!content) {
+    return null;
+  }
+  return (
+    <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
+      <Paper
+        variant="outlined"
+        data-testid="thinking-preview"
+        sx={{
+          width: { xs: "96%", md: "84%" },
+          p: 1,
+          borderRadius: 1,
+          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.5 : 0.66),
+          borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.16 : 0.12)
+        }}
+      >
+        <Stack direction="row" alignItems="flex-start" spacing={1}>
+          <SmartToyIcon fontSize="small" sx={{ mt: 0.2, color: "text.secondary" }} />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "text.secondary" }}>
+              {t("chat.thinking")}
+            </Typography>
+            <Typography
+              component="pre"
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                m: 0,
+                mt: 0.25,
+                fontFamily: "inherit",
+                whiteSpace: "pre-wrap",
+                overflow: "hidden",
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical"
+              }}
+            >
+              {preview}
+            </Typography>
+          </Box>
+        </Stack>
+      </Paper>
+    </Box>
+  );
+}
+
+function reasoningText(item: WorkbenchItem): string {
+  if (item.text.trim()) {
+    return item.text.trim();
+  }
+  const payload = isRecord(item.payload) ? item.payload : {};
+  const summary = payload.summary;
+  if (typeof summary === "string") {
+    return summary.trim();
+  }
+  if (Array.isArray(summary)) {
+    return summary.map((entry) => (typeof entry === "string" ? entry : summarizeReasoningEntry(entry))).filter(Boolean).join("\n").trim();
+  }
+  if (isRecord(summary)) {
+    return summarizeReasoningEntry(summary).trim();
+  }
+  return "";
+}
+
+function summarizeReasoningEntry(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (isRecord(value)) {
+    for (const key of ["text", "summary", "content", "message"]) {
+      const nested = value[key];
+      if (typeof nested === "string" && nested.trim()) {
+        return nested;
+      }
+    }
+    return prettyJson(value);
+  }
+  return "";
 }
 
 function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], activeThreadId: string | null): AgentSession[] {
@@ -1173,29 +1306,74 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
   return [...sessions.values()];
 }
 
-function mainConversationTurns(turns: WorkbenchTurn[], activeThreadId: string | null): WorkbenchTurn[] {
+function mainConversationItems(turns: WorkbenchTurn[], activeThreadId: string | null): DisplayConversationItem[] {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : turns;
-  return visibleTurns
-    .map((turn) => ({
-      ...turn,
-      items: turn.items.filter((item) => !item.agentId && !item.agentThreadId)
-    }))
-    .filter((turn) => turn.items.length > 0);
+  return conversationItemsForTurns(visibleTurns, (item) => !item.agentId && !item.agentThreadId);
 }
 
-function agentConversationTurns(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession): WorkbenchTurn[] {
-  return turns
-    .map((turn): WorkbenchTurn | null => {
-      if (agent.threadId && turn.threadId === agent.threadId) {
-        return turn;
+function agentConversationItems(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession): DisplayConversationItem[] {
+  const visibleTurns = turns.map((turn) => {
+    if (agent.threadId && turn.threadId === agent.threadId) {
+      return turn;
+    }
+    if (turn.threadId !== activeThreadId) {
+      return { ...turn, items: [] };
+    }
+    return { ...turn, items: turn.items.filter((item) => itemBelongsToAgent(item, agent)) };
+  });
+  return conversationItemsForTurns(visibleTurns);
+}
+
+function conversationItemsForTurns(turns: WorkbenchTurn[], filterItem: (item: WorkbenchItem) => boolean = () => true): DisplayConversationItem[] {
+  return turns.flatMap((turn) => {
+    const output: DisplayConversationItem[] = [];
+    const reasoningBuffer: string[] = [];
+    const visibleItems = turn.items.filter(filterItem);
+
+    visibleItems.forEach((item, index) => {
+      if (item.type === "reasoning") {
+        const content = reasoningText(item);
+        if (content) {
+          reasoningBuffer.push(content);
+        }
+        return;
       }
-      if (turn.threadId !== activeThreadId) {
-        return null;
+
+      if (item.type === "agentMessage") {
+        output.push({
+          key: `${turn.id}:${item.id}:${index}`,
+          item,
+          reasoning: reasoningBuffer.join("\n\n").trim() || undefined
+        });
+        reasoningBuffer.length = 0;
+        return;
       }
-      const items = turn.items.filter((item) => itemBelongsToAgent(item, agent));
-      return items.length > 0 ? { ...turn, items } : null;
-    })
-    .filter((turn): turn is WorkbenchTurn => Boolean(turn));
+
+      output.push({
+        key: `${turn.id}:${item.id}:${index}`,
+        item
+      });
+    });
+
+    if (reasoningBuffer.length > 0 && turn.status !== "completed") {
+      const lastReasoning = [...visibleItems].reverse().find((item) => item.type === "reasoning");
+      if (lastReasoning) {
+        output.push({
+          key: `${turn.id}:${lastReasoning.id}:thinking`,
+          item: lastReasoning,
+          reasoning: reasoningBuffer.join("\n\n").trim(),
+          activeThinking: true
+        });
+      }
+    }
+
+    return output;
+  });
+}
+
+function hasThreadActivity(turns: WorkbenchTurn[], activeThreadId: string | null): boolean {
+  const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : turns;
+  return visibleTurns.some((turn) => turn.items.length > 0);
 }
 
 function itemBelongsToAgent(item: WorkbenchItem, agent: AgentSession): boolean {

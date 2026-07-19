@@ -3,18 +3,20 @@ import DownloadIcon from "@mui/icons-material/Download";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { alpha } from "@mui/material/styles";
 import type { ThreadEntry } from "../state/codexClient";
+import type { TranslateFn } from "../i18n";
 
 type Props = {
   threads: ThreadEntry[];
   activeThreadId: string | null;
   providerLabel: string;
   installAvailable?: boolean;
+  t: TranslateFn;
   onSelect: (threadId: string) => void;
   onInstallApp?: () => void;
   onOpenSettings: () => void;
 };
 
-export function HistorySidebar({ threads, activeThreadId, providerLabel, installAvailable = false, onSelect, onInstallApp, onOpenSettings }: Props) {
+export function HistorySidebar({ threads, activeThreadId, providerLabel, installAvailable = false, t, onSelect, onInstallApp, onOpenSettings }: Props) {
   return (
     <Box
       data-testid="history-sidebar"
@@ -31,7 +33,7 @@ export function HistorySidebar({ threads, activeThreadId, providerLabel, install
     >
       <Stack direction="row" alignItems="center" spacing={1} sx={{ px: 2, py: 1.5 }}>
         <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 800 }}>
-          Conversations
+          {t("history.conversations")}
         </Typography>
       </Stack>
       <Divider />
@@ -61,8 +63,8 @@ export function HistorySidebar({ threads, activeThreadId, providerLabel, install
               primary={thread.preview || thread.id}
               secondary={
                 <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
-                  <Chip size="small" label={threadSourceLabel(thread)} variant="outlined" />
-                  <Chip size="small" label={thread.status ?? "stored"} />
+                  <Chip size="small" label={threadSourceLabel(thread, t)} variant="outlined" />
+                  <Chip size="small" label={thread.status ?? t("history.stored")} />
                   {thread.model && <Chip size="small" label={thread.model} variant="outlined" />}
                   {thread.modelProvider && <Typography variant="caption">{thread.modelProvider}</Typography>}
                 </Stack>
@@ -96,27 +98,27 @@ export function HistorySidebar({ threads, activeThreadId, providerLabel, install
             </Typography>
           </Box>
           {installAvailable && (
-            <Tooltip title="Install app">
-              <IconButton size="small" onClick={onInstallApp} aria-label="Install app">
+            <Tooltip title={t("history.installApp")}>
+              <IconButton size="small" onClick={onInstallApp} aria-label={t("history.installApp")}>
                 <DownloadIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           )}
         </Stack>
-        <Button size="small" fullWidth startIcon={<SettingsIcon />} onClick={onOpenSettings} aria-label="Open settings" sx={{ mt: 1, justifyContent: "flex-start" }}>
-          Settings
+        <Button size="small" fullWidth startIcon={<SettingsIcon />} onClick={onOpenSettings} aria-label={t("history.openSettings")} sx={{ mt: 1, justifyContent: "flex-start" }}>
+          {t("history.settings")}
         </Button>
       </Box>
     </Box>
   );
 }
 
-function threadSourceLabel(thread: ThreadEntry): string {
+function threadSourceLabel(thread: ThreadEntry, t: TranslateFn): string {
   if (thread.parentThreadId) {
-    return "agent";
+    return t("history.source.agent");
   }
   if (thread.agentNickname || thread.agentRole) {
-    return "sidechat";
+    return t("history.source.sidechat");
   }
-  return "main";
+  return t("history.source.main");
 }

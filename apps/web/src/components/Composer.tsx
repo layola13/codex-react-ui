@@ -4,11 +4,7 @@ import {
   Box,
   Button,
   Chip,
-  FormControl,
   IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   TextField,
   Tooltip,
@@ -22,11 +18,15 @@ import BoltIcon from "@mui/icons-material/Bolt";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import EditNoteIcon from "@mui/icons-material/EditNote";
 import FlagIcon from "@mui/icons-material/Flag";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RateReviewIcon from "@mui/icons-material/RateReview";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import { alpha } from "@mui/material/styles";
 import { permissionPresets, type PermissionPresetId } from "@codex-ui/shared";
 import type { ComposerImageAttachment, ComposerMention } from "../state/codexClient";
 import { themeVisualTuning, type ThemePlugin } from "../theme";
+import type { TranslateFn } from "../i18n";
 
 type Props = {
   cwd: string;
@@ -35,15 +35,16 @@ type Props = {
   pendingMention: ComposerMention | null;
   suggestedPrompt?: { id: string; text: string } | null;
   activeThemePlugin?: ThemePlugin | null;
+  sendBlockedReason?: string;
+  t: TranslateFn;
   modeBadges?: {
     fast: boolean;
     plan: boolean;
     goalActive: boolean;
   };
   dangerBypassConfirmed: boolean;
-  onCwdChange: (cwd: string) => void;
-  onPermissionChange: (permission: PermissionPresetId) => void;
   onMentionConsumed: () => void;
+  onUserActivity?: () => void;
   onSuggestedPromptConsumed?: () => void;
   onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
 };
@@ -59,11 +60,12 @@ export function Composer({
   pendingMention,
   suggestedPrompt,
   activeThemePlugin,
+  sendBlockedReason,
+  t,
   modeBadges = { fast: false, plan: false, goalActive: false },
   dangerBypassConfirmed,
-  onCwdChange,
-  onPermissionChange,
   onMentionConsumed,
+  onUserActivity,
   onSuggestedPromptConsumed,
   onSend
 }: Props) {
@@ -76,6 +78,11 @@ export function Composer({
   const dragDepthRef = useRef(0);
   const selectedPreset = useMemo(() => permissionPresets.find((preset) => preset.id === permission), [permission]);
   const dangerBlocked = permission === "dangerBypass" && !dangerBypassConfirmed;
+  const sendBlocked = disabled || Boolean(sendBlockedReason) || dangerBlocked;
+  const dangerNotice =
+    selectedPreset?.severity === "critical"
+      ? t("composer.fullAutoNotice")
+      : "";
   const hasContent = text.trim().length > 0 || images.length > 0;
   const imageTotalBytes = images.reduce((total, image) => total + image.size, 0);
 
@@ -96,8 +103,9 @@ export function Composer({
       return;
     }
     setText(suggestedPrompt.text);
+    onUserActivity?.();
     onSuggestedPromptConsumed?.();
-  }, [onSuggestedPromptConsumed, suggestedPrompt]);
+  }, [onSuggestedPromptConsumed, onUserActivity, suggestedPrompt]);
 
   const composerBackdrop = safeThemeAssetUrl(
     activeThemePlugin?.assets?.cornerImage ?? activeThemePlugin?.assets?.heroImage ?? activeThemePlugin?.assets?.appBackgroundImage
@@ -160,24 +168,56 @@ export function Composer({
       }}
     >
       <Stack spacing={1.25}>
-        <Stack direction={{ xs: "column", lg: "row" }} spacing={1}>
-          <TextField size="small" label="Workspace cwd" value={cwd} onChange={(event) => onCwdChange(event.target.value)} sx={{ minWidth: 260, flex: 1 }} />
-          <FormControl size="small" sx={{ minWidth: 260 }}>
-            <InputLabel>Permissions</InputLabel>
-            <Select value={permission} label="Permissions" onChange={(event) => onPermissionChange(event.target.value as PermissionPresetId)}>
-              {permissionPresets.map((preset) => (
-                <MenuItem key={preset.id} value={preset.id}>
-                  {preset.label}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+        <Stack direction="row" justifyContent="flex-end" spacing={0.5}>
+          <Tooltip
+            arrow
+            placement="top-end"
+            title={
+              <Box sx={{ maxWidth: 320 }}>
+                <Typography variant="caption" sx={{ display: "block", fontWeight: 800 }}>
+                  {t("composer.setup")}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block" }}>
+                  {t("composer.workspace", { cwd })}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block" }}>
+                  {t("composer.permissions", { permission: selectedPreset?.label ?? permission })}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block", mt: 0.5, opacity: 0.82 }}>
+                  {t("composer.setupDescription")}
+                </Typography>
+              </Box>
+            }
+          >
+            <IconButton size="small" aria-label={t("composer.setupHelp")} sx={{ borderRadius: 1 }}>
+              <HelpOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          {dangerNotice && (
+            <Tooltip arrow placement="top-end" title={dangerNotice}>
+              <IconButton
+                size="small"
+                aria-label={t("composer.fullAutoWarning")}
+                color="error"
+                sx={{ borderRadius: 1, bgcolor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === "dark" ? 0.18 : 0.1) }}
+              >
+                <WarningAmberIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {sendBlockedReason && (
+            <Tooltip arrow placement="top-end" title={sendBlockedReason}>
+              <IconButton
+                size="small"
+                aria-label={t("composer.statusNotice")}
+                color="info"
+                sx={{ borderRadius: 1, bgcolor: (theme) => alpha(theme.palette.info.main, theme.palette.mode === "dark" ? 0.18 : 0.1) }}
+              >
+                <InfoOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Stack>
-        {selectedPreset?.severity === "critical" && (
-          <Alert severity="error">
-            Full Auto is active for this conversation. No sandbox boundary and no approval prompts will be used for Codex actions.
-          </Alert>
-        )}
         {imageError && (
           <Alert severity="warning" onClose={() => setImageError("")}>
             {imageError}
@@ -185,19 +225,23 @@ export function Composer({
         )}
         {(modeBadges.fast || modeBadges.plan || modeBadges.goalActive) && (
           <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="composer-command-badges">
-            {modeBadges.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label="Fast" data-testid="composer-fast-badge" />}
-            {modeBadges.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label="Plan" data-testid="composer-plan-badge" />}
-            {modeBadges.goalActive && <Chip size="small" color="success" variant="outlined" icon={<FlagIcon />} label="Goal active" data-testid="composer-goal-badge" />}
+            {modeBadges.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label={t("composer.fastBadge")} data-testid="composer-fast-badge" />}
+            {modeBadges.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label={t("composer.planBadge")} data-testid="composer-plan-badge" />}
+            {modeBadges.goalActive && <Chip size="small" color="success" variant="outlined" icon={<FlagIcon />} label={t("composer.goalBadge")} data-testid="composer-goal-badge" />}
           </Stack>
         )}
         <TextField
           multiline
           minRows={3}
           maxRows={8}
-          placeholder="Ask Codex to inspect, edit, test, or explain this workspace..."
+          placeholder={t("composer.placeholder")}
           value={text}
-          onChange={(event) => setText(event.target.value)}
-          disabled={disabled}
+          onChange={(event) => {
+            setText(event.target.value);
+            if (event.target.value.length > 0) {
+              onUserActivity?.();
+            }
+          }}
           sx={{
             "& .MuiOutlinedInput-root": {
               borderRadius: 3,
@@ -226,7 +270,7 @@ export function Composer({
             }
           }}
         >
-          <Tooltip title="Toggle fast mode">
+          <Tooltip title={t("composer.fastTooltip")}>
             <span>
               <Button
                 size="small"
@@ -240,7 +284,7 @@ export function Composer({
               </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Show session status">
+          <Tooltip title={t("composer.statusTooltip")}>
             <span>
               <Button
                 size="small"
@@ -253,7 +297,7 @@ export function Composer({
               </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Set a sticky goal">
+          <Tooltip title={t("composer.goalTooltip")}>
             <span>
               <Button
                 size="small"
@@ -267,7 +311,7 @@ export function Composer({
               </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Toggle plan mode">
+          <Tooltip title={t("composer.planTooltip")}>
             <span>
               <Button
                 size="small"
@@ -281,7 +325,7 @@ export function Composer({
               </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Start a review">
+          <Tooltip title={t("composer.reviewTooltip")}>
             <span>
               <Button
                 size="small"
@@ -294,7 +338,7 @@ export function Composer({
               </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Rename current thread">
+          <Tooltip title={t("composer.renameTooltip")}>
             <span>
               <Button
                 size="small"
@@ -358,10 +402,10 @@ export function Composer({
         )}
         <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ xs: "stretch", sm: "center" }} spacing={1}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: { sm: "0 0 auto" } }}>
-            <Tooltip title="Attach images to this turn. Drag and drop is also supported.">
+            <Tooltip title={t("composer.attachTooltip")}>
               <span>
                 <Button size="small" startIcon={<ImageIcon />} disabled={disabled} onClick={() => fileInputRef.current?.click()}>
-                  Image
+                  {t("composer.imageButton")}
                 </Button>
                 <input
                   ref={fileInputRef}
@@ -380,8 +424,9 @@ export function Composer({
             <Button
               variant="contained"
               endIcon={<SendIcon />}
-              disabled={disabled || !hasContent || dangerBlocked}
+              disabled={sendBlocked || !hasContent}
               onClick={() => {
+                onUserActivity?.();
                 onSend(text, images, mentions);
                 setText("");
                 setImages([]);
@@ -389,18 +434,25 @@ export function Composer({
               }}
               sx={{ display: { xs: "inline-flex", sm: "none" } }}
             >
-              Send
+              {t("composer.send")}
             </Button>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-            {images.length > 0 ? `${images.length} image${images.length === 1 ? "" : "s"} · ${formatBytes(imageTotalBytes)} selected. ` : ""}
+            {images.length > 0
+              ? t("composer.imageSummary", {
+                  count: images.length,
+                  imageLabel: t(images.length === 1 ? "composer.imageOne" : "composer.imageOther"),
+                  bytes: formatBytes(imageTotalBytes)
+                })
+              : ""}
             {selectedPreset?.description}
           </Typography>
           <Button
             variant="contained"
             endIcon={<SendIcon />}
-            disabled={disabled || !hasContent || dangerBlocked}
+            disabled={sendBlocked || !hasContent}
             onClick={() => {
+              onUserActivity?.();
               onSend(text, images, mentions);
               setText("");
               setImages([]);
@@ -408,7 +460,7 @@ export function Composer({
             }}
             sx={{ display: { xs: "none", sm: "inline-flex" } }}
           >
-            Send
+            {t("composer.send")}
           </Button>
         </Stack>
       </Stack>
@@ -416,10 +468,12 @@ export function Composer({
   );
 
   function runSlashCommandShortcut(command: string): void {
+    onUserActivity?.();
     onSend(command, [], []);
   }
 
   function setSlashTemplate(command: string): void {
+    onUserActivity?.();
     setText((current) => (current.trim().length === 0 || current.trim().startsWith("/") ? command : `${current.trimEnd()}\n${command}`));
   }
 
@@ -455,6 +509,9 @@ export function Composer({
       setImageError("");
     }
     const next = await Promise.all(accepted.map(readImageFile));
+    if (next.length > 0) {
+      onUserActivity?.();
+    }
     setImages((current) => [...current, ...next]);
   }
 }

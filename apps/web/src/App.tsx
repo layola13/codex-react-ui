@@ -20,6 +20,7 @@ import {
   Slider,
   Snackbar,
   Stack,
+  TextField,
   Toolbar,
   Tooltip,
   Typography,
@@ -33,7 +34,8 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import BoltIcon from "@mui/icons-material/Bolt";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import ChecklistIcon from "@mui/icons-material/Checklist";
-import SettingsIcon from "@mui/icons-material/Settings";
+import CloudQueueIcon from "@mui/icons-material/CloudQueue";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import TuneIcon from "@mui/icons-material/Tune";
 import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
@@ -100,6 +102,7 @@ import { RightWorkspacePanel, type RightWorkspaceTab } from "./components/RightW
 import { SettingsDrawer, type ReasoningOption, type SettingsSectionId } from "./components/SettingsDrawer";
 import type { CodexPluginSettingsTab } from "./components/CodexPluginSettingsPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
+import { localeOptions, useI18n, type Locale } from "./i18n";
 import {
   applyConfigWriteToView,
   buildDynamicConfigValueWrite,
@@ -118,6 +121,8 @@ const UI_STORAGE_KEYS = {
   filesPanelLayout: "codex-react-ui.files-panel-layout"
 } as const;
 
+const DEFAULT_NEW_CHAT_CWD = "~/";
+
 type AppProps = {
   themeMode: ThemeMode;
   customThemePlugins: ThemePlugin[];
@@ -128,6 +133,11 @@ type AppProps = {
 type DangerDialogIntent = {
   source: "new-chat" | "permission";
   nextPermission: PermissionPresetId;
+};
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
 type ComposerSlashCommand =
@@ -244,7 +254,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [selectedModel, setSelectedModel] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("medium");
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
-  const [cwd, setCwd] = useState("/root/projects");
+  const [cwd, setCwd] = useState(DEFAULT_NEW_CHAT_CWD);
+  const [workspaceSelectionPending, setWorkspaceSelectionPending] = useState(true);
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+  const [workspacePickerPath, setWorkspacePickerPath] = useState("/root");
   const [fastModeEnabled, setFastModeEnabled] = useState(false);
   const [planModeEnabled, setPlanModeEnabled] = useState(false);
   const [statsPanelScope, setStatsPanelScope] = useState<"status" | "stats" | null>(null);
@@ -286,6 +299,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [reasoningAnchor, setReasoningAnchor] = useState<HTMLElement | null>(null);
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [composerSuggestion, setComposerSuggestion] = useState<{ id: string; text: string } | null>(null);
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
   const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
   const [pluginAuthNotices, setPluginAuthNotices] = useState<Record<string, PluginInstallAuthNotice>>({});
@@ -294,11 +308,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [fileDirectories, setFileDirectories] = useState<Record<string, FsDirectoryEntry[]>>({});
   const [openFile, setOpenFile] = useState<{ path: string; content: string; savedContent: string; loading: boolean; saving: boolean } | null>(null);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [appInstalled, setAppInstalled] = useState(false);
   const [auditEvents, setAuditEvents] = useState<DangerousPermissionAuditEvent[]>([]);
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const clientRef = useRef<CodexSocketClient | null>(null);
   const desktopLayout = useMediaQuery("(min-width:900px)");
+  const { locale, setLocale, t } = useI18n();
 
   const openSettings = useCallback((section: SettingsSectionId = "codex", pluginTab: CodexPluginSettingsTab = "marketplace") => {
     setSettingsSection(section);
@@ -307,6 +324,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     setSettingsOpen(true);
   }, []);
+
+  const handleInstallApp = useCallback(async () => {
+    if (!installPromptEvent) {
+      return;
+    }
+    await installPromptEvent.prompt();
+    const choice = await installPromptEvent.userChoice;
+    if (choice.outcome === "accepted") {
+      setAppInstalled(true);
+      setInstallPromptEvent(null);
+    }
+  }, [installPromptEvent]);
 
   const client = useMemo(() => {
     const socketClient = new CodexSocketClient();
@@ -317,6 +346,26 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.installedThemes, JSON.stringify(installedThemePluginIds));
   }, [installedThemePluginIds]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js");
+    }
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setAppInstalled(true);
+      setInstallPromptEvent(null);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.leftPanelVisible, JSON.stringify(leftPanelVisible));
@@ -520,16 +569,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     async (options?: { forceSkillReload?: boolean; skillExtraRoots?: string[] }) => {
       dispatch({ type: "toolingLoading", loading: true });
       const effectiveSkillExtraRoots = options?.skillExtraRoots ?? skillExtraRoots;
-      const skillCwds = [cwd, ...effectiveSkillExtraRoots].filter((entry, index, entries) => entry && entries.indexOf(entry) === index);
+      const normalizedCwd = normalizeWorkspaceCwd(cwd) || "/root";
+      const skillCwds = [normalizedCwd, ...effectiveSkillExtraRoots.map(normalizeWorkspaceCwd)]
+        .filter((entry, index, entries) => entry && entries.indexOf(entry) === index);
       const [mcpResult, skillResult, hookResult, pluginResult, installedPluginResult, appResult] = await Promise.allSettled([
         client.rpc("mcpServerStatus/list", { detail: "full" }),
         client.rpc("skills/list", { cwds: skillCwds, forceReload: options?.forceSkillReload ?? false }),
-        client.rpc("hooks/list", { cwds: [cwd] }),
+        client.rpc("hooks/list", { cwds: [normalizedCwd] }),
         client.rpc("plugin/list", {
-          cwds: [cwd],
+          cwds: [normalizedCwd],
           marketplaceKinds: ["local"]
         }),
-        client.rpc("plugin/installed", { cwds: [cwd], installSuggestionPluginNames: [] }),
+        client.rpc("plugin/installed", { cwds: [normalizedCwd], installSuggestionPluginNames: [] }),
         client.rpc("app/list", { threadId: state.activeThreadId, limit: 50, forceRefetch: options?.forceSkillReload ?? false })
       ]);
 
@@ -690,6 +741,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const providers = await fetchProviders(token);
         if (!mounted) return;
         dispatch({ type: "providers", providers });
+        try {
+          const configResult = await client.rpc("config/read", { includeLayers: false });
+          if (!mounted) return;
+          const view = parseConfigReadResponse(configResult);
+          setCodexConfig(view);
+          const providerFromConfig = view.modelProvider ? providers.find((provider) => provider.id === view.modelProvider) : undefined;
+          if (providerFromConfig) {
+            setActiveProviderId(providerFromConfig.id);
+          }
+          if (view.model) {
+            setSelectedModel((current) => current || view.model || current);
+          }
+        } catch {
+          /* The workbench can still load with engine defaults if config/read is unavailable. */
+        }
         await loadBasics();
       } catch (error) {
         dispatch({ type: "error", message: formatErrorText(error) });
@@ -768,6 +834,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const loadThread = useCallback(
     async (threadId: string) => {
+      setWelcomeDismissed(false);
       dispatch({ type: "activeThread", threadId });
       try {
         const result = await client.rpc("thread/read", { threadId, includeTurns: true });
@@ -794,12 +861,43 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [client]
   );
 
+  useEffect(() => {
+    if (!state.connected || !state.token) {
+      return;
+    }
+    const token = state.token;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const providers = await fetchProviders(token);
+        if (cancelled) return;
+        dispatch({ type: "providers", providers });
+        await loadBasics();
+        if (cancelled) return;
+        if (state.activeThreadId) {
+          await loadThreadIntoCache(state.activeThreadId);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          dispatch({ type: "error", message: errorMessage("Reconnect refresh", error) });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadBasics, loadThreadIntoCache, state.activeThreadId, state.connected, state.token]);
+
   const selectTaskTab = useCallback(
     (threadId: string | null) => {
       if (!threadId) {
+        setCwd(DEFAULT_NEW_CHAT_CWD);
+        setWorkspaceSelectionPending(true);
+        setWelcomeDismissed(false);
         dispatch({ type: "activeThread", threadId: null });
         return;
       }
+      setWorkspaceSelectionPending(false);
       void loadThread(threadId);
     },
     [loadThread]
@@ -808,12 +906,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const beginNewSession = useCallback((nextPermission: PermissionPresetId) => {
     setPermission(nextPermission);
     setDangerBypassConfirmed(nextPermission === "dangerBypass");
+    setCwd(DEFAULT_NEW_CHAT_CWD);
+    setWorkspaceSelectionPending(true);
+    setWelcomeDismissed(false);
     dispatch({ type: "activeThread", threadId: null });
   }, []);
 
   const requestNewSession = useCallback(
     (nextPermission: PermissionPresetId) => {
       if (nextPermission === "dangerBypass") {
+        setCwd(DEFAULT_NEW_CHAT_CWD);
+        setWorkspaceSelectionPending(true);
+        setWelcomeDismissed(false);
+        dispatch({ type: "activeThread", threadId: null });
         setDangerDialogIntent({ source: "new-chat", nextPermission });
         setDangerDialogAcknowledged(false);
         return;
@@ -838,6 +943,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [dangerBypassConfirmed]
   );
 
+  const confirmWorkspaceSelection = useCallback(() => {
+    const normalized = normalizeWorkspaceCwd(cwd);
+    if (!normalized) {
+      dispatch({ type: "error", message: t("workspace.required") });
+      return;
+    }
+    setCwd(normalized);
+    setWorkspaceSelectionPending(false);
+  }, [cwd, t]);
+
   const closeDangerDialog = useCallback(() => {
     setDangerDialogIntent(null);
     setDangerDialogAcknowledged(false);
@@ -850,6 +965,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     setPermission(dangerDialogIntent.nextPermission);
     setDangerBypassConfirmed(true);
     if (dangerDialogIntent.source === "new-chat") {
+      setWorkspaceSelectionPending(true);
+      setWelcomeDismissed(false);
       dispatch({ type: "activeThread", threadId: null });
     }
     closeDangerDialog();
@@ -886,6 +1003,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     if (state.activeThreadId) {
       return state.activeThreadId;
     }
+    if (workspaceSelectionPending) {
+      throw new Error(t("workspace.required"));
+    }
     const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
     const permissionOverrides = permissionToTurnOverrides(permission, cwd);
     const startParams: Record<string, JsonValue> = {
@@ -905,7 +1025,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     dispatch({ type: "activeThread", threadId });
     return threadId;
-  }, [activeProviderId, client, cwd, permission, selectedModel, state.activeThreadId, state.providers]);
+  }, [activeProviderId, client, cwd, permission, selectedModel, state.activeThreadId, state.providers, t, workspaceSelectionPending]);
 
   const startCodexTurn = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[], options: { preserveText?: boolean; forceEffort?: string } = {}) => {
@@ -1253,6 +1373,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const sendPrompt = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
+      setWelcomeDismissed(true);
       const slashCommand = parseComposerSlashCommand(text, images, mentions);
       if (slashCommand) {
         await handleComposerSlashCommand(slashCommand);
@@ -1647,6 +1768,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [client]
   );
 
+  useEffect(() => {
+    if (!workspacePickerOpen) {
+      return;
+    }
+    if (!fileDirectories[workspacePickerPath]) {
+      void readDirectory(workspacePickerPath);
+    }
+  }, [fileDirectories, readDirectory, workspacePickerOpen, workspacePickerPath]);
+
+  const openWorkspacePicker = useCallback(() => {
+    const normalized = normalizeWorkspaceCwd(cwd) || "/root";
+    setWorkspacePickerPath(normalized);
+    setWorkspacePickerOpen(true);
+  }, [cwd]);
+
   const readFile = useCallback(
     async (path: string) => {
       setOpenFile({ path, content: "", savedContent: "", loading: true, saving: false });
@@ -1835,6 +1971,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const showThemePet = Boolean(petImage && activeThemePlugin?.layout?.petEnabled !== false);
 
   const usePromptSuggestion = useCallback((text: string) => {
+    setWelcomeDismissed(true);
     setComposerSuggestion({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, text });
   }, []);
 
@@ -1846,7 +1983,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           minHeight: 0,
           height: { md: "100%" },
           display: "grid",
-          gridTemplateRows: { xs: "auto minmax(360px, 1fr) auto", md: "minmax(0, 1fr) auto" },
+          gridTemplateRows: { xs: "auto auto minmax(360px, 1fr) auto", md: "auto minmax(0, 1fr) auto" },
           borderInline: { xs: 0, md: "1px solid" },
           borderColor: "divider",
           bgcolor: (theme) => alpha(theme.palette.background.default, themeTuning.workspaceSurfaceOpacity),
@@ -1858,7 +1995,47 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         {state.engine.phase === "starting" && (
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
             <CircularProgress size={18} />
-            <Typography variant="body2">Starting Codex engine...</Typography>
+            <Typography variant="body2">{t("app.engineStarting")}</Typography>
+          </Box>
+        )}
+        {workspaceSelectionPending && !state.activeThreadId && (
+          <Box
+            data-testid="workspace-selection-panel"
+            sx={{
+              m: { xs: 1, sm: 1.5 },
+              p: { xs: 1.5, sm: 2 },
+              border: "1px solid",
+              borderColor: "primary.main",
+              borderRadius: 2,
+              bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.14 : 0.08)
+            }}
+          >
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+                <FolderOpenIcon color="primary" />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+                    {t("workspace.title")}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {t("workspace.description")}
+                  </Typography>
+                </Box>
+              </Stack>
+              <TextField
+                size="small"
+                label={t("workspace.label")}
+                value={cwd}
+                onChange={(event) => setCwd(event.target.value)}
+                sx={{ minWidth: { xs: "100%", md: 320 } }}
+              />
+              <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={openWorkspacePicker}>
+                {t("workspace.browse")}
+              </Button>
+              <Button variant="contained" onClick={confirmWorkspaceSelection}>
+                {t("workspace.use")}
+              </Button>
+            </Stack>
           </Box>
         )}
         <ChatPanel
@@ -1873,6 +2050,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           statsOpen={Boolean(statsPanelScope)}
           modes={modeState}
           activeThemePlugin={activeThemePlugin}
+          welcomeDismissed={welcomeDismissed}
+          t={t}
           onPromptSelect={usePromptSuggestion}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
           onStatsClose={() => setStatsPanelScope(null)}
@@ -1915,14 +2094,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             cwd={cwd}
             permission={permission}
             disabled={!state.connected || state.engine.phase !== "ready"}
+            sendBlockedReason={
+              workspaceSelectionPending && !state.activeThreadId
+                ? t("workspace.required")
+                : !state.connected || state.engine.phase !== "ready"
+                  ? t("engine.notReady")
+                  : undefined
+            }
             pendingMention={pendingMention}
             suggestedPrompt={composerSuggestion}
             activeThemePlugin={activeThemePlugin}
+            t={t}
             modeBadges={modeState}
             dangerBypassConfirmed={dangerBypassConfirmed}
-            onCwdChange={setCwd}
-            onPermissionChange={requestPermissionChange}
             onMentionConsumed={() => setPendingMention(null)}
+            onUserActivity={() => setWelcomeDismissed(true)}
             onSuggestedPromptConsumed={() => setComposerSuggestion(null)}
             onSend={(text, images, mentions) => void sendPrompt(text, images, mentions)}
           />
@@ -1991,6 +2177,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const sideChatPermissionLabel = permission === "dangerBypass" ? "Bypass approvals" : "Ask for approval";
   const effectiveSelectedModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
   const activeProvider = state.providers.find((provider) => provider.id === activeProviderId);
+  const activeProviderLabel = activeProvider?.name ?? activeProvider?.id ?? t("app.defaultRelay");
   const permissionLabel = permissionPresets.find((preset) => preset.id === permission)?.label ?? permission;
   const activeThreadTurns = state.activeThreadId ? allTurns.filter((turn) => turn.threadId === state.activeThreadId) : [];
   const activeThreadUsage = state.activeThreadId ? threadTokenUsage[state.activeThreadId] : undefined;
@@ -2000,7 +2187,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     scope: statsPanelScope ?? "status",
     activeThreadId: state.activeThreadId,
     model: effectiveSelectedModel,
-    provider: activeProvider?.name ?? activeProvider?.id ?? "default",
+    provider: activeProviderLabel,
     reasoningEffort: fastModeEnabled ? `${reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort))} (Fast)` : reasoningLabel(reasoningEffort),
     permissionLabel,
     sessionTurns: activeThreadTurns.length,
@@ -2014,11 +2201,15 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   };
   const dangerBackendPreview = buildDangerBackendPreview(cwd, effectiveSelectedModel, reasoningEffort);
   const dangerDialogPreset = permissionPresets.find((preset) => preset.id === dangerDialogIntent?.nextPermission);
+  const workspacePickerEntries = fileDirectories[workspacePickerPath] ?? [];
+  const workspacePickerFolders = workspacePickerEntries.filter((entry) => entry.isDirectory);
+  const workspacePickerParent = parentWorkspacePath(workspacePickerPath);
 
   return (
     <Box
       sx={{
-        height: "100vh",
+        height: "100dvh",
+        maxHeight: "100dvh",
         display: "grid",
         gridTemplateRows: "56px minmax(0, 1fr)",
         gap: { xs: 1, sm: 1.25, lg: 1.5 },
@@ -2063,13 +2254,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         <Toolbar variant="dense" sx={{ gap: { xs: 0.75, sm: 1 }, minHeight: 54, px: { xs: 1, sm: 1.5, lg: 2 }, overflow: "hidden" }}>
           <PlayArrowIcon color="primary" sx={{ display: { xs: "none", sm: "block" } }} />
           <Typography component="h1" variant="h6" sx={{ fontSize: 17, fontWeight: 800, display: { xs: "none", sm: "block" } }}>
-            Codex
+            {t("app.title")}
           </Typography>
           <FormControl size="small" sx={{ minWidth: { xs: 148, sm: 236 }, maxWidth: { xs: 160, sm: 320 } }}>
             <Select
               value={selectedModel}
               displayEmpty
-              inputProps={{ "aria-label": "Model" }}
+              inputProps={{ "aria-label": t("app.model") }}
               renderValue={(value) => {
                 const selected = composerModels.find((entry) => (entry.model ?? entry.id ?? "") === value);
                 return selected?.displayName ?? value;
@@ -2093,12 +2284,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               })}
             </Select>
           </FormControl>
-          <Tooltip title="Reasoning strength">
+          <Tooltip title={t("app.reasoningStrength")}>
             <Button
               size="small"
               variant={showReasoningGlow ? "contained" : "outlined"}
               startIcon={<TuneIcon />}
-              aria-label="Reasoning strength"
+              aria-label={t("app.reasoningStrength")}
               onClick={(event) => setReasoningAnchor(event.currentTarget)}
               sx={{
                 flex: "0 0 auto",
@@ -2111,49 +2302,66 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               {selectedReasoning?.label ?? reasoningEffort}
             </Button>
           </Tooltip>
+          <Tooltip title={t("app.currentRelay", { provider: activeProviderLabel })}>
+            <Chip
+              size="small"
+              icon={<CloudQueueIcon />}
+              label={activeProvider ? activeProvider.name : t("app.defaultRelay")}
+              data-testid="topbar-provider-chip"
+              sx={{
+                maxWidth: { xs: 130, sm: 220, lg: 280 },
+                display: { xs: "none", sm: "inline-flex" },
+                "& .MuiChip-label": {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }
+              }}
+            />
+          </Tooltip>
           {fastModeEnabled && (
-            <Tooltip title={`Fast mode uses ${reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort))} effort for new turns`}>
+            <Tooltip title={t("app.fastTooltip", { effort: reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort)) })}>
               <Chip
                 size="small"
                 color="warning"
                 icon={<BoltIcon />}
-                label="Fast"
+                label={t("app.fast")}
                 data-testid="topbar-fast-badge"
                 sx={{ display: { xs: "none", sm: "inline-flex" }, fontWeight: 800 }}
               />
             </Tooltip>
           )}
           {planModeEnabled && (
-            <Tooltip title="Plan mode is active">
+            <Tooltip title={t("app.planTooltip")}>
               <Chip
                 size="small"
                 color="primary"
                 icon={<ChecklistIcon />}
-                label="Plan"
+                label={t("app.plan")}
                 data-testid="topbar-plan-badge"
                 sx={{ display: { xs: "none", sm: "inline-flex" }, fontWeight: 800 }}
               />
             </Tooltip>
           )}
           <Box sx={{ display: { xs: "none", lg: "block" }, flex: "0 0 auto" }}>
-            <NewChatButton currentPermission={permission} onNew={requestNewSession} />
+            <NewChatButton currentPermission={permission} t={t} onNew={requestNewSession} />
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }} />
           <Box sx={{ display: { xs: "none", md: "contents" } }}>
-            <Tooltip title={leftPanelVisible ? "Hide history panel" : "Show history panel"}>
+            <Tooltip title={leftPanelVisible ? t("app.hideHistory") : t("app.showHistory")}>
               <IconButton size="small" onClick={() => setLeftPanelVisible((visible) => !visible)}>
                 <ViewSidebarIcon fontSize="small" />
               </IconButton>
             </Tooltip>
           </Box>
-          <Tooltip title={rightWorkspaceVisible ? "Hide right workspace" : "Open right workspace"}>
+          <Tooltip title={rightWorkspaceVisible ? t("app.hideWorkspace") : t("app.openWorkspace")}>
             <IconButton
               size="small"
               onClick={() => {
                 setRightWorkspaceTab("sidechat");
                 setRightWorkspaceVisible((visible) => !visible);
               }}
-              aria-label={rightWorkspaceVisible ? "Hide right workspace" : "Open right workspace"}
+              aria-label={rightWorkspaceVisible ? t("app.hideWorkspace") : t("app.openWorkspace")}
               color={rightWorkspaceVisible ? "primary" : "default"}
             >
               <ViewColumnIcon fontSize="small" />
@@ -2166,28 +2374,37 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 size="small"
                 color="error"
                 icon={<WarningAmberIcon />}
-                label="Full Auto"
+                label={t("app.fullAuto")}
                 sx={{ display: { xs: "none", sm: "inline-flex" }, fontWeight: 800 }}
               />
             </Tooltip>
           )}
-          <Tooltip title="Open session stats">
-            <IconButton size="small" onClick={() => setStatsPanelScope("status")} aria-label="Open session stats">
+          <Tooltip title={t("app.sessionStats")}>
+            <IconButton size="small" onClick={() => setStatsPanelScope("status")} aria-label={t("app.sessionStats")}>
               <AssessmentIcon fontSize="small" />
             </IconButton>
           </Tooltip>
+          <FormControl size="small" sx={{ minWidth: { xs: 74, sm: 96 }, display: { xs: "none", sm: "inline-flex" } }}>
+            <Select
+              value={locale}
+              inputProps={{ "aria-label": t("app.language") }}
+              onChange={(event) => setLocale(event.target.value as Locale)}
+              sx={{ "& .MuiSelect-select": { py: 0.55, fontSize: 13, fontWeight: 750 } }}
+            >
+              {localeOptions.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
           <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
-            {state.engine.codexVersion ?? state.engine.message ?? "initializing"}
+            {state.engine.codexVersion ?? state.engine.message ?? t("app.initializing")}
           </Typography>
           <Button size="small" startIcon={<RefreshIcon />} onClick={() => void loadBasics()} sx={{ display: { xs: "none", md: "inline-flex" } }}>
-            Refresh
+            {t("app.refresh")}
           </Button>
-          <Tooltip title="Open settings">
-            <IconButton size="small" onClick={() => openSettings("codex")} aria-label="Open settings">
-              <SettingsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
         </Toolbar>
       </AppBar>
       <Box
@@ -2208,7 +2425,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       >
         <Box
           role="tablist"
-          aria-label="Task tabs"
+          aria-label={t("app.taskTabs")}
           sx={{
             display: "flex",
             alignItems: "stretch",
@@ -2221,10 +2438,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             borderColor: "divider"
           }}
         >
-          <Tooltip title="New task">
+          <Tooltip title={t("app.newTask")}>
             <Button
               role="tab"
-              aria-label="New task"
+              aria-label={t("app.newTask")}
               aria-selected={state.activeThreadId === null || dangerDialogIntent?.source === "new-chat"}
               size="small"
               onClick={() => requestNewSession(permission)}
@@ -2297,7 +2514,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                     <HistorySidebar
                       threads={mainThreads}
                       activeThreadId={state.activeThreadId}
+                      providerLabel={activeProviderLabel}
+                      installAvailable={Boolean(installPromptEvent) && !appInstalled}
+                      t={t}
                       onSelect={(threadId) => selectTaskTab(threadId)}
+                      onInstallApp={() => void handleInstallApp()}
+                      onOpenSettings={() => openSettings("codex")}
                     />
                   </Box>
                 </Panel>
@@ -2327,7 +2549,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               <HistorySidebar
                 threads={mainThreads}
                 activeThreadId={state.activeThreadId}
+                providerLabel={activeProviderLabel}
+                installAvailable={Boolean(installPromptEvent) && !appInstalled}
+                t={t}
                 onSelect={(threadId) => selectTaskTab(threadId)}
+                onInstallApp={() => void handleInstallApp()}
+                onOpenSettings={() => openSettings("codex")}
               />
             )}
             {renderCenterPanel()}
@@ -2349,10 +2576,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             <TuneIcon fontSize="small" color={showReasoningGlow ? "primary" : "inherit"} />
             <Box sx={{ flex: 1 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                Reasoning strength
+                {t("app.reasoningStrength")}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Sent as `turn/start.effort`
+                {t("app.reasoningSentAs")}
               </Typography>
             </Box>
             <Chip size="small" label={selectedReasoning?.label ?? reasoningEffort} color={showReasoningGlow ? "primary" : "default"} />
@@ -2382,10 +2609,119 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             }}
           />
           <Typography variant="body2" color="text.secondary">
-            {selectedReasoning?.description ?? "Adjust model reasoning effort for the next turn."}
+            {selectedReasoning?.description ?? t("app.reasoningDescription")}
           </Typography>
         </Stack>
       </Popover>
+      <Dialog
+        data-testid="workspace-folder-picker-dialog"
+        open={workspacePickerOpen}
+        onClose={() => setWorkspacePickerOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <FolderOpenIcon color="primary" />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography component="span" variant="h6" sx={{ fontWeight: 850 }}>
+                {t("workspace.pickerTitle")}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                {t("workspace.pickerSubtitle")}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <TextField
+              size="small"
+              label={t("workspace.currentFolder")}
+              value={workspacePickerPath}
+              onChange={(event) => setWorkspacePickerPath(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  void readDirectory(workspacePickerPath);
+                }
+              }}
+              fullWidth
+              inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
+            />
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button size="small" variant="outlined" onClick={() => setWorkspacePickerPath("/root")}>
+                {t("workspace.home")}
+              </Button>
+              <Button size="small" variant="outlined" onClick={() => setWorkspacePickerPath("/root/projects")}>
+                {t("workspace.projects")}
+              </Button>
+              <Button size="small" variant="outlined" disabled={!workspacePickerParent} onClick={() => workspacePickerParent && setWorkspacePickerPath(workspacePickerParent)}>
+                {t("workspace.parent")}
+              </Button>
+              <Button size="small" variant="text" onClick={() => void readDirectory(workspacePickerPath)}>
+                {t("app.refresh")}
+              </Button>
+            </Stack>
+            <Box
+              sx={{
+                minHeight: 220,
+                maxHeight: 360,
+                overflow: "auto",
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+                bgcolor: "background.default",
+                p: 0.75
+              }}
+            >
+              {workspacePickerFolders.length > 0 ? (
+                <Stack spacing={0.5}>
+                  {workspacePickerFolders.map((entry) => (
+                    <Button
+                      key={entry.path}
+                      data-testid={`workspace-folder-option-${sanitizeDomId(entry.path)}`}
+                      variant="text"
+                      color="inherit"
+                      startIcon={<FolderOpenIcon />}
+                      onClick={() => setWorkspacePickerPath(entry.path)}
+                      sx={{
+                        justifyContent: "flex-start",
+                        px: 1,
+                        fontWeight: 700,
+                        "& .MuiButton-startIcon": { color: "primary.main" }
+                      }}
+                    >
+                      <Box component="span" sx={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {entry.name}
+                      </Box>
+                    </Button>
+                  ))}
+                </Stack>
+              ) : (
+                <Stack spacing={1} alignItems="center" justifyContent="center" sx={{ minHeight: 200, textAlign: "center", color: "text.secondary" }}>
+                  <FolderOpenIcon />
+                  <Typography variant="body2">{t("workspace.noFolders")}</Typography>
+                  <Button size="small" onClick={() => void readDirectory(workspacePickerPath)}>
+                    {t("workspace.loadFolders")}
+                  </Button>
+                </Stack>
+              )}
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWorkspacePickerOpen(false)}>{t("workspace.cancel")}</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setCwd(workspacePickerPath);
+              setWorkspacePickerOpen(false);
+            }}
+          >
+            {t("workspace.useFolder")}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog
         data-testid="danger-new-chat-dialog"
         open={Boolean(dangerDialogIntent)}
@@ -2424,9 +2760,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               <Typography variant="caption" color="text.secondary">
                 Current cwd
               </Typography>
-              <Typography sx={{ overflowWrap: "anywhere", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 }}>
-                {cwd}
-              </Typography>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }} sx={{ minWidth: 0 }}>
+                <TextField
+                  size="small"
+                  label={t("workspace.label")}
+                  value={cwd}
+                  onChange={(event) => setCwd(event.target.value)}
+                  sx={{ flex: 1, minWidth: 0 }}
+                  inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
+                />
+                <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={openWorkspacePicker}>
+                  {t("workspace.browse")}
+                </Button>
+              </Stack>
               <Typography variant="caption" color="text.secondary">
                 Model
               </Typography>
@@ -2541,6 +2887,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         mcpResourceContents={mcpResourceContents}
         mcpOauthUrls={mcpOauthUrls}
         auditEvents={auditEvents}
+        t={t}
         onClose={() => setSettingsOpen(false)}
         onThemeModeChange={onThemeModeChange}
         onInstallThemePlugin={installThemePlugin}
@@ -3071,6 +3418,37 @@ function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: str
     model = next;
   }
   return model;
+}
+
+function normalizeWorkspaceCwd(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed === "~") {
+    return "/root";
+  }
+  if (trimmed.startsWith("~/")) {
+    return `/root/${trimmed.slice(2)}`;
+  }
+  return trimmed;
+}
+
+function parentWorkspacePath(path: string): string | null {
+  const normalized = normalizeWorkspaceCwd(path);
+  if (!normalized || normalized === "/") {
+    return null;
+  }
+  const withoutTrailingSlash = normalized.replace(/\/+$/, "");
+  if (!withoutTrailingSlash || withoutTrailingSlash === "/") {
+    return null;
+  }
+  const parent = withoutTrailingSlash.slice(0, withoutTrailingSlash.lastIndexOf("/")) || "/";
+  return parent === withoutTrailingSlash ? null : parent;
+}
+
+function sanitizeDomId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "root";
 }
 
 function safeThemeAssetUrl(value?: string): string | undefined {
