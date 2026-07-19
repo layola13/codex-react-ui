@@ -527,7 +527,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         client.rpc("hooks/list", { cwds: [cwd] }),
         client.rpc("plugin/list", {
           cwds: [cwd],
-          marketplaceKinds: ["local", "workspace-directory", "vertical", "shared-with-me", "created-by-me-remote"]
+          marketplaceKinds: ["local"]
         }),
         client.rpc("plugin/installed", { cwds: [cwd], installSuggestionPluginNames: [] }),
         client.rpc("app/list", { threadId: state.activeThreadId, limit: 50, forceRefetch: options?.forceSkillReload ?? false })

@@ -2,6 +2,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Divider,
@@ -20,6 +21,12 @@ import {
   Select,
   Stack,
   Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
   TextField,
   Typography
 } from "@mui/material";
@@ -49,6 +56,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import TokenIcon from "@mui/icons-material/Token";
 import TuneIcon from "@mui/icons-material/Tune";
 import AddIcon from "@mui/icons-material/Add";
+import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
@@ -840,12 +848,12 @@ function RelaySettingsPanel({
     if (!needle) {
       return providers;
     }
-    return providers.filter((provider) =>
-      [provider.name, provider.kind, provider.baseUrl, provider.defaultModel, ...provider.nativeModels]
+    return providers.filter((provider, index) =>
+      [providerTableId(provider, index), provider.name, provider.kind, provider.baseUrl, provider.defaultModel, ...provider.nativeModels, ...providerTags(provider, provider.id === activeProviderId)]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle))
     );
-  }, [providers, search]);
+  }, [activeProviderId, providers, search]);
 
   const saveChannel = () => {
     const nativeModelList = parseCsv(nativeModels);
@@ -1015,112 +1023,259 @@ function RelaySettingsPanel({
         </Box>
       </Box>
 
-      <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.default" }}>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ xs: "stretch", sm: "center" }} sx={{ p: 1.5 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{ fontSize: 18, fontWeight: 850 }}>
-              Channels
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Saved relay providers, model aliases, activation state, and health.
-            </Typography>
-          </Box>
-          <TextField
-            size="small"
-            label="Search channels"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
-            sx={{ minWidth: { sm: 260 } }}
-          />
-        </Stack>
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ px: 1.5, pb: 1.5 }}>
-          <Chip size="small" label={`All ${providers.length}`} color="primary" />
-          {Object.entries(providerCounts(providers)).map(([kind, count]) => (
-            <Chip key={kind} size="small" label={`${providerKindLabel(kind)} ${count}`} variant="outlined" />
-          ))}
-        </Stack>
-        <Stack spacing={1.25} sx={{ px: 1.5, pb: 1.5 }}>
-          {filteredProviders.length === 0 ? (
-            <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1, bgcolor: "background.paper" }}>
-              No relay channels saved yet.
-            </Typography>
-          ) : (
-            filteredProviders.map((provider) => {
-              const active = provider.id === activeProviderId;
-              const modelOptions = providerModelOptions(provider);
-              const selectedProviderModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
-              const visibleModels = modelOptions.slice(0, 4);
-              return (
-                <Box
-                  key={provider.id}
+      <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.default", p: { xs: 1.25, sm: 2 } }}>
+        <Stack spacing={2.5}>
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "flex-end" }} justifyContent="space-between">
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h4" sx={{ fontWeight: 900, fontSize: { xs: 28, sm: 36 }, lineHeight: 1.1 }}>
+                Channels
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mt: 0.75, maxWidth: 720 }}>
+                Manage AI model channels, configure providers, and monitor health status.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "flex-start", md: "flex-end" }}>
+              <Button size="small" variant="outlined" startIcon={<SettingsSuggestIcon />} sx={{ borderRadius: 999 }}>
+                Settings
+              </Button>
+              <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ borderRadius: 999 }}>
+                Batch Import
+              </Button>
+              <Button size="small" variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 999 }}>
+                Batch Adjust Weight
+              </Button>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} sx={{ borderRadius: 999 }}>
+                Add Channel
+              </Button>
+            </Stack>
+          </Stack>
+
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip size="small" label={`All ${providers.length}`} color="primary" sx={{ borderRadius: 999, fontWeight: 800 }} />
+              {Object.entries(providerCounts(providers)).map(([kind, count]) => (
+                <Chip
+                  key={kind}
+                  size="small"
+                  label={`${providerKindLabel(kind)} ${count}`}
+                  variant="outlined"
+                  avatar={<Box component="span">{providerKindInitial(kind)}</Box>}
+                  sx={{ borderRadius: 999, bgcolor: "background.paper" }}
+                />
+              ))}
+            </Stack>
+
+            <Stack direction={{ xs: "column", xl: "row" }} spacing={1.25} alignItems={{ xs: "stretch", xl: "center" }} justifyContent="space-between">
+              <TextField
+                size="small"
+                placeholder="Search by ID, Name, or Owner"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
+                sx={{
+                  maxWidth: { xl: 620 },
+                  "& .MuiOutlinedInput-root": { borderRadius: 999, bgcolor: "background.paper" }
+                }}
+              />
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {["Status", "Tag", "Model", "Provider"].map((label) => (
+                  <Button key={label} size="small" variant="outlined" startIcon={<AddIcon />} sx={{ borderRadius: 999, color: "text.secondary" }}>
+                    {label}
+                  </Button>
+                ))}
+                <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", sm: "block" } }} />
+                <Button size="small" variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 1.5, color: "text.secondary" }}>
+                  Columns
+                </Button>
+              </Stack>
+            </Stack>
+          </Stack>
+
+          <TableContainer
+            component={Paper}
+            variant="outlined"
+            sx={{
+              borderRadius: 1.5,
+              bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(17, 24, 39, 0.72)" : "rgba(255, 255, 255, 0.72)",
+              backdropFilter: "blur(18px)",
+              overflowX: "auto"
+            }}
+          >
+            <Table size="small" stickyHeader sx={{ minWidth: 1180 }}>
+              <TableHead>
+                <TableRow
                   sx={{
-                    p: 1.25,
-                    border: "1px solid",
-                    borderColor: active ? "primary.main" : "divider",
-                    borderRadius: 1,
-                    bgcolor: active ? "action.selected" : "background.paper",
-                    boxShadow: active ? "0 0 0 1px rgba(24,119,242,0.14)" : "none"
+                    "& th": {
+                      bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(31, 41, 55, 0.92)" : "rgba(231, 233, 228, 0.92)",
+                      fontWeight: 850,
+                      color: "text.secondary",
+                      borderColor: "divider",
+                      py: 1.5
+                    }
                   }}
                 >
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "flex-start" }} justifyContent="space-between">
-                    <Box sx={{ minWidth: 0 }}>
-                      <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
-                        <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
-                          {provider.name}
-                        </Typography>
-                        <Chip size="small" label={active ? "active" : "saved"} color={active ? "primary" : "default"} />
-                        <Chip size="small" label={providerKindLabel(provider.kind)} variant="outlined" />
-                      </Stack>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5, overflowWrap: "anywhere" }}>
-                        {provider.baseUrl || "managed provider"} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
+                  <TableCell sx={{ width: 40 }} />
+                  <TableCell padding="checkbox">
+                    <Checkbox size="small" disabled />
+                  </TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Provider</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Tags</TableCell>
+                  <TableCell>Supported Models</TableCell>
+                  <TableCell>Proxy</TableCell>
+                  <TableCell align="center">Health</TableCell>
+                  <TableCell align="center">Ordering Weight</TableCell>
+                  <TableCell align="center">Created At</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredProviders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={12}>
+                      <Typography color="text.secondary" sx={{ py: 2 }}>
+                        No relay channels saved yet.
                       </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexShrink: 0 }}>
-                      <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "success.main", boxShadow: "0 0 8px rgba(34,197,94,0.45)" }} />
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-                        healthy
-                      </Typography>
-                      <Chip size="small" label="weight 0" variant="outlined" />
-                    </Stack>
-                  </Stack>
-
-                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-                    {visibleModels.map((option) => (
-                      <Chip key={option.value} size="small" label={option.value} variant="outlined" sx={{ maxWidth: "100%" }} />
-                    ))}
-                    {modelOptions.length > visibleModels.length && <Chip size="small" label={`+${modelOptions.length - visibleModels.length}`} variant="outlined" />}
-                  </Stack>
-
-                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }} sx={{ mt: 1.25 }}>
-                    <FormControl size="small" sx={{ flex: 1, minWidth: { xs: 0, sm: 180 } }}>
-                      <InputLabel>Model</InputLabel>
-                      <Select
-                        value={selectedProviderModel}
-                        label="Model"
-                        onChange={(event) => setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredProviders.map((provider, index) => {
+                    const active = provider.id === activeProviderId;
+                    const modelOptions = providerModelOptions(provider);
+                    const selectedProviderModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
+                    const visibleModels = modelOptions.slice(0, 3);
+                    return (
+                      <TableRow
+                        key={provider.id}
+                        hover
+                        sx={{
+                          bgcolor: active ? "action.selected" : "transparent",
+                          "& td": { borderColor: "divider", py: 1.25 }
+                        }}
                       >
-                        {modelOptions.map((option) => (
-                          <MenuItem key={option.value} value={option.value}>
-                            {option.label}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <Button
-                      size="small"
-                      variant={active ? "outlined" : "contained"}
-                      startIcon={<PlayArrowIcon />}
-                      onClick={() => onActivateProvider(provider.id, selectedProviderModel || undefined)}
-                      sx={{ minWidth: { xs: "100%", sm: 132 } }}
-                    >
-                      Activate
-                    </Button>
-                  </Stack>
-                </Box>
-              );
-            })
-          )}
+                        <TableCell>
+                          <IconButton size="small" aria-label={`Expand ${provider.name}`}>
+                            <KeyboardArrowRightIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                        <TableCell padding="checkbox">
+                          <Checkbox size="small" checked={active} onChange={() => onActivateProvider(provider.id, selectedProviderModel || undefined)} />
+                        </TableCell>
+                        <TableCell sx={{ minWidth: 190 }}>
+                          <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
+                                {provider.name}
+                              </Typography>
+                              {active ? <Chip size="small" color="primary" label="active" sx={{ height: 20, borderRadius: 1 }} /> : null}
+                            </Stack>
+                            <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", color: "text.secondary" }}>
+                              {providerTableId(provider, index)}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere", display: "block" }}>
+                              {provider.baseUrl || "managed provider"} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={providerKindLabel(provider.kind)}
+                            avatar={<Box component="span">{providerKindInitial(provider.kind)}</Box>}
+                            variant="outlined"
+                            sx={{ bgcolor: "background.paper", borderRadius: 999 }}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Switch size="small" checked={active} onChange={() => onActivateProvider(provider.id, selectedProviderModel || undefined)} />
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ minWidth: 150 }}>
+                            {providerTags(provider, active).map((tag) => (
+                              <Chip key={tag} size="small" label={tag} variant="outlined" sx={{ height: 22, borderRadius: 1 }} />
+                            ))}
+                          </Stack>
+                        </TableCell>
+                        <TableCell sx={{ maxWidth: 320 }}>
+                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                            {visibleModels.map((option) => (
+                              <Chip key={option.value} size="small" label={option.value} sx={{ maxWidth: 160, borderRadius: 1 }} />
+                            ))}
+                            {modelOptions.length > visibleModels.length && <Chip size="small" label={`+${modelOptions.length - visibleModels.length}`} variant="outlined" />}
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Typography variant="caption" color="text.secondary">
+                            -
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Stack spacing={0.5} alignItems="center">
+                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: active ? "primary.main" : "success.main", mx: "auto", boxShadow: "0 0 8px rgba(34,197,94,0.42)" }} />
+                            <Typography variant="caption" color="text.secondary">
+                              {active ? "Active" : "Ready"}
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Typography variant="body2" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
+                            {active ? "1.0000" : "0.5000"}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Typography variant="body2" color="text.secondary">
+                            {formatProviderCreatedAt(provider.createdAt)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ minWidth: 238 }}>
+                          <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                            <FormControl size="small" sx={{ minWidth: 112 }}>
+                              <InputLabel>Model</InputLabel>
+                              <Select
+                                value={selectedProviderModel}
+                                label="Model"
+                                onChange={(event) => setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))}
+                              >
+                                {modelOptions.map((option) => (
+                                  <MenuItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                            <Button
+                              size="small"
+                              variant={active ? "outlined" : "contained"}
+                              startIcon={<PlayArrowIcon />}
+                              onClick={() => onActivateProvider(provider.id, selectedProviderModel || undefined)}
+                              sx={{ minWidth: 104 }}
+                            >
+                              Activate
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
+            <Typography variant="body2" color="text.secondary">
+              Showing {filteredProviders.length === 0 ? 0 : 1} to {filteredProviders.length} of {providers.length} entries
+            </Typography>
+            <Stack direction="row" spacing={1} justifyContent="flex-end">
+              <Button size="small" variant="outlined" disabled>
+                Previous
+              </Button>
+              <Button size="small" variant="outlined" disabled>
+                Next
+              </Button>
+            </Stack>
+          </Stack>
         </Stack>
       </Box>
     </SettingsSection>
@@ -1178,6 +1333,33 @@ function providerKindLabel(kind: string): string {
     default:
       return kind;
   }
+}
+
+function providerKindInitial(kind: string): string {
+  return providerKindLabel(kind).slice(0, 1).toUpperCase();
+}
+
+function providerTableId(provider: ProviderConfig, index: number): string {
+  let hash = 0;
+  for (const char of provider.id || provider.name) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 100000;
+  }
+  return `#${String(hash || index + 1).padStart(5, "0")}`;
+}
+
+function providerTags(provider: ProviderConfig, active: boolean): string[] {
+  return [provider.kind === "responsesRelay" ? "relay" : provider.kind, active ? "active" : "saved"].filter(Boolean);
+}
+
+function formatProviderCreatedAt(createdAt?: number): string {
+  if (!createdAt) {
+    return "-";
+  }
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toISOString().slice(0, 10);
 }
 
 function parseCsv(value: string): string[] {
