@@ -2,6 +2,14 @@
 
 ## 2026-07-18
 
+- Slash Command parity follow-up:
+  - Added a focused Playwright regression for `/new danger` through the main composer slash router.
+  - The test proves `/new danger` opens the existing Danger Bypass confirmation dialog, does not immediately create a new thread or turn before acknowledgement, and only sends `thread/start` plus `turn/start` with `approvalPolicy: "never"` and `dangerFullAccess` after confirmation.
+  - Verification passed:
+    - `npx pnpm@10.33.0 --filter @codex-ui/web typecheck`
+    - `npx pnpm@10.33.0 exec playwright test tests/e2e/workbench.spec.ts -g "new danger|routes main slash commands" --list`
+  - Browser execution of the focused Playwright tests is currently blocked by the host image missing Chromium system library `libatk-1.0.so.0`; `npx playwright install-deps chromium` cannot complete because sudo requires a password.
+
 - Slash Command parity implementation:
   - Added composer-adjacent shortcut buttons for `/fast`, `/status`, `/goal`, `/plan`, `/review`, and `/rename`; command buttons route through the same parser as typed slash commands.
   - Added a sticky slash command result panel in the chat top status surface for Web-native command outcomes.

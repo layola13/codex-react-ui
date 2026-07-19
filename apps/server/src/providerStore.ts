@@ -1,9 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { AsyncEntry } from "@napi-rs/keyring";
 import type { ProviderConfig, UiProfile, UiProfileImportResult } from "@codex-ui/shared";
+import { LocalDatabase } from "./localDatabase.js";
 
 type StoreShape = {
   providers: ProviderConfig[];
@@ -12,9 +14,15 @@ type StoreShape = {
 export class ProviderStore {
   private readonly dir = join(homedir(), ".codex-react-ui");
   private readonly file = join(this.dir, "providers.json");
+  private readonly db: DatabaseSync;
   private memorySecrets = new Map<string, string>();
 
+  public constructor(database = new LocalDatabase()) {
+    this.db = database.connection;
+  }
+
   public async initialize(): Promise<void> {
+    await this.migrateLegacyProviders();
     const store = await this.read();
     let changed = false;
     for (const provider of store.providers) {
@@ -143,19 +151,59 @@ export class ProviderStore {
   }
 
   private async read(): Promise<StoreShape> {
-    try {
-      const raw = await readFile(this.file, "utf8");
-      const parsed = JSON.parse(raw) as StoreShape;
-      return { providers: Array.isArray(parsed.providers) ? parsed.providers : [] };
-    } catch {
-      return { providers: [] };
-    }
+    const rows = this.db
+      .prepare("SELECT payload FROM providers ORDER BY created_at ASC, id ASC")
+      .all() as Array<{ payload: string }>;
+    return {
+      providers: rows.map((row) => parseProvider(row.payload)).filter((provider): provider is ProviderConfig => Boolean(provider))
+    };
   }
 
   private async write(store: StoreShape): Promise<void> {
-    await mkdir(this.dir, { recursive: true });
-    await writeFile(this.file, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare("DELETE FROM providers").run();
+      const insert = this.db.prepare("INSERT INTO providers (id, payload, created_at, updated_at) VALUES (?, ?, ?, ?)");
+      for (const provider of store.providers) {
+        insert.run(provider.id, JSON.stringify(provider), provider.createdAt ?? Date.now(), provider.updatedAt ?? Date.now());
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
+
+  private async migrateLegacyProviders(): Promise<void> {
+    const existing = this.db.prepare("SELECT COUNT(*) AS count FROM providers").get() as { count: number } | undefined;
+    if ((existing?.count ?? 0) > 0) {
+      return;
+    }
+    try {
+      const raw = await readFile(this.file, "utf8");
+      const parsed = JSON.parse(raw) as StoreShape;
+      const providers = Array.isArray(parsed.providers) ? parsed.providers.filter(isProviderLike) : [];
+      if (providers.length > 0) {
+        await this.write({ providers });
+      }
+    } catch {
+      // Fresh installs have no legacy provider file.
+    }
+  }
+}
+
+function parseProvider(payload: string): ProviderConfig | null {
+  try {
+    const provider = JSON.parse(payload) as ProviderConfig;
+    return isProviderLike(provider) ? provider : null;
+  } catch {
+    return null;
+  }
+}
+
+function isProviderLike(value: unknown): value is ProviderConfig {
+  const record = asRecord(value);
+  return typeof record.id === "string" && typeof record.name === "string" && typeof record.kind === "string";
 }
 
 const KEYRING_SERVICE = "codex-react-ui";

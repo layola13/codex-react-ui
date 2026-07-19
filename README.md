@@ -67,7 +67,7 @@ The watcher only stages `README.md`, writes its pid/log files under `.codex-main
 
 ## Provider Switching
 
-Saved provider metadata is stored at `~/.codex-react-ui/providers.json` with file mode `0600`. API keys are kept only in the current Node process memory and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
+Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Node process memory and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
 
 Activating a provider writes:
 
@@ -121,7 +121,7 @@ Settings-oriented commands stay out of the right runtime workspace. `/plugins`, 
 
 ## Dangerous Permission Audit
 
-Dangerous `thread/start` and `turn/start` calls are appended to `~/.codex-react-ui/audit-log.jsonl` with file mode `0600`. Records include method, timestamp, cwd, thread/model identifiers, permission reasons, and input counts, but not prompt text or API keys. The Config tab shows the most recent local audit records.
+Dangerous `thread/start` and `turn/start` calls are appended to SQLite in `~/.codex-react-ui/codex-ui.sqlite3` with file mode `0600`. Records include method, timestamp, cwd, thread/model identifiers, permission reasons, and input counts, but not prompt text or API keys. The Config tab shows the most recent local audit records.
 
 ## Sidechat Isolation
 

@@ -15,14 +15,16 @@ import {
   type ServerToClientMessage
 } from "@codex-ui/shared";
 import { CodexBridge } from "./codexBridge.js";
+import { LocalDatabase } from "./localDatabase.js";
 import { ProviderStore } from "./providerStore.js";
 import { AuditLogStore } from "./auditLogStore.js";
 
 const PORT = Number(process.env.CODEX_UI_PORT ?? 43110);
 const HOST = "127.0.0.1";
 const sessionToken = process.env.CODEX_UI_TOKEN ?? randomBytes(24).toString("base64url");
-const providerStore = new ProviderStore();
-const auditLogStore = new AuditLogStore();
+const localDatabase = new LocalDatabase();
+const providerStore = new ProviderStore(localDatabase);
+const auditLogStore = new AuditLogStore(localDatabase);
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
 const clients = new Set<WebSocket>();
 

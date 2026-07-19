@@ -1492,7 +1492,9 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
         message.params?.input?.some((entry) => entry.type === "text" && entry.text === "inspect slash router states")
     );
   });
-  outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ text?: string }> } }> }).__codexUiOutbound ?? []);
+  outbound = await page.evaluate(
+    () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ text?: string }> } }> }).__codexUiOutbound ?? []
+  );
   expect(outbound.some((message) => message.method === "turn/start" && message.params?.input?.some((entry) => entry.text === "/plan inspect slash router states"))).toBe(false);
 
   await composer.fill("/usage");
@@ -1564,6 +1566,81 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
     path: "snapshot/slash-command-status-goal-plan.png",
     fullPage: false
   });
+});
+
+test("routes /new danger through the danger confirmation flow", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toBeVisible();
+
+  const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
+  const send = page.getByRole("button", { name: "Send" });
+
+  await page.evaluate(() => {
+    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
+  });
+  await composer.fill("/new danger");
+  await send.click();
+
+  const dialog = page.getByTestId("danger-new-chat-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Create Full Auto chat");
+  await expect(page.getByRole("button", { name: "Create Full Auto Chat" })).toBeDisabled();
+  await expect(page.getByRole("tab", { name: "New task" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "false");
+
+  let outbound = await page.evaluate(
+    () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { sandbox?: string; approvalPolicy?: string } }> }).__codexUiOutbound ?? []
+  );
+  expect(outbound.some((message) => message.method === "thread/start" || message.method === "turn/start")).toBe(false);
+
+  await page.getByLabel("Confirm Danger Bypass").check();
+  await page.getByRole("button", { name: "Create Full Auto Chat" }).click();
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("danger-session-badge")).toContainText("Full Auto");
+  await expect(page.getByRole("tab", { name: "New task" })).toHaveAttribute("aria-selected", "true");
+
+  await composer.fill("Start danger slash chat");
+  await send.click();
+
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: {
+            sandbox?: string;
+            sandboxPolicy?: { type?: string };
+            approvalPolicy?: string;
+            input?: Array<{ type?: string; text?: string }>;
+          };
+        }>;
+      }
+    ).__codexUiOutbound ?? [];
+    const threadStart = messages.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "thread/start" &&
+        message.params?.sandbox === "danger-full-access" &&
+        message.params?.approvalPolicy === "never"
+    );
+    const turnStart = messages.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.sandboxPolicy?.type === "dangerFullAccess" &&
+        message.params?.approvalPolicy === "never" &&
+        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "Start danger slash chat")
+    );
+    return threadStart && turnStart;
+  });
+
+  outbound = await page.evaluate(
+    () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { sandbox?: string; approvalPolicy?: string } }> }).__codexUiOutbound ?? []
+  );
+  expect(outbound.some((message) => message.method === "thread/start")).toBe(true);
 });
 
 test("shows parallel agents rail with switchable transcripts and completion controls", async ({ page }) => {

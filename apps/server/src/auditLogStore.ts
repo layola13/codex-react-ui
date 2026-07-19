@@ -1,12 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
+import { LocalDatabase } from "./localDatabase.js";
 
 export class AuditLogStore {
   private readonly dir = join(homedir(), ".codex-react-ui");
   private readonly file = join(this.dir, "audit-log.jsonl");
+  private readonly db: DatabaseSync;
+
+  public constructor(database = new LocalDatabase()) {
+    this.db = database.connection;
+    void this.migrateLegacyEvents();
+  }
 
   public async recordDangerousPermission(method: string, params: JsonValue | undefined): Promise<DangerousPermissionAuditEvent | null> {
     if (method !== "thread/start" && method !== "turn/start") {
@@ -31,23 +39,44 @@ export class AuditLogStore {
       sandboxPolicyType: sandboxPolicyType(record.sandboxPolicy),
       inputSummary: inputSummary(record.input)
     };
-    await mkdir(this.dir, { recursive: true });
-    await appendFile(this.file, `${JSON.stringify(event)}\n`, { mode: 0o600 });
+    this.insert(event);
     return event;
   }
 
   public async list(limit = 50): Promise<DangerousPermissionAuditEvent[]> {
+    await this.migrateLegacyEvents();
+    const rows = this.db
+      .prepare("SELECT payload FROM audit_events ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as Array<{ payload: string }>;
+    return rows.map((row) => parseAuditLine(row.payload)).filter(isAuditEvent);
+  }
+
+  private insert(event: DangerousPermissionAuditEvent): void {
+    this.db
+      .prepare("INSERT OR REPLACE INTO audit_events (id, created_at, method, severity, payload) VALUES (?, ?, ?, ?, ?)")
+      .run(event.id, event.createdAt, event.method, event.severity, JSON.stringify(event));
+  }
+
+  private async migrateLegacyEvents(): Promise<void> {
+    const existing = this.db.prepare("SELECT COUNT(*) AS count FROM audit_events").get() as { count: number } | undefined;
+    if ((existing?.count ?? 0) > 0) {
+      return;
+    }
     try {
       const raw = await readFile(this.file, "utf8");
-      return raw
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map(parseAuditLine)
-        .filter(isAuditEvent)
-        .slice(-limit)
-        .reverse();
+      const events = raw.split(/\r?\n/).filter(Boolean).map(parseAuditLine).filter(isAuditEvent);
+      this.db.exec("BEGIN");
+      try {
+        for (const event of events) {
+          this.insert(event);
+        }
+        this.db.exec("COMMIT");
+      } catch (error) {
+        this.db.exec("ROLLBACK");
+        throw error;
+      }
     } catch {
-      return [];
+      // Fresh installs have no legacy audit log.
     }
   }
 }
