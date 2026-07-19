@@ -143,6 +143,7 @@
 - [x] Move the composer plus/send controls into the input box itself so the lower row no longer wastes space.
 - [x] Move slash command shortcuts into the composer plus menu to match the reference input layout.
 - [x] Keep the welcome page within the first viewport and hide the request monitor entry when there are zero requests.
+- [x] Clear the main panel when starting a new conversation after viewing historical threads.
 - [x] Add Monaco-backed file explorer/editor using app-server filesystem APIs.
 - [x] Add terminal/process controls for command execution and PTY interaction.
 - [x] Add Playwright screenshot regression checks for desktop and mobile workbench layouts.

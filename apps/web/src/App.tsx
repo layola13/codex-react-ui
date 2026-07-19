@@ -169,6 +169,7 @@ type Action =
   | { type: "threads"; threads: ClientState["threads"] }
   | { type: "providers"; providers: ProviderConfig[] }
   | { type: "activeThread"; threadId: string | null }
+  | { type: "newConversation" }
   | { type: "threadLoaded"; thread: ClientState["threads"][number] | null; turns: ClientState["turns"] }
   | { type: "threadMerged"; thread: ClientState["threads"][number] | null; turns: ClientState["turns"] }
   | { type: "toolingLoading"; loading: boolean }
@@ -197,6 +198,8 @@ function reducer(state: ClientState, action: Action): ClientState {
       return { ...state, providers: action.providers };
     case "activeThread":
       return { ...state, activeThreadId: action.threadId };
+    case "newConversation":
+      return { ...state, activeThreadId: null, turns: [], pendingRequests: [] };
     case "threadLoaded":
       return {
         ...state,
@@ -894,7 +897,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setCwd(DEFAULT_NEW_CHAT_CWD);
         setWorkspaceSelectionPending(true);
         setWelcomeDismissed(false);
-        dispatch({ type: "activeThread", threadId: null });
+        dispatch({ type: "newConversation" });
         return;
       }
       setWorkspaceSelectionPending(false);
@@ -909,7 +912,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     setCwd(DEFAULT_NEW_CHAT_CWD);
     setWorkspaceSelectionPending(true);
     setWelcomeDismissed(false);
-    dispatch({ type: "activeThread", threadId: null });
+    dispatch({ type: "newConversation" });
   }, []);
 
   const requestNewSession = useCallback(
@@ -918,7 +921,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setCwd(DEFAULT_NEW_CHAT_CWD);
         setWorkspaceSelectionPending(true);
         setWelcomeDismissed(false);
-        dispatch({ type: "activeThread", threadId: null });
+        dispatch({ type: "newConversation" });
         setDangerDialogIntent({ source: "new-chat", nextPermission });
         setDangerDialogAcknowledged(false);
         return;
@@ -967,7 +970,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     if (dangerDialogIntent.source === "new-chat") {
       setWorkspaceSelectionPending(true);
       setWelcomeDismissed(false);
-      dispatch({ type: "activeThread", threadId: null });
+      dispatch({ type: "newConversation" });
     }
     closeDangerDialog();
   }, [closeDangerDialog, dangerDialogIntent]);

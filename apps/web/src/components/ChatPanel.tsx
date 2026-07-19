@@ -1322,7 +1322,7 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
 }
 
 function mainConversationItems(turns: WorkbenchTurn[], activeThreadId: string | null): DisplayConversationItem[] {
-  const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : turns;
+  const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
   return conversationItemsForTurns(visibleTurns, (item) => !item.agentId && !item.agentThreadId);
 }
 
@@ -1387,7 +1387,7 @@ function conversationItemsForTurns(turns: WorkbenchTurn[], filterItem: (item: Wo
 }
 
 function hasThreadActivity(turns: WorkbenchTurn[], activeThreadId: string | null): boolean {
-  const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : turns;
+  const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
   return visibleTurns.some((turn) => turn.items.length > 0);
 }
 
