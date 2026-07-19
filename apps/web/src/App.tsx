@@ -229,7 +229,7 @@ function reducer(state: ClientState, action: Action): ClientState {
         pendingRequests: state.pendingRequests.filter((request) => request.id !== action.id)
       };
     case "error":
-      return { ...state, errors: [action.message, ...state.errors].slice(0, 8) };
+      return { ...state, errors: [formatErrorText(action.message), ...state.errors].slice(0, 8) };
     case "clearError":
       return { ...state, errors: state.errors.slice(1) };
   }
@@ -658,8 +658,17 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           providers: [message.provider, ...state.providers.filter((provider) => provider.id !== message.provider.id)]
         });
       }
+      if (message.type === "provider.deleted") {
+        dispatch({
+          type: "providers",
+          providers: state.providers.filter((provider) => provider.id !== message.providerId)
+        });
+        if (message.providerId === activeProviderId) {
+          setActiveProviderId(null);
+        }
+      }
       if (message.type === "server.error") {
-        dispatch({ type: "error", message: message.message });
+        dispatch({ type: "error", message: formatErrorText(message.message) });
       }
     };
     client.addEventListener("connected", onConnected);
@@ -668,7 +677,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       client.removeEventListener("connected", onConnected);
       client.removeEventListener("server-message", onMessage);
     };
-  }, [appendTerminalOutput, client, loadTooling, state.providers]);
+  }, [activeProviderId, appendTerminalOutput, client, loadTooling, state.providers]);
 
   useEffect(() => {
     let mounted = true;
@@ -683,7 +692,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "providers", providers });
         await loadBasics();
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     })();
     return () => {
@@ -766,7 +775,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "threadLoaded", thread: loaded.thread, turns: loaded.turns });
         void loadThreadGoal(threadId);
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, loadThreadGoal]
@@ -779,7 +788,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const loaded = threadReadToTurns(result);
         dispatch({ type: "threadMerged", thread: loaded.thread, turns: loaded.turns });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -863,7 +872,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     try {
       setAuditEvents(await fetchAuditEvents(state.token));
     } catch (error) {
-      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      dispatch({ type: "error", message: formatErrorText(error) });
     }
   }, [state.token]);
 
@@ -929,7 +938,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           await loadAuditEvents();
         }
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [
@@ -1363,7 +1372,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         }
         setSideChatTabs((current) => current.map((entry) => (entry.id === tabId ? { ...entry, sending: false } : entry)));
       } catch (error) {
-        setSideChatError(error instanceof Error ? error.message : String(error));
+        setSideChatError(formatErrorText(error));
         setSideChatTabs((current) =>
           current.map((entry) =>
             entry.id === tabId
@@ -1406,7 +1415,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           providers: [saved, ...state.providers.filter((entry) => entry.id !== saved.id)]
         });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
+        throw error;
       }
     },
     [client, state.providers]
@@ -1422,10 +1432,30 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         }
         await loadBasics();
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
+        throw error;
       }
     },
     [client, loadBasics]
+  );
+
+  const deleteProvider = useCallback(
+    async (providerId: string) => {
+      try {
+        const deletedProviderId = await client.deleteProvider(providerId);
+        dispatch({
+          type: "providers",
+          providers: state.providers.filter((entry) => entry.id !== deletedProviderId)
+        });
+        if (activeProviderId === deletedProviderId) {
+          setActiveProviderId(null);
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: formatErrorText(error) });
+        throw error;
+      }
+    },
+    [activeProviderId, client, state.providers]
   );
 
   const downloadProfile = useCallback(async () => {
@@ -1445,7 +1475,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      dispatch({ type: "error", message: formatErrorText(error) });
       throw error;
     }
   }, [state.token]);
@@ -1462,7 +1492,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "providers", providers: result.providers });
         return result.importedProviders;
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
         throw error;
       }
     },
@@ -1474,7 +1504,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       await client.rpc("config/mcpServer/reload");
       await loadTooling();
     } catch (error) {
-      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      dispatch({ type: "error", message: formatErrorText(error) });
     }
   }, [client, loadTooling]);
 
@@ -1484,7 +1514,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         await client.rpc("skills/config/write", { path: skill.path || null, name: skill.path ? null : skill.name, enabled });
         await loadTooling({ forceSkillReload: true });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, loadTooling]
@@ -1498,7 +1528,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setSkillExtraRoots(normalized);
         await loadTooling({ forceSkillReload: true, skillExtraRoots: normalized });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, loadTooling]
@@ -1518,7 +1548,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           [skill.path]: typeof dataBase64 === "string" ? decodeBase64Text(dataBase64) : "No preview available"
         }));
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1536,7 +1566,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setPluginAuthNotices((current) => ({ ...current, [plugin.id]: authNotice }));
         await loadTooling({ forceSkillReload: true });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, loadTooling]
@@ -1548,7 +1578,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         await client.rpc("plugin/uninstall", { pluginId: plugin.id });
         await loadTooling({ forceSkillReload: true });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, loadTooling]
@@ -1567,7 +1597,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           setPluginDetails((current) => ({ ...current, [plugin.id]: detail }));
         }
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1591,7 +1621,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           [`${plugin.id}:${skillName}`]: typeof contents === "string" ? contents : "No preview available"
         }));
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1611,7 +1641,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const result = await client.rpc("fs/readDirectory", { path });
         setFileDirectories((current) => ({ ...current, [path]: parseFsDirectory(result, path) }));
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1627,7 +1657,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setOpenFile({ path, content, savedContent: content, loading: false, saving: false });
       } catch (error) {
         setOpenFile((current) => (current?.path === path ? { ...current, loading: false } : current));
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1652,7 +1682,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
     } catch (error) {
       setOpenFile((current) => (current?.path === path ? { ...current, saving: false } : current));
-      dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+      dispatch({ type: "error", message: formatErrorText(error) });
     }
   }, [client, fileDirectories, openFile, readDirectory]);
 
@@ -1702,7 +1732,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           )
         );
       } catch (error) {
-        appendTerminalOutput(processId, `\n${error instanceof Error ? error.message : String(error)}\n`);
+        appendTerminalOutput(processId, `\n${formatErrorText(error)}\n`);
         setTerminalSessions((current) => current.map((session) => (session.processId === processId ? { ...session, status: "failed" } : session)));
       }
     },
@@ -1714,7 +1744,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         await client.rpc("command/exec/write", { processId, deltaBase64: encodeBase64Text(input) });
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1726,7 +1756,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         await client.rpc("command/exec/terminate", { processId });
         setTerminalSessions((current) => current.map((session) => (session.processId === processId ? { ...session, status: "terminated" } : session)));
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1740,7 +1770,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           current.map((session) => (session.processId === processId ? { ...session, rows: size.rows, cols: size.cols } : session))
         );
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client]
@@ -1756,7 +1786,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           window.open(authorizationUrl, "_blank", "noopener,noreferrer");
         }
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, state.activeThreadId]
@@ -1771,7 +1801,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           [`${serverName}:${uri}`]: parseMcpResourceContents(result)
         }));
       } catch (error) {
-        dispatch({ type: "error", message: error instanceof Error ? error.message : String(error) });
+        dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [client, state.activeThreadId]
@@ -2525,8 +2555,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onReloadCodexConfig={() => void loadCodexConfig()}
         onCodexConfigFieldChange={(field, value) => void writeCodexConfigField(field, value)}
         onCodexConfigValueChange={(keyPath, value) => void writeCodexConfigValue(keyPath, value)}
-        onSaveProvider={(provider, apiKey) => void saveProvider(provider, apiKey)}
-        onActivateProvider={(providerId, model) => void activateProvider(providerId, model)}
+        onSaveProvider={saveProvider}
+        onActivateProvider={activateProvider}
+        onDeleteProvider={deleteProvider}
         onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
         onReloadMcp={() => void reloadMcp()}
         onExportProfile={() => downloadProfile()}
@@ -2959,13 +2990,37 @@ function mergeTurns(current: ClientState["turns"], loaded: ClientState["turns"])
 }
 
 function errorMessage(scope: string, error: unknown): string {
+  return `${scope}: ${formatErrorText(error)}`;
+}
+
+function formatErrorText(error: unknown): string {
   if (error instanceof Error) {
-    return `${scope}: ${error.message}`;
+    return error.message;
   }
-  if (error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string") {
-    return `${scope}: ${(error as { message: string }).message}`;
+  if (typeof error === "string") {
+    return error;
   }
-  return `${scope}: ${String(error)}`;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    for (const key of ["message", "error", "detail", "reason"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+      if (value && typeof value === "object") {
+        const nested = formatErrorText(value);
+        if (nested && nested !== "[object Object]") {
+          return nested;
+        }
+      }
+    }
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }
 
 function buildDangerBackendPreview(cwd: string, model: string, effort: string): JsonValue {

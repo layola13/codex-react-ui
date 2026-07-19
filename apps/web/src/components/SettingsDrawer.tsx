@@ -165,8 +165,9 @@ type Props = {
   onReloadCodexConfig: () => void;
   onCodexConfigFieldChange: (field: CodexConfigFieldKey, value: string) => void;
   onCodexConfigValueChange: (keyPath: string, value: JsonValue) => void;
-  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
-  onActivateProvider: (providerId: string, model?: string) => void;
+  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => Promise<void>;
+  onActivateProvider: (providerId: string, model?: string) => Promise<void>;
+  onDeleteProvider: (providerId: string) => Promise<void>;
   onReloadTooling: () => void;
   onReloadMcp: () => void;
   onExportProfile: () => Promise<void>;
@@ -253,6 +254,7 @@ export function SettingsDrawer({
   onCodexConfigValueChange,
   onSaveProvider,
   onActivateProvider,
+  onDeleteProvider,
   onReloadTooling,
   onReloadMcp,
   onExportProfile,
@@ -653,6 +655,7 @@ export function SettingsDrawer({
                 selectedModel={selectedModel}
                 onSaveProvider={onSaveProvider}
                 onActivateProvider={onActivateProvider}
+                onDeleteProvider={onDeleteProvider}
               />
             )}
 
@@ -823,15 +826,22 @@ function RelaySettingsPanel({
   activeProvider,
   selectedModel,
   onSaveProvider,
-  onActivateProvider
+  onActivateProvider,
+  onDeleteProvider
 }: {
   providers: ProviderConfig[];
   activeProviderId: string | null;
   activeProvider?: ProviderConfig;
   selectedModel: string;
-  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => void;
-  onActivateProvider: (providerId: string, model?: string) => void;
+  onSaveProvider: (provider: ProviderConfig, apiKey?: string) => Promise<void>;
+  onActivateProvider: (providerId: string, model?: string) => Promise<void>;
+  onDeleteProvider: (providerId: string) => Promise<void>;
 }) {
+  type RelayView = "list" | "form";
+  type TestStatus = { state: "passed" | "failed"; message: string };
+
+  const [relayView, setRelayView] = useState<RelayView>("list");
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<RelayTemplateId>("openai");
   const template = RELAY_PROVIDER_TEMPLATES.find((entry) => entry.id === templateId) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
   const [apiFormat, setApiFormat] = useState<ProviderConfig["kind"]>(template.apiFormat);
@@ -842,6 +852,9 @@ function RelaySettingsPanel({
   const [modelAliases, setModelAliases] = useState(template.modelAliases);
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
+  const [testStatuses, setTestStatuses] = useState<Record<string, TestStatus>>({});
 
   const filteredProviders = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -855,27 +868,121 @@ function RelaySettingsPanel({
     );
   }, [activeProviderId, providers, search]);
 
-  const saveChannel = () => {
-    const nativeModelList = parseCsv(nativeModels);
-    const kind = apiFormat === "openai" ? "openai" : template.kind;
-    onSaveProvider(
-      {
-        id: "",
-        kind,
-        name: name.trim() || template.label,
-        baseUrl: baseUrl.trim() || undefined,
-        defaultModel: nativeModelList[0] ?? selectedModel,
-        nativeModels: nativeModelList,
-        modelAliases: parseAliases(modelAliases),
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      },
-      apiKey || undefined
-    );
+  const resetFormFromTemplate = (entry: (typeof RELAY_PROVIDER_TEMPLATES)[number]) => {
+    setTemplateId(entry.id);
+    setApiFormat(entry.apiFormat);
+    setName(entry.label === "OpenAI" ? "My Channel" : `${entry.label} Relay`);
+    setBaseUrl(entry.baseUrl);
+    setNativeModels(entry.nativeModels);
+    setModelAliases(entry.modelAliases);
+    setApiKey("");
   };
 
+  const startAddChannel = () => {
+    setEditingProviderId(null);
+    resetFormFromTemplate(DEFAULT_RELAY_PROVIDER_TEMPLATE);
+    setRelayView("form");
+  };
+
+  const startEditChannel = (provider: ProviderConfig) => {
+    const matchingTemplate = RELAY_PROVIDER_TEMPLATES.find((entry) => entry.kind === provider.kind) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
+    setTemplateId(matchingTemplate.id);
+    setApiFormat(provider.kind);
+    setName(provider.name);
+    setBaseUrl(provider.baseUrl ?? "");
+    setNativeModels(provider.nativeModels.join(", "));
+    setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
+    setApiKey("");
+    setEditingProviderId(provider.id);
+    setRelayView("form");
+  };
+
+  const saveChannel = async () => {
+    if (saving) {
+      return;
+    }
+    const nativeModelList = parseCsv(nativeModels);
+    const editingProvider = providers.find((provider) => provider.id === editingProviderId);
+    const now = Date.now();
+    setSaving(true);
+    try {
+      await onSaveProvider(
+        {
+          id: editingProvider?.id ?? "",
+          kind: apiFormat,
+          name: name.trim() || template.label,
+          baseUrl: baseUrl.trim() || undefined,
+          apiKeyRef: editingProvider?.apiKeyRef,
+          apiKeyPreview: editingProvider?.apiKeyPreview,
+          apiKeyStorage: editingProvider?.apiKeyStorage,
+          defaultModel: nativeModelList[0] ?? editingProvider?.defaultModel ?? selectedModel,
+          nativeModels: nativeModelList,
+          modelAliases: parseAliases(modelAliases),
+          createdAt: editingProvider?.createdAt ?? now,
+          updatedAt: now
+        },
+        apiKey || undefined
+      );
+      setRelayView("list");
+      setEditingProviderId(null);
+      setApiKey("");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activateChannel = async (provider: ProviderConfig, model?: string) => {
+    setBusyProviderId(provider.id);
+    try {
+      await onActivateProvider(provider.id, model || undefined);
+    } finally {
+      setBusyProviderId(null);
+    }
+  };
+
+  const testChannel = async (provider: ProviderConfig, model?: string) => {
+    setBusyProviderId(provider.id);
+    setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: "Testing..." } }));
+    try {
+      await onActivateProvider(provider.id, model || undefined);
+      setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: "Test passed" } }));
+    } catch (error) {
+      setTestStatuses((current) => ({
+        ...current,
+        [provider.id]: { state: "failed", message: formatRelayErrorText(error) }
+      }));
+    } finally {
+      setBusyProviderId(null);
+    }
+  };
+
+  const deleteChannel = async (provider: ProviderConfig) => {
+    if (!window.confirm(`Delete channel "${provider.name}"?`)) {
+      return;
+    }
+    setBusyProviderId(provider.id);
+    try {
+      await onDeleteProvider(provider.id);
+      setTestStatuses((current) => {
+        const next = { ...current };
+        delete next[provider.id];
+        return next;
+      });
+    } finally {
+      setBusyProviderId(null);
+    }
+  };
+
+  const editingProvider = providers.find((provider) => provider.id === editingProviderId);
+  const formTitle = editingProvider ? "Edit Channel" : "Add Channel";
+
   return (
-    <SettingsSection icon={<MemoryIcon fontSize="small" />} title="Model Channels" subtitle="Create, save, and activate third-party relay providers from Settings">
+    <SettingsSection
+      icon={<MemoryIcon fontSize="small" />}
+      title={relayView === "form" ? "Model Channel" : "Channels"}
+      subtitle={relayView === "form" ? `${formTitle} backed by a relay provider` : "Manage AI model channels, configure providers, and monitor health status"}
+    >
+      {relayView === "form" ? (
       <Box
         sx={{
           display: "grid",
@@ -897,14 +1004,7 @@ function RelaySettingsPanel({
                   key={entry.id}
                   color={selected ? "primary" : "inherit"}
                   variant={selected ? "outlined" : "text"}
-                  onClick={() => {
-                    setTemplateId(entry.id);
-                    setApiFormat(entry.apiFormat);
-                    setName(entry.label === "OpenAI" ? "My Channel" : `${entry.label} Relay`);
-                    setBaseUrl(entry.baseUrl);
-                    setNativeModels(entry.nativeModels);
-                    setModelAliases(entry.modelAliases);
-                  }}
+                  onClick={() => resetFormFromTemplate(entry)}
                   startIcon={<Radio checked={selected} size="small" />}
                   sx={{
                     justifyContent: "flex-start",
@@ -932,10 +1032,10 @@ function RelaySettingsPanel({
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
               <Box>
                 <Typography variant="h6" sx={{ fontSize: 20, fontWeight: 850, color: "primary.main" }}>
-                  Add Channel
+                  {formTitle}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Create a new AI model channel backed by a relay provider.
+                  {editingProvider ? "Update this saved relay channel. Leave API key blank to keep the existing key." : "Create a new AI model channel backed by a relay provider."}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -981,7 +1081,15 @@ function RelaySettingsPanel({
                 <TextField size="small" fullWidth label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} inputProps={{ "aria-label": "Base URL" }} />
               </RelayFormRow>
               <RelayFormRow label="API Key">
-                <TextField size="small" fullWidth label="API Key" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} inputProps={{ "aria-label": "Relay API key" }} />
+                <TextField
+                  size="small"
+                  fullWidth
+                  label={editingProvider?.apiKeyPreview ? `API Key (${editingProvider.apiKeyPreview})` : "API Key"}
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  inputProps={{ "aria-label": "Relay API key" }}
+                />
               </RelayFormRow>
               <RelayFormRow label="Supported Models">
                 <TextField
@@ -1001,29 +1109,40 @@ function RelaySettingsPanel({
                   onChange={(event) => setModelAliases(event.target.value)}
                 />
               </RelayFormRow>
-              <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ pt: 0.5 }}>
+              <Stack direction="row" spacing={1} justifyContent="space-between" sx={{ pt: 0.5 }}>
                 <Button
                   variant="outlined"
-                  onClick={() => {
-                    setName(template.label === "OpenAI" ? "My Channel" : `${template.label} Relay`);
-                    setBaseUrl(template.baseUrl);
-                    setNativeModels(template.nativeModels);
-                    setModelAliases(template.modelAliases);
-                    setApiKey("");
-                  }}
+                  onClick={() => setRelayView("list")}
                 >
-                  Cancel
+                  Back to Channels
                 </Button>
-                <Button variant="contained" startIcon={<SaveIcon />} onClick={saveChannel}>
-                  Create
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      if (editingProvider) {
+                        startEditChannel(editingProvider);
+                      } else {
+                        resetFormFromTemplate(template);
+                      }
+                    }}
+                    disabled={saving}
+                  >
+                    Reset
+                  </Button>
+                  <Button variant="contained" startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />} onClick={() => void saveChannel()} disabled={saving}>
+                    {editingProvider ? "Save" : "Create"}
+                  </Button>
+                </Stack>
               </Stack>
             </Stack>
           </Stack>
         </Box>
       </Box>
+      ) : null}
 
-      <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.default", p: { xs: 1.25, sm: 2 } }}>
+      {relayView === "list" ? (
+      <Box sx={{ bgcolor: "background.default", p: { xs: 1.25, sm: 2 } }}>
         <Stack spacing={2.5}>
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "flex-end" }} justifyContent="space-between">
             <Box sx={{ minWidth: 0 }}>
@@ -1044,7 +1163,7 @@ function RelaySettingsPanel({
               <Button size="small" variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 999 }}>
                 Batch Adjust Weight
               </Button>
-              <Button size="small" variant="contained" startIcon={<AddIcon />} sx={{ borderRadius: 999 }}>
+              <Button size="small" variant="contained" startIcon={<AddIcon />} sx={{ borderRadius: 999 }} onClick={startAddChannel}>
                 Add Channel
               </Button>
             </Stack>
@@ -1145,6 +1264,7 @@ function RelaySettingsPanel({
                     const modelOptions = providerModelOptions(provider);
                     const selectedProviderModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
                     const visibleModels = modelOptions.slice(0, 3);
+                    const testStatus = testStatuses[provider.id];
                     return (
                       <TableRow
                         key={provider.id}
@@ -1160,7 +1280,7 @@ function RelaySettingsPanel({
                           </IconButton>
                         </TableCell>
                         <TableCell padding="checkbox">
-                          <Checkbox size="small" checked={active} onChange={() => onActivateProvider(provider.id, selectedProviderModel || undefined)} />
+                          <Checkbox size="small" checked={active} onChange={() => void activateChannel(provider, selectedProviderModel)} />
                         </TableCell>
                         <TableCell sx={{ minWidth: 190 }}>
                           <Stack spacing={0.35} sx={{ minWidth: 0 }}>
@@ -1188,7 +1308,7 @@ function RelaySettingsPanel({
                           />
                         </TableCell>
                         <TableCell>
-                          <Switch size="small" checked={active} onChange={() => onActivateProvider(provider.id, selectedProviderModel || undefined)} />
+                          <Switch size="small" checked={active} onChange={() => void activateChannel(provider, selectedProviderModel)} />
                         </TableCell>
                         <TableCell>
                           <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ minWidth: 150 }}>
@@ -1248,12 +1368,37 @@ function RelaySettingsPanel({
                               size="small"
                               variant={active ? "outlined" : "contained"}
                               startIcon={<PlayArrowIcon />}
-                              onClick={() => onActivateProvider(provider.id, selectedProviderModel || undefined)}
+                              onClick={() => void activateChannel(provider, selectedProviderModel)}
+                              disabled={busyProviderId === provider.id}
                               sx={{ minWidth: 104 }}
                             >
                               Activate
                             </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={busyProviderId === provider.id ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />}
+                              onClick={() => void testChannel(provider, selectedProviderModel)}
+                              disabled={busyProviderId === provider.id}
+                            >
+                              Test
+                            </Button>
+                            <IconButton size="small" aria-label={`Edit ${provider.name}`} onClick={() => startEditChannel(provider)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" color="error" aria-label={`Delete ${provider.name}`} onClick={() => void deleteChannel(provider)} disabled={busyProviderId === provider.id}>
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
                           </Stack>
+                          {testStatus ? (
+                            <Typography
+                              variant="caption"
+                              color={testStatus.state === "failed" ? "error.main" : "success.main"}
+                              sx={{ display: "block", mt: 0.75, maxWidth: 360, overflowWrap: "anywhere" }}
+                            >
+                              {testStatus.message}
+                            </Typography>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     );
@@ -1278,6 +1423,7 @@ function RelaySettingsPanel({
           </Stack>
         </Stack>
       </Box>
+      ) : null}
     </SettingsSection>
   );
 }
@@ -1298,6 +1444,30 @@ function RelayFormRow({ label, children }: { label: string; children: ReactNode 
       <Box>{children}</Box>
     </Box>
   );
+}
+
+function formatRelayErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    for (const key of ["message", "error", "detail", "reason"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }
 
 function providerModelOptions(provider: ProviderConfig): Array<{ value: string; label: string }> {

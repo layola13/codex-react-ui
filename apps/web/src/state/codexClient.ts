@@ -360,7 +360,7 @@ export class CodexSocketClient extends EventTarget {
         }
         if (detail.type === "server.error") {
           this.removeEventListener("server-message", onMessage);
-          reject(new Error(detail.message));
+          reject(new Error(formatErrorText(detail.message)));
         }
       };
       this.addEventListener("server-message", onMessage);
@@ -379,7 +379,26 @@ export class CodexSocketClient extends EventTarget {
         }
         if (detail.type === "server.error") {
           this.removeEventListener("server-message", onMessage);
-          reject(new Error(detail.message));
+          reject(new Error(formatErrorText(detail.message)));
+        }
+      };
+      this.addEventListener("server-message", onMessage);
+    });
+  }
+
+  public deleteProvider(providerId: string): Promise<string> {
+    const id = `provider-delete-${this.nextClientId++}`;
+    this.send({ type: "provider.delete", id, providerId });
+    return new Promise((resolve, reject) => {
+      const onMessage = (event: Event) => {
+        const detail = (event as CustomEvent<ServerToClientMessage>).detail;
+        if (detail.type === "provider.deleted" && detail.id === id) {
+          this.removeEventListener("server-message", onMessage);
+          resolve(detail.providerId);
+        }
+        if (detail.type === "server.error") {
+          this.removeEventListener("server-message", onMessage);
+          reject(new Error(formatErrorText(detail.message)));
         }
       };
       this.addEventListener("server-message", onMessage);
@@ -836,6 +855,30 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function formatErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    for (const key of ["message", "error", "detail", "reason"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }
 
 function numberValue(value: unknown): number | undefined {

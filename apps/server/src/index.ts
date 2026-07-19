@@ -66,7 +66,7 @@ app.post("/api/profile/import", async (request, reply) => {
   try {
     return await providerStore.importProfile(request.body);
   } catch (error) {
-    return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+    return reply.code(400).send({ error: errorToMessage(error) });
   }
 });
 app.get("/api/audit/events", async () => ({ data: await auditLogStore.list() }));
@@ -83,7 +83,7 @@ app.get("/ws", { websocket: true }, (socket) => {
     } catch (error) {
       send(ws, {
         type: "server.error",
-        message: error instanceof Error ? error.message : String(error)
+        message: errorToMessage(error)
       });
     }
   });
@@ -149,10 +149,7 @@ async function handleClientMessage(ws: WebSocket, message: ClientToServerMessage
           type: "rpc.error",
           id: message.id,
           error: {
-            message:
-              typeof error === "object" && error && "message" in error
-                ? String((error as { message: unknown }).message)
-                : String(error)
+            message: errorToMessage(error)
           }
         });
       }
@@ -179,7 +176,7 @@ async function handleClientMessage(ws: WebSocket, message: ClientToServerMessage
       } catch (error) {
         send(ws, {
           type: "server.error",
-          message: error instanceof Error ? error.message : String(error)
+          message: errorToMessage(error)
         });
       }
       return;
@@ -271,4 +268,28 @@ function broadcast(message: ServerToClientMessage): void {
   for (const client of clients) {
     send(client, message);
   }
+}
+
+function errorToMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    for (const key of ["message", "error", "detail", "reason"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+    try {
+      return JSON.stringify(record);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
 }

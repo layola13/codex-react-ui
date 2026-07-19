@@ -1289,7 +1289,7 @@ function renderMcpToolCall(item: { payload?: unknown }) {
   const tool = stringValue(payload.tool);
   const args = "arguments" in payload ? payload.arguments : undefined;
   const result = isRecord(payload.result) ? payload.result : null;
-  const errorMessage = stringValue(isRecord(payload.error) ? payload.error.message : undefined);
+  const errorMessage = payload.error == null ? undefined : formatErrorText(payload.error);
 
   return (
     <Box sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
@@ -1352,6 +1352,28 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function formatErrorText(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (isRecord(error)) {
+    for (const key of ["message", "error", "detail", "reason"]) {
+      const value = error[key];
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+      if (isRecord(value)) {
+        return formatErrorText(value);
+      }
+    }
+    return prettyJson(error);
+  }
+  return String(error);
 }
 
 function safeThemeAssetUrl(value?: string): string | undefined {
