@@ -2,6 +2,12 @@
 
 ## Now
 
+- [x] Fix Settings -> Plugins so API-key mode no longer surfaces remote catalog auth warnings; local Code Index marketplace now shows without alerts.
+- [x] Refresh the `aihub.top` relay key in both UI and database, then revalidate the updated provider with a real request.
+- [ ] Add a real request list to the homepage that shows live request/token usage at a glance.
+- [ ] Expand conversation history so it lists all threads and clearly distinguishes same-model and same-source entries.
+- [x] Finish the sidechat dual-conversation verification and capture a clean screenshot.
+- [x] Cross-test sidechat A/B with different providers and models, verifying both threads remain independent.
 - [x] Add composer-adjacent slash command shortcut buttons for `/fast`, `/status`, `/goal`, `/plan`, `/review`, and `/rename`.
 - [x] Add a sticky slash command result surface for Web-native commands that need immediate feedback.
 - [x] Implement `/review` through app-server `review/start`, including inline/detached review targets for uncommitted changes, base branches, commits, and custom instructions.
