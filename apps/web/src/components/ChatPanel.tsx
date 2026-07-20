@@ -1011,7 +1011,7 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
     sessions.set(next.id, {
       ...existing,
       ...next,
-      name: next.name || existing?.name || "Agent",
+      name: mergeAgentName(existing?.name, next.name),
       role: next.role ?? existing?.role,
       status: mergeAgentStatus(existing?.status, next.status),
       loaded: Boolean(next.threadId && loadedThreadIds.has(next.threadId)) || existing?.loaded || false
@@ -1088,6 +1088,17 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
   });
 
   return [...sessions.values()];
+}
+
+function mergeAgentName(existing: string | undefined, next: string | undefined): string {
+  if (existing && isGenericAgentName(next) && !isGenericAgentName(existing)) {
+    return existing;
+  }
+  return next || existing || "Agent";
+}
+
+function isGenericAgentName(value: string | undefined): boolean {
+  return !value || /^Agent(?: \d+)?$/.test(value);
 }
 
 function mainConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null): ChatWaterfallRow[] {

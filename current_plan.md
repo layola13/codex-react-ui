@@ -6,6 +6,22 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented inline completed-thinking expansion for the virtualized chat waterfall.
+
+1. Completed reasoning rendering:
+   - Assistant rows now expose completed reasoning through an inline Thinking panel.
+   - The panel renders Markdown in a lightweight surface above the assistant answer.
+   - The Thinking control toggles the inline panel directly.
+2. Virtualized state:
+   - Completed-thinking expansion reuses `ChatWaterfall` row expansion state.
+   - Expanded Thinking panels persist after virtualized unmount/remount.
+   - Row normalization now corrects live prepend item order before reasoning attachment.
+3. Verification:
+   - Playwright injects completed reasoning into a long transcript, expands the inline panel, jumps away, returns through search, and confirms the panel remained expanded.
+   - Latest verification passed web/full typecheck, build, focused waterfall/parallel-agent e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented persistent command audit expansion for the virtualized chat waterfall.
 
 1. Command audit rendering:

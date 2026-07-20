@@ -9,7 +9,7 @@ export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter 
 
   turns.forEach((turn) => {
     const reasoningBuffer: string[] = [];
-    const visibleItems = turn.items.filter(filterItem);
+    const visibleItems = normalizeTurnItemsForDisplay(turn.items.filter(filterItem));
 
     visibleItems.forEach((item, index) => {
       if (item.type === "reasoning") {
@@ -55,6 +55,15 @@ export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter 
   });
 
   return rows;
+}
+
+function normalizeTurnItemsForDisplay(items: WorkbenchItem[]): WorkbenchItem[] {
+  const firstUserIndex = items.findIndex((item) => item.type === "userMessage");
+  const firstAssistantIndex = items.findIndex((item) => item.type === "agentMessage");
+  if (firstUserIndex >= 0 && firstAssistantIndex >= 0 && firstUserIndex > firstAssistantIndex) {
+    return [...items].reverse();
+  }
+  return items;
 }
 
 function itemToRow(

@@ -1385,6 +1385,7 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
 });
 
 test("virtualizes long main chat transcripts and keeps jump-to-latest usable", async ({ page }) => {
+  test.setTimeout(60000);
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
 
@@ -1426,6 +1427,19 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
           }
         }
       });
+      if (index === 310) {
+        emit({
+          type: "codex.notification",
+          message: {
+            method: "item/completed",
+            params: {
+              threadId: "thread-1",
+              turnId,
+              item: { type: "reasoning", id: "long-reasoning-310", text: "Completed reasoning detail 310\n\n- checked files\n- prepared answer" }
+            }
+          }
+        });
+      }
       emit({
         type: "codex.notification",
         message: {
@@ -1521,6 +1535,20 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Commands" }).click();
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Assistant" }).click();
+  await page.getByLabel("Search transcript").fill("Long assistant answer 310");
+  const reasoningRow = page.getByTestId("conversation-item-long-agent-310");
+  await expect(reasoningRow.getByText("Long assistant answer 310")).toBeVisible();
+  await expect(reasoningRow.getByTestId("completed-thinking-panel")).toHaveCount(0);
+  await reasoningRow.getByRole("button", { name: "Expand thinking" }).click();
+  await expect(reasoningRow.getByTestId("completed-thinking-panel")).toContainText("Completed reasoning detail 310");
+  await page.getByRole("button", { name: /Jump to latest/ }).click();
+  await expect(page.getByText("Long assistant answer 319")).toBeVisible();
+  await page.getByLabel("Search transcript").fill("Long assistant answer 311");
+  await expect(page.getByTestId("conversation-item-long-agent-311").getByText("Long assistant answer 311")).toBeVisible();
+  await page.getByLabel("Search transcript").fill("Long assistant answer 310");
+  await expect(reasoningRow.getByTestId("completed-thinking-panel")).toContainText("Completed reasoning detail 310");
 });
 
 test("applies user theme media plugins to the default workbench", async ({ page }) => {

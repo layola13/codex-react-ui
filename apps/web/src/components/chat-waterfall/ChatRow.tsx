@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Alert, Box, Button, Chip, Dialog, DialogContent, DialogTitle, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -24,7 +24,7 @@ export function ChatRow({ row, t, expanded, onToggleExpanded }: Props) {
     case "userMessage":
       return <UserMessageRow row={row} />;
     case "assistantMessage":
-      return <AssistantMessageRow row={row} t={t} />;
+      return <AssistantMessageRow row={row} t={t} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "reasoningPreview":
       return <ReasoningPreviewRow row={row} t={t} />;
     case "commandExecution":
@@ -67,8 +67,17 @@ function UserMessageRow({ row }: { row: ChatWaterfallRow }) {
   );
 }
 
-function AssistantMessageRow({ row, t }: { row: ChatWaterfallRow; t: TranslateFn }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
+function AssistantMessageRow({
+  row,
+  t,
+  expanded,
+  onToggleExpanded
+}: {
+  row: ChatWaterfallRow;
+  t: TranslateFn;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+}) {
   const reasoningContent = row.reasoning?.trim() ?? "";
   return (
     <Box
@@ -93,11 +102,41 @@ function AssistantMessageRow({ row, t }: { row: ChatWaterfallRow; t: TranslateFn
           {row.item.agentName && <Chip size="small" label={row.item.agentName} />}
           {row.status && <Chip size="small" label={row.status} />}
           {reasoningContent && (
-            <Button size="small" variant="text" startIcon={<SmartToyIcon fontSize="small" />} onClick={() => setThinkingOpen(true)} sx={{ borderRadius: 1, ml: "auto" }}>
+            <Button
+              size="small"
+              variant="text"
+              startIcon={<SmartToyIcon fontSize="small" />}
+              aria-label={expanded ? "Collapse thinking" : "Expand thinking"}
+              onClick={onToggleExpanded}
+              sx={{ borderRadius: 1, ml: "auto" }}
+            >
               {t("chat.thinking")}
             </Button>
           )}
         </Stack>
+        {reasoningContent && expanded && (
+          <Paper
+            data-testid="completed-thinking-panel"
+            variant="outlined"
+            sx={{
+              mb: 1,
+              p: 1,
+              borderRadius: 1,
+              bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.5 : 0.64),
+              borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.16 : 0.12)
+            }}
+          >
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 0.5, color: "text.secondary" }}>
+              <SmartToyIcon sx={{ fontSize: 16 }} />
+              <Typography variant="caption" sx={{ fontWeight: 850 }}>
+                {t("chat.thinking")}
+              </Typography>
+            </Stack>
+            <Box sx={{ maxHeight: "min(42vh, 420px)", overflow: "auto", pr: 0.5 }}>
+              <MarkdownMessage text={reasoningContent} />
+            </Box>
+          </Paper>
+        )}
         <Box
           sx={{
             px: { xs: 0.25, sm: 0.5 },
@@ -111,23 +150,6 @@ function AssistantMessageRow({ row, t }: { row: ChatWaterfallRow; t: TranslateFn
           <ImageAttachments row={row} />
         </Box>
       </Box>
-      {reasoningContent && (
-        <Dialog open={thinkingOpen} onClose={() => setThinkingOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <SmartToyIcon color="primary" />
-              <Typography component="span" variant="h6" sx={{ fontWeight: 850 }}>
-                {t("chat.thinking")}
-              </Typography>
-            </Stack>
-          </DialogTitle>
-          <DialogContent dividers>
-            <Box sx={{ maxHeight: "70vh", overflow: "auto" }}>
-              <MarkdownMessage text={reasoningContent} />
-            </Box>
-          </DialogContent>
-        </Dialog>
-      )}
     </Box>
   );
 }

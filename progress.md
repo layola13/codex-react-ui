@@ -2,6 +2,21 @@
 
 ## 2026-07-20
 
+- Chat waterfall inline completed-thinking slice:
+  - Completed assistant reasoning now expands inline from the Thinking control instead of being dialog-only.
+  - Inline completed-thinking panels use the existing Markdown renderer and a lightweight surface above the assistant answer.
+  - The same `ChatWaterfall` expansion state used by command audit rows preserves expanded Thinking panels across virtualized unmount/remount.
+  - Row normalization now corrects live prepend item order when user messages appear after assistant messages, so reasoning buffers can attach to the following assistant row.
+  - Extended the long transcript Playwright test with completed reasoning, inline expansion, and persistence after jumping away and returning through search.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|shows parallel agents rail"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall command audit expansion slice:
   - Long command execution output now collapses by default to a concise terminal preview.
   - Full command output can be expanded/collapsed from the audit row header while copy still targets the complete output.
