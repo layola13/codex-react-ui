@@ -18,7 +18,9 @@ Reduced command audit output to a one-line collapsed preview by default.
    - Assistant answer rows show per-turn usage when available: input tokens, output tokens, and output token/s.
    - Live assistant rows show first-token latency measured from turn start to the first answer delta.
    - Relay/channel settings now store model rates with input/cached/cache-write/output prices and multiplier defaulting to `1`.
-   - Assistant answer endings show token, cache, speed, cost line items, and total cost when token usage is available.
+   - Assistant answer headers show compact token/speed/cost summaries when token usage is available.
+   - Assistant answer ending details are hidden by default and can be enabled from Settings -> Layout.
+   - Conversation history rows show a total cost chip, with cumulative token details on hover when usage is available.
 2. Virtualization:
    - Command row height estimates now assume compact collapsed output, so long terminal logs do not reserve large offscreen space.
 3. Verification:
@@ -28,7 +30,7 @@ Reduced command audit output to a one-line collapsed preview by default.
    - Playwright verifies assistant start timestamps on live and virtualized transcript rows.
    - Playwright verifies live assistant token usage metadata after a token usage notification.
    - Playwright verifies live assistant first-token latency metadata.
-   - Playwright verifies per-answer cache hit, speed, cost line items, and total cost details.
+   - Playwright verifies header usage summaries, default-hidden bottom detail rows, and history total cost chips.
    - Latest verification passed full typecheck, production build, and focused Working/virtualized transcript e2e.
    - Real-browser simulation used workspace `~/projects/` and prompt `详细评估sci工程`, with screenshots saved for working state, completed cost details, and relay rate settings.
 

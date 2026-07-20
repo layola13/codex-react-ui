@@ -83,7 +83,7 @@ import {
   type SkillEntry,
   type TerminalSession
 } from "./state/codexClient";
-import { HistorySidebar } from "./components/HistorySidebar";
+import { HistorySidebar, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
 import {
   ChatPanel,
   type GoalBannerState,
@@ -116,6 +116,7 @@ import { installedThemePluginDefaults, isThemeId, themePlugins, themeVisualTunin
 const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
   leftPanelVisible: "codex-react-ui.left-panel-visible",
+  showAssistantUsageDetails: "codex-react-ui.show-assistant-usage-details",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
   panelLayout: "codex-react-ui.panel-layout",
   filesPanelLayout: "codex-react-ui.files-panel-layout"
@@ -280,6 +281,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [settingsPluginTab, setSettingsPluginTab] = useState<CodexPluginSettingsTab>("marketplace");
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
+  const [showAssistantUsageDetails, setShowAssistantUsageDetails] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showAssistantUsageDetails, false));
   const [rightWorkspaceVisible, setRightWorkspaceVisible] = useState(false);
   const [rightWorkspaceTab, setRightWorkspaceTab] = useState<RightWorkspaceTab>("sidechat");
   const [sideChatTabs, setSideChatTabs] = useState<SideChatTab[]>(() => [
@@ -400,6 +402,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.leftPanelVisible, JSON.stringify(leftPanelVisible));
   }, [leftPanelVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.showAssistantUsageDetails, JSON.stringify(showAssistantUsageDetails));
+  }, [showAssistantUsageDetails]);
 
   useEffect(() => {
     if (!rightWorkspaceVisible || rightWorkspaceTab !== "sidechat") {
@@ -2229,6 +2235,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           activeThemePlugin={activeThemePlugin}
           welcomeBackgroundImage={welcomeBackgroundImage}
           welcomeDismissed={welcomeDismissed}
+          assistantUsageDisplay={showAssistantUsageDetails ? "details" : "summary"}
           t={t}
           onPromptSelect={usePromptSuggestion}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
@@ -2361,6 +2368,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const activeThreadTurns = state.activeThreadId ? allTurns.filter((turn) => turn.threadId === state.activeThreadId) : [];
   const activeThreadUsage = state.activeThreadId ? threadTokenUsage[state.activeThreadId] : undefined;
   const projectUsage = sumTokenBreakdowns(Object.values(threadTokenUsage).map((usage) => usage.total));
+  const historyUsageByThread = buildHistoryUsageByThread(threadTokenUsage);
   const requestMonitor = buildRequestMonitorEntries(allTurns, historyThreads, threadTokenUsage);
   const statsState: WorkbenchStatsState = {
     scope: statsPanelScope ?? "status",
@@ -2695,6 +2703,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       threads={mainThreads}
                       activeThreadId={state.activeThreadId}
                       providerLabel={activeProviderLabel}
+                      threadUsage={historyUsageByThread}
                       searchTerm={historySearchTerm}
                       loading={historyLoading}
                       installAvailable={Boolean(installPromptEvent) && !appInstalled}
@@ -2738,6 +2747,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 threads={mainThreads}
                 activeThreadId={state.activeThreadId}
                 providerLabel={activeProviderLabel}
+                threadUsage={historyUsageByThread}
                 searchTerm={historySearchTerm}
                 loading={historyLoading}
                 installAvailable={Boolean(installPromptEvent) && !appInstalled}
@@ -3057,6 +3067,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         installedThemePluginIds={installedThemePluginIds}
         customThemePlugins={customThemePlugins}
         leftPanelVisible={leftPanelVisible}
+        showAssistantUsageDetails={showAssistantUsageDetails}
         petDockEnabled={petDockEnabled}
         cwd={cwd}
         permission={permission}
@@ -3091,6 +3102,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onSaveCustomThemePlugin={saveCustomThemePlugin}
         onRemoveCustomThemePlugin={removeCustomThemePlugin}
         onLeftPanelVisibleChange={setLeftPanelVisible}
+        onShowAssistantUsageDetailsChange={setShowAssistantUsageDetails}
         onPetDockEnabledChange={setPetDockEnabled}
         onCwdChange={setCwd}
         onPermissionChange={requestPermissionChange}
@@ -3553,6 +3565,22 @@ function sumTokenBreakdowns(values: TokenUsageBreakdown[]): TokenUsageBreakdown 
       outputTokens: 0,
       reasoningOutputTokens: 0
     }
+  );
+}
+
+function buildHistoryUsageByThread(tokenUsage: Record<string, ThreadTokenUsageState>): Record<string, HistoryThreadUsageSummary> {
+  return Object.fromEntries(
+    Object.entries(tokenUsage).map(([threadId, usage]) => [
+      threadId,
+      {
+        totalTokens: usage.total.totalTokens,
+        inputTokens: usage.total.inputTokens,
+        cachedInputTokens: usage.total.cachedInputTokens,
+        cacheWriteInputTokens: usage.total.cacheWriteInputTokens,
+        outputTokens: usage.total.outputTokens,
+        estimatedCostUsd: usage.total.estimatedCostUsd
+      }
+    ])
   );
 }
 

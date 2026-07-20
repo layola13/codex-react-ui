@@ -12,10 +12,20 @@ import { alpha } from "@mui/material/styles";
 import type { ThreadEntry } from "../state/codexClient";
 import type { TranslateFn } from "../i18n";
 
+export type HistoryThreadUsageSummary = {
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd?: number;
+};
+
 type Props = {
   threads: ThreadEntry[];
   activeThreadId: string | null;
   providerLabel: string;
+  threadUsage?: Record<string, HistoryThreadUsageSummary>;
   searchTerm: string;
   loading?: boolean;
   installAvailable?: boolean;
@@ -35,6 +45,7 @@ export function HistorySidebar({
   threads,
   activeThreadId,
   providerLabel,
+  threadUsage = {},
   searchTerm,
   loading = false,
   installAvailable = false,
@@ -156,6 +167,7 @@ export function HistorySidebar({
         )}
         {threads.map((thread) => {
           const title = threadTitle(thread);
+          const usage = threadUsage[thread.id];
           const isEditing = editingThreadId === thread.id;
           const disabled = busyThreadId === thread.id;
           return (
@@ -242,6 +254,9 @@ export function HistorySidebar({
                       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
                         <Chip size="small" label={threadSourceLabel(thread, t)} variant="outlined" />
                         <VisibleStatusChip status={thread.status} fallback={t("history.stored")} />
+                        <Tooltip title={historyCostTooltip(usage, t)}>
+                          <Chip size="small" label={historyCostLabel(usage, t)} color="success" variant="outlined" />
+                        </Tooltip>
                         {thread.model && <Chip size="small" label={thread.model} variant="outlined" />}
                         {thread.modelProvider && <Typography variant="caption">{thread.modelProvider}</Typography>}
                         {thread.cwd && <Typography variant="caption" title={thread.cwd}>{shortCwd(thread.cwd)}</Typography>}
@@ -323,6 +338,37 @@ function threadSourceLabel(thread: ThreadEntry, t: TranslateFn): string {
     return thread.source;
   }
   return t("history.source.main");
+}
+
+function historyCostLabel(usage: HistoryThreadUsageSummary | undefined, t: TranslateFn): string {
+  if (usage?.estimatedCostUsd != null) {
+    return t("history.cost", { value: formatUsd(usage.estimatedCostUsd) });
+  }
+  return t("history.cost", { value: "$0.0000" });
+}
+
+function historyCostTooltip(usage: HistoryThreadUsageSummary | undefined, t: TranslateFn): string {
+  if (!usage || usage.totalTokens <= 0) {
+    return t("history.costNoUsage");
+  }
+  return [
+    t("history.costTotalTokens", { value: formatNumber(usage.totalTokens) }),
+    t("history.costInputTokens", { value: formatNumber(usage.inputTokens) }),
+    t("history.costOutputTokens", { value: formatNumber(usage.outputTokens) }),
+    t("history.costCachedTokens", { value: formatNumber(usage.cachedInputTokens) }),
+    t("history.costCacheWriteTokens", { value: formatNumber(usage.cacheWriteInputTokens) })
+  ].join("\n");
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatUsd(value: number): string {
+  if (value <= 0) {
+    return "$0.0000";
+  }
+  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
 }
 
 function threadTitle(thread: ThreadEntry): string {

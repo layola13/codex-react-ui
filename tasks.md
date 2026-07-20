@@ -36,6 +36,7 @@
 - [x] Show per-answer token usage next to assistant metadata when usage arrives, including input tokens, output tokens, and output token/s.
 - [x] Show live first-token latency for assistant answers, measured from turn start to the first assistant delta.
 - [x] Add relay/channel model rate settings with default multiplier 1, seeded OpenAI-style GPT-5.5/GPT-5.4 rates, and per-answer cost/cache-hit/speed breakdowns after completion.
+- [x] Hide bottom assistant detailed usage rows by default behind a Settings toggle, while keeping header summaries and history-row total cost visible.
 - [x] Fix resumed/history thread follow-up turns after refresh so `thread/resume` and `turn/start` reuse the thread's original cwd instead of the default workspace cwd.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
 - [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.

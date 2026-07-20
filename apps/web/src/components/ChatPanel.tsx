@@ -23,7 +23,7 @@ import { themeVisualTuning, type ThemePlugin } from "../theme";
 import { ChatWaterfall } from "./chat-waterfall/ChatWaterfall";
 import type { ChatWorkingStatus } from "./chat-waterfall/ChatWaterfall";
 import { buildChatRows } from "./chat-waterfall/chatRows";
-import type { ChatWaterfallRow } from "./chat-waterfall/types";
+import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./chat-waterfall/types";
 import type { TranslateFn } from "../i18n";
 
 type AgentSession = {
@@ -126,6 +126,7 @@ type Props = {
   activeThemePlugin?: ThemePlugin | null;
   welcomeBackgroundImage?: string;
   welcomeDismissed?: boolean;
+  assistantUsageDisplay?: AssistantUsageDisplayMode;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
   onAgentThreadSelect?: (threadId: string) => void;
@@ -185,6 +186,7 @@ export function ChatPanel({
   activeThemePlugin,
   welcomeBackgroundImage,
   welcomeDismissed = false,
+  assistantUsageDisplay = "summary",
   t,
   onPromptSelect,
   onAgentThreadSelect,
@@ -307,6 +309,7 @@ export function ChatPanel({
           rows={chatRows}
           t={t}
           workingStatus={workingStatus}
+          assistantUsageDisplay={assistantUsageDisplay}
           before={
             <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
               {errors.map((error, index) => (error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null))}

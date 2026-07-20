@@ -15,6 +15,8 @@
   - Added relay/channel model rate settings with multiplier defaulting to `1`.
   - Seeded OpenAI-style GPT-5.5 and GPT-5.4 input/cached/cache-write/output default rates for cost estimation.
   - Added per-answer usage details after the answer body: input/output tokens, cached/read cache tokens, cache write tokens, cache hit rate, speed, cost line items, and total cost.
+  - Changed the bottom assistant usage detail row to be hidden by default behind a Settings -> Layout toggle, because the answer header already shows the compact summary.
+  - Added total cost chips to conversation history rows, with hover details for cumulative token usage when available.
   - Simulated a real task with workspace `~/projects/` and prompt `详细评估sci工程`.
   - Captured screenshot evidence:
     - `snapshot/sci-evaluation-working-cost-ui.png`
@@ -22,6 +24,7 @@
     - `snapshot/sci-evaluation-rate-settings.png`
   - Verification passed:
     - `bun run typecheck`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status"`
     - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status|virtualizes long main chat"`
     - `bun run build`
 

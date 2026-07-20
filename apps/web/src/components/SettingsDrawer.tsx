@@ -126,6 +126,7 @@ type Props = {
   installedThemePluginIds: ThemeId[];
   customThemePlugins: ThemePlugin[];
   leftPanelVisible: boolean;
+  showAssistantUsageDetails: boolean;
   petDockEnabled: boolean;
   cwd: string;
   permission: PermissionPresetId;
@@ -160,6 +161,7 @@ type Props = {
   onSaveCustomThemePlugin: (plugin: ThemePlugin) => void;
   onRemoveCustomThemePlugin: (id: ThemeId) => void;
   onLeftPanelVisibleChange: (visible: boolean) => void;
+  onShowAssistantUsageDetailsChange: (visible: boolean) => void;
   onPetDockEnabledChange: (enabled: boolean) => void;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
@@ -214,6 +216,7 @@ export function SettingsDrawer({
   installedThemePluginIds,
   customThemePlugins,
   leftPanelVisible,
+  showAssistantUsageDetails,
   petDockEnabled,
   cwd,
   permission,
@@ -248,6 +251,7 @@ export function SettingsDrawer({
   onSaveCustomThemePlugin,
   onRemoveCustomThemePlugin,
   onLeftPanelVisibleChange,
+  onShowAssistantUsageDetailsChange,
   onPetDockEnabledChange,
   onCwdChange,
   onPermissionChange,
@@ -598,6 +602,13 @@ export function SettingsDrawer({
                     checked={leftPanelVisible}
                     onChange={(event) => onLeftPanelVisibleChange(event.target.checked)}
                     inputProps={{ "aria-label": t("settings.layout.historyPanel") }}
+                  />
+                </SettingRow>
+                <SettingRow title={t("settings.layout.assistantUsageDetails")} description={t("settings.layout.assistantUsageDetailsDescription")}>
+                  <Switch
+                    checked={showAssistantUsageDetails}
+                    onChange={(event) => onShowAssistantUsageDetailsChange(event.target.checked)}
+                    inputProps={{ "aria-label": t("settings.layout.assistantUsageDetails") }}
                   />
                 </SettingRow>
                 <SettingRow title={t("settings.layout.rightWorkspace")} description={t("settings.layout.rightWorkspaceDescription")}>

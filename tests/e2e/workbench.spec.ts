@@ -1290,16 +1290,8 @@ test("shows working status while a turn is pending or thinking", async ({ page }
   await expect(page.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
   await expect(page.getByTestId("assistant-first-token")).toContainText(/first \d+(\.\d)?s/);
   await expect(page.getByTestId("assistant-token-usage")).toContainText(/in 617 · out 432 · hit 16\.2% · \d+(\.\d+)? tok\/s · cost \$\d+\.\d+/);
-  const usageDetails = page.getByTestId("assistant-usage-details");
-  await expect(usageDetails).toContainText("input 617");
-  await expect(usageDetails).toContainText("output 432");
-  await expect(usageDetails).toContainText("cached 100");
-  await expect(usageDetails).toContainText("cache write 20");
-  await expect(usageDetails).toContainText("cache hit 16.2%");
-  await expect(usageDetails).toContainText(/speed \d+(\.\d+)? tok\/s/);
-  await expect(usageDetails).toContainText(/input cost \$\d+\.\d+/);
-  await expect(usageDetails).toContainText(/output cost \$\d+\.\d+/);
-  await expect(usageDetails).toContainText(/total \$\d+\.\d+/);
+  await expect(page.getByTestId("assistant-usage-details")).toHaveCount(0);
+  await expect(page.getByTestId("history-sidebar")).toContainText(/cost \$\d+\.\d+/);
   await expect(page.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "true");
   await expect(page.getByText("completed", { exact: true })).toHaveCount(0);
   await expect(indicator).toHaveCount(0);
