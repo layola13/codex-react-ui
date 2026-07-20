@@ -196,3 +196,11 @@
 - [x] Settings nav **Launch adapters** tab with layola13/*-launch catalog; engine switcher UI default Codex (multi-engine planned).
 - [ ] Multi-engine chat: agy / auggie / claude / crush / grok / gemini (Chat Completions) via UI.
 
+## Arena mode (竞技场) — later
+
+- [ ] Arena shell UI: multi-panel compare layout + shared prompt.
+- [ ] Multi-Codex arena: N parallel threads (model/relay variants) before cross-engine.
+- [ ] Cross-engine arena: Codex + planned engines via `*-launch` (after multi-engine chat).
+- [ ] Arena billing: debit per slot turn; respect concurrency + relay ACL.
+- [ ] Promote winner → main chat; optional worktree isolation.
+

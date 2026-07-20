@@ -347,3 +347,23 @@ The Slash Command parity slice is implemented and verified.
 2. **Next**: Switchable engines in UI — agy, auggie, claude, crush, grok, gemini (Chat Completions) using their *-launch proxies, same relay + membership.
 3. **Default** remains Codex (Responses + code-launch when needed).
 
+### Arena mode (竞技场) — planned, after multi-engine
+
+Product intent: fan **one prompt** to **multiple engines / sessions in parallel**, compare answers side-by-side, then pick a winner (merge / continue). Inspired by desktop orchestrators like [Orca](https://github.com/stablyai/orca) (parallel agents + worktrees), but stays **Web + Bun bridge** — do **not** fork Electron.
+
+| Phase | Goal | Depends on |
+| --- | --- | --- |
+| A. Shell | Arena layout: 2–N columns/cards, shared prompt bar, per-engine status | Multi-engine chat (or multi Codex threads first) |
+| B. Multi-Codex arena | Same Codex engine, N isolated threads (different model/relay/permission) | Existing app-server threads + concurrency limits |
+| C. Cross-engine arena | Codex + agy/claude/… each via `*-launch` | Multi-engine chat + launch adapters |
+| D. Isolation (optional) | Per-arena git worktree or member workspace subdir | Git tooling / membership jail |
+| E. Compare UX | Diff answers, “promote winner” into main chat, debit N× turns | Usage/billing |
+
+Rules of engagement:
+- **Membership**: each arena slot counts against user concurrency and balance (N slots = N concurrent turns when all run).
+- **Relay ACL**: each slot only uses engines/relays the member is allowed to use.
+- **Default engine** remains Codex; arena is opt-in from composer or a dedicated Arena entry.
+- **Reference only** for Orca: UX patterns (parallel status, notify when done) — not runtime code.
+
+Out of scope for v1 arena: full VS Code editor, mobile companion, SSH remote worktrees (Orca desktop features).
+

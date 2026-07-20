@@ -274,6 +274,17 @@ code-launch
 
 Planned work: switch the main chat surface between engines while reusing the same membership, relay ACL, and billing model.
 
+### Arena mode (竞技场) — planned
+
+After multi-engine chat lands, an optional **Arena** surface can send **one prompt to several engines (or several Codex configs) in parallel**, show side-by-side results, and promote a winner into the main thread.
+
+| Idea | Notes |
+| --- | --- |
+| Multi-Codex first | Same engine, different model/relay — uses existing `thread` isolation |
+| Cross-engine later | Codex + agy / claude / … via `*-launch` adapters |
+| Billing / ACL | Each slot is a concurrent turn; respect membership concurrency, balance, and allowed relays |
+| Inspiration | Parallel agent UX (e.g. [Orca](https://github.com/stablyai/orca) worktrees) — **reference only**, not an Electron dependency |
+
 ## Current Gaps
 
 - Main chat still runs on **Codex** only; multi-engine UI switching for agy / auggie / claude / crush / grok / gemini is planned (download launchers already in Settings).

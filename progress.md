@@ -552,3 +552,8 @@
 - Engine switcher UI: Codex active; other Chat engines marked planned.
 - Full GitHub `xxxxx-launch` download catalog retained.
 
+### Arena mode (planned)
+- Product decision: add **竞技场** later for parallel multi-engine (or multi-Codex) compare.
+- UX inspiration from Orca-style orchestration; implementation stays in codex-react-ui Web stack.
+- Sequencing: multi-engine chat first → Arena shell → billing/ACL wiring.
+
