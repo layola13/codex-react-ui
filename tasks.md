@@ -193,4 +193,6 @@
 - [ ] Per-user Docker / host Linux isolation (Phase 2, not required for app-policy model).
 - [x] Member system UX: create/edit with relay whitelist picker; nav renamed from permissions to members.
 - [x] Launch adapters catalog + relay/plugin download reminders (layola13/*-launch, code-launch required for Chat Completions relays).
+- [x] Settings nav **Launch adapters** tab with layola13/*-launch catalog; engine switcher UI default Codex (multi-engine planned).
+- [ ] Multi-engine chat: agy / auggie / claude / crush / grok / gemini (Chat Completions) via UI.
 

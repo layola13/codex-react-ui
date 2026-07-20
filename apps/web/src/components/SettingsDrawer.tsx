@@ -49,6 +49,7 @@ import PsychologyIcon from "@mui/icons-material/Psychology";
 import PetsIcon from "@mui/icons-material/Pets";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import SaveIcon from "@mui/icons-material/Save";
 import SearchIcon from "@mui/icons-material/Search";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -100,7 +101,7 @@ import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPl
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
 import { MembersPermissionsPanel } from "./MembersPermissionsPanel";
-import { CodeLaunchRelayBanner, ProviderCodeLaunchHint } from "./LaunchAdaptersPanel";
+import { CodeLaunchRelayBanner, LaunchAdaptersCatalog, ProviderCodeLaunchHint } from "./LaunchAdaptersPanel";
 import { relayLikelyNeedsCodeLaunch } from "../launchAdapters";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 import { UsageBillingPanel } from "./UsageBillingPanel";
@@ -119,6 +120,7 @@ export type SettingsSectionId =
   | "workspace"
   | "session"
   | "relay"
+  | "launch"
   | "skills"
   | "plugins"
   | "pet"
@@ -235,6 +237,7 @@ const NAV_ITEMS: Array<{ id: SettingsSectionId; labelKey: TranslationKey; icon: 
   { id: "workspace", labelKey: "settings.nav.workspace", icon: <StorageIcon fontSize="small" /> },
   { id: "session", labelKey: "settings.nav.session", icon: <TuneIcon fontSize="small" /> },
   { id: "relay", labelKey: "settings.nav.relay", icon: <MemoryIcon fontSize="small" /> },
+  { id: "launch", labelKey: "settings.nav.launch", icon: <RocketLaunchIcon fontSize="small" /> },
   { id: "skills", labelKey: "settings.nav.skills", icon: <PsychologyIcon fontSize="small" /> },
   { id: "plugins", labelKey: "settings.nav.plugins", icon: <ExtensionIcon fontSize="small" /> },
   { id: "pet", labelKey: "settings.nav.pet", icon: <PetsIcon fontSize="small" /> },
@@ -777,6 +780,14 @@ export function SettingsDrawer({
                 onActivateProvider={onActivateProvider}
                 onDeleteProvider={onDeleteProvider}
               />
+            )}
+
+            {section === "launch" && (
+              <SettingsSection icon={<RocketLaunchIcon fontSize="small" />} title={t("settings.section.launch")} subtitle={t("settings.launch.subtitle")}>
+                <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+                  <LaunchAdaptersCatalog t={t} fullPage />
+                </Box>
+              </SettingsSection>
             )}
 
             {section === "skills" && (

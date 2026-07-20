@@ -3,17 +3,21 @@ import {
   Box,
   Button,
   Chip,
+  Divider,
   Link,
   Paper,
   Snackbar,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DownloadIcon from "@mui/icons-material/Download";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import ExtensionIcon from "@mui/icons-material/Extension";
-import { useState } from "react";
+import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import HubIcon from "@mui/icons-material/Hub";
+import { useMemo, useState } from "react";
 import { useI18n, type TranslateFn } from "../i18n";
 import {
   CODE_LAUNCH,
@@ -24,12 +28,87 @@ import {
   type LaunchAdapter
 } from "../launchAdapters";
 
+/** Chat engines planned for multi-engine UI (only codex is live today). */
+export type ChatEngineId =
+  | "codex"
+  | "agy"
+  | "auggie"
+  | "claude"
+  | "crush"
+  | "grok"
+  | "gemini";
+
+export type ChatEnginePlan = {
+  id: ChatEngineId;
+  label: string;
+  protocol: "responses" | "chat";
+  launchId?: string;
+  status: "active" | "planned";
+  githubUrl?: string;
+};
+
+export const CHAT_ENGINE_PLAN: ChatEnginePlan[] = [
+  {
+    id: "codex",
+    label: "Codex",
+    protocol: "responses",
+    launchId: "code-launch",
+    status: "active",
+    githubUrl: CODE_LAUNCH.githubUrl
+  },
+  {
+    id: "agy",
+    label: "agy CLI",
+    protocol: "chat",
+    launchId: "agy-launch",
+    status: "planned",
+    githubUrl: "https://github.com/layola13/agy-launch"
+  },
+  {
+    id: "auggie",
+    label: "Auggie",
+    protocol: "chat",
+    launchId: "auggie-launch",
+    status: "planned",
+    githubUrl: "https://github.com/layola13/auggie-launch"
+  },
+  {
+    id: "claude",
+    label: "Claude Code",
+    protocol: "chat",
+    launchId: "claude-launch",
+    status: "planned",
+    githubUrl: "https://github.com/layola13/claude-launch"
+  },
+  {
+    id: "crush",
+    label: "Crush",
+    protocol: "chat",
+    launchId: "crush-launch",
+    status: "planned",
+    githubUrl: "https://github.com/layola13/crush-launch"
+  },
+  {
+    id: "grok",
+    label: "Grok",
+    protocol: "chat",
+    launchId: "grok-launch",
+    status: "planned",
+    githubUrl: "https://github.com/layola13/grok-launch"
+  },
+  {
+    id: "gemini",
+    label: "Gemini CLI",
+    protocol: "chat",
+    launchId: "gemini-launch",
+    status: "planned",
+    githubUrl: "https://github.com/layola13/gemini-launch"
+  }
+];
+
 type CompactProps = {
   t: TranslateFn;
-  /** When true, emphasize code-launch only (relay context). */
-  focusCodeLaunch?: boolean;
   severity?: "info" | "warning" | "error";
-  title?: string;
 };
 
 /**
@@ -49,12 +128,7 @@ export function CodeLaunchRelayBanner({ t, severity = "warning" }: CompactProps)
   };
 
   return (
-    <Alert
-      severity={severity}
-      variant="outlined"
-      icon={<ExtensionIcon fontSize="inherit" />}
-      sx={{ borderRadius: 2 }}
-    >
+    <Alert severity={severity} variant="outlined" icon={<RocketLaunchIcon fontSize="inherit" />} sx={{ borderRadius: 2 }}>
       <Stack spacing={1}>
         <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
           {t("settings.launch.relayBannerTitle")}
@@ -108,15 +182,29 @@ export function CodeLaunchRelayBanner({ t, severity = "warning" }: CompactProps)
 
 type CatalogProps = {
   t: TranslateFn;
+  /** When true, show full settings page chrome (engine switcher + roadmap). */
+  fullPage?: boolean;
 };
 
 /**
- * Full catalog of layola13 *-launch adapters for the Plugins settings tab.
+ * Full settings surface: engine plan (default Codex) + layola13 *-launch download catalog.
  */
-export function LaunchAdaptersCatalog({ t }: CatalogProps) {
+export function LaunchAdaptersCatalog({ t, fullPage = false }: CatalogProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [engine, setEngine] = useState<ChatEngineId>("codex");
   const { locale } = useI18n();
   const localeIsCn = locale === "zh";
+
+  const activeEngine: ChatEnginePlan = useMemo(() => {
+    return CHAT_ENGINE_PLAN.find((e) => e.id === engine) ?? {
+      id: "codex",
+      label: "Codex",
+      protocol: "responses",
+      launchId: "code-launch",
+      status: "active",
+      githubUrl: CODE_LAUNCH.githubUrl
+    };
+  }, [engine]);
 
   const copyCmd = async (adapter: LaunchAdapter) => {
     const cmd = localeIsCn ? adapter.installHintCn : adapter.installHintEn;
@@ -128,33 +216,148 @@ export function LaunchAdaptersCatalog({ t }: CatalogProps) {
     setCopiedId(adapter.id);
   };
 
+  const onEngineChange = (_: unknown, next: ChatEngineId | null) => {
+    if (!next) {
+      return;
+    }
+    const plan = CHAT_ENGINE_PLAN.find((e) => e.id === next);
+    if (!plan || plan.status !== "active") {
+      // Keep selection visual only for planned engines; chat still Codex.
+      setEngine(next);
+      return;
+    }
+    setEngine(next);
+  };
+
   return (
-    <Stack spacing={2}>
-      <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ sm: "center" }}>
-        <Box>
-          <Typography variant="h6" sx={{ fontWeight: 900 }}>
-            {t("settings.launch.catalogTitle")}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {t("settings.launch.catalogSubtitle", { org: LAUNCH_ORG_URL, pattern: LAUNCH_REPO_PATTERN })}
-          </Typography>
-        </Box>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<OpenInNewIcon />}
-          href={LAUNCH_ORG_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          sx={{ borderRadius: 999, alignSelf: "flex-start" }}
-        >
-          {t("settings.launch.openOrg")}
-        </Button>
-      </Stack>
+    <Stack spacing={2.25}>
+      {fullPage ? (
+        <>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ sm: "flex-start" }}>
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <RocketLaunchIcon color="primary" />
+                <Typography variant="h5" sx={{ fontWeight: 900 }}>
+                  {t("settings.launch.pageTitle")}
+                </Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75, maxWidth: 720 }}>
+                {t("settings.launch.pageSubtitle", { org: LAUNCH_ORG_URL, pattern: LAUNCH_REPO_PATTERN })}
+              </Typography>
+            </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<OpenInNewIcon />}
+              href={LAUNCH_ORG_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ borderRadius: 999, alignSelf: "flex-start" }}
+            >
+              {t("settings.launch.openOrg")}
+            </Button>
+          </Stack>
+
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2,
+              borderRadius: 2.5,
+              background: (theme) =>
+                theme.palette.mode === "dark"
+                  ? "linear-gradient(135deg, rgba(56,189,248,0.08), rgba(99,102,241,0.06))"
+                  : "linear-gradient(135deg, rgba(14,165,233,0.08), rgba(99,102,241,0.06))"
+            }}
+          >
+            <Stack spacing={1.5}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <HubIcon color="primary" fontSize="small" />
+                <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
+                  {t("settings.launch.engineTitle")}
+                </Typography>
+                <Chip size="small" color="primary" label={t("settings.launch.engineDefaultCodex")} sx={{ fontWeight: 800 }} />
+              </Stack>
+              <Typography variant="body2" color="text.secondary">
+                {t("settings.launch.engineHint")}
+              </Typography>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={engine}
+                onChange={onEngineChange}
+                sx={{
+                  flexWrap: "wrap",
+                  gap: 0.75,
+                  "& .MuiToggleButton-root": {
+                    borderRadius: "999px !important",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    px: 1.5,
+                    textTransform: "none",
+                    fontWeight: 700
+                  }
+                }}
+              >
+                {CHAT_ENGINE_PLAN.map((item) => (
+                  <ToggleButton key={item.id} value={item.id} disabled={item.status !== "active"}>
+                    {item.label}
+                    {item.status === "planned" ? (
+                      <Chip size="small" label={t("settings.launch.planned")} sx={{ ml: 0.75, height: 20, fontSize: 10 }} />
+                    ) : null}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+              <Alert severity={activeEngine.status === "active" ? "success" : "info"} variant="outlined" sx={{ borderRadius: 2 }}>
+                {activeEngine.status === "active"
+                  ? t("settings.launch.engineActiveNote", { engine: activeEngine.label })
+                  : t("settings.launch.enginePlannedNote", {
+                      engine: activeEngine.label,
+                      protocol: activeEngine.protocol,
+                      launch: activeEngine.launchId ?? "*-launch"
+                    })}
+              </Alert>
+              <Typography variant="caption" color="text.secondary">
+                {t("settings.launch.engineRoadmap")}
+              </Typography>
+            </Stack>
+          </Paper>
+        </>
+      ) : (
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} justifyContent="space-between" alignItems={{ sm: "center" }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 900 }}>
+              {t("settings.launch.catalogTitle")}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t("settings.launch.catalogSubtitle", { org: LAUNCH_ORG_URL, pattern: LAUNCH_REPO_PATTERN })}
+            </Typography>
+          </Box>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<OpenInNewIcon />}
+            href={LAUNCH_ORG_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ borderRadius: 999, alignSelf: "flex-start" }}
+          >
+            {t("settings.launch.openOrg")}
+          </Button>
+        </Stack>
+      )}
 
       <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
         <Typography variant="body2">{t("settings.launch.catalogInfo")}</Typography>
       </Alert>
+
+      <Divider />
+
+      <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
+        {t("settings.launch.downloadSection")}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {t("settings.launch.downloadSectionHint", { pattern: LAUNCH_REPO_PATTERN })}
+      </Typography>
 
       <Box
         sx={{
@@ -258,7 +461,7 @@ export function ProviderCodeLaunchHint({ t, needsCodeLaunch }: ProviderHintProps
       size="small"
       color="warning"
       variant="outlined"
-      icon={<ExtensionIcon />}
+      icon={<RocketLaunchIcon />}
       component="a"
       href={CODE_LAUNCH.githubUrl}
       target="_blank"

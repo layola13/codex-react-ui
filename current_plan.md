@@ -342,3 +342,8 @@ The Slash Command parity slice is implemented and verified.
 ### Launch plugins (shipped)
 - Remind users to install [code-launch](https://github.com/layola13/code-launch) for Chat Completions-only relays; list sibling `*-launch` adapters.
 
+### Multi-engine roadmap (planned)
+1. **Now**: Settings → **启动器适配** catalogs all `https://github.com/layola13/xxxxx-launch`; chat engine fixed to **Codex**.
+2. **Next**: Switchable engines in UI — agy, auggie, claude, crush, grok, gemini (Chat Completions) using their *-launch proxies, same relay + membership.
+3. **Default** remains Codex (Responses + code-launch when needed).
+

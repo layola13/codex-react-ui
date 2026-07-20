@@ -547,3 +547,8 @@
 - Relay settings banner + per-provider chip when Chat Completions bridge needed.
 - Plugins tab **启动器适配** with clone/install commands.
 
+### Settings → Launch adapters
+- Dedicated settings section (not only under Plugins).
+- Engine switcher UI: Codex active; other Chat engines marked planned.
+- Full GitHub `xxxxx-launch` download catalog retained.
+
