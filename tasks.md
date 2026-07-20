@@ -19,6 +19,7 @@
 - [x] Move Settings out of the top-right toolbar into a left-bottom account/app area with avatar-ready layout, direct Settings access, and no required secondary menu.
 - [x] Add PWA install support so Chrome-like browsers can install the web UI as a standalone local app.
 - [x] Rework the chat panel into a true chat waterfall: only `/goal` stays pinned at the top; normal messages, request/status surfaces, and history content scroll together.
+- [x] Virtualize the main chat waterfall so long transcripts mount only visible rows and keep Jump to latest usable.
 - [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
 - [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.

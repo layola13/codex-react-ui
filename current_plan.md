@@ -6,6 +6,27 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented the first chat waterfall redesign slice with row normalization, row-specific rendering, and virtual scrolling.
+
+1. Architecture:
+   - Added `apps/web/src/components/chat-waterfall/` with `ChatWaterfall`, `ChatRow`, `chatRows`, row types, and row size estimates.
+   - `ChatPanel` remains the high-level container for goal, stats, slash notice, requests, empty state, and parallel agents.
+   - Main and selected-agent transcripts now flow through `buildChatRows()` instead of a generic item stack.
+2. Visual rows:
+   - User prompts render as compact right-aligned bubbles.
+   - Assistant prose is lighter and less card-heavy.
+   - Tool, file, and command rows use dedicated wide audit surfaces; command rows keep terminal-style output and copy action.
+   - Existing Markdown code-block behavior and Thinking dialog access are preserved.
+3. Virtual scrolling:
+   - Added `@tanstack/react-virtual` for the main waterfall.
+   - The scroll viewport mounts only visible rows with overscan while force-including live/active reasoning rows.
+   - Bottom-follow keeps live streams pinned when near the bottom, respects user scroll-away, and exposes Jump to latest for long transcripts.
+4. Verification:
+   - Playwright injects 653 logical chat rows, verifies fewer than 80 DOM rows are mounted, and confirms Jump to latest reaches the final answer.
+   - Latest verification passed web/full typecheck, focused waterfall e2e, key workbench/slash/screenshot e2e, full `workbench.spec.ts` e2e (26/26), and `bun run build`.
+
+## Previous Completed Slice
+
 Implemented Codex history management around app-server thread semantics.
 
 1. History listing:

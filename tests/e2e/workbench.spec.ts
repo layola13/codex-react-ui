@@ -1384,6 +1384,103 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
   await expect(page.getByRole("button", { name: "Open history Mock thread" })).toHaveCount(0);
 });
 
+test("virtualizes long main chat transcripts and keeps jump-to-latest usable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open history Mock thread" }).click();
+  await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "true");
+
+  await page.evaluate(() => {
+    const socket = (window as unknown as {
+      __codexUiSockets?: Array<{
+        dispatchEvent: (event: MessageEvent) => boolean;
+        onmessage?: ((event: MessageEvent) => void) | null;
+      }>;
+    }).__codexUiSockets?.at(-1);
+    if (!socket) {
+      throw new Error("Missing mock socket");
+    }
+    const emit = (value: unknown) => {
+      const event = new MessageEvent("message", { data: JSON.stringify(value) });
+      socket.dispatchEvent(event);
+      socket.onmessage?.(event);
+    };
+    for (let index = 0; index < 320; index += 1) {
+      const turnId = `long-turn-${index}`;
+      emit({
+        type: "codex.notification",
+        message: {
+          method: "turn/started",
+          params: { threadId: "thread-1", turn: { id: turnId, threadId: "thread-1", status: "inProgress" } }
+        }
+      });
+      emit({
+        type: "codex.notification",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            turnId,
+            item: { type: "userMessage", id: `long-user-${index}`, text: `Long user prompt ${index}` }
+          }
+        }
+      });
+      emit({
+        type: "codex.notification",
+        message: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            turnId,
+            item: {
+              type: "agentMessage",
+              id: `long-agent-${index}`,
+              text: `Long assistant answer ${index}\n\n\`\`\`ts\nexport const value${index} = ${index};\n\`\`\``
+            }
+          }
+        }
+      });
+      if (index % 25 === 0) {
+        emit({
+          type: "codex.notification",
+          message: {
+            method: "item/completed",
+            params: {
+              threadId: "thread-1",
+              turnId,
+              item: { type: "commandExecution", id: `long-command-${index}`, command: "bun test", text: `stdout line ${index}\ncompleted`, status: "completed" }
+            }
+          }
+        });
+      }
+      emit({
+        type: "codex.notification",
+        message: {
+          method: "turn/completed",
+          params: { threadId: "thread-1", turn: { id: turnId, threadId: "thread-1", status: "completed" } }
+        }
+      });
+    }
+  });
+
+  const waterfall = page.getByTestId("conversation-waterfall");
+  await expect(waterfall).toHaveAttribute("data-row-count", "653");
+  await page.waitForTimeout(120);
+  const mountedRows = await waterfall.locator('[data-testid^="conversation-item-"]').count();
+  expect(mountedRows).toBeGreaterThan(0);
+  expect(mountedRows).toBeLessThan(80);
+
+  const scroll = page.getByTestId("chat-waterfall-scroll");
+  await scroll.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  await expect(page.getByRole("button", { name: /Jump to latest/ })).toBeVisible();
+  await page.getByRole("button", { name: /Jump to latest/ }).click();
+  await expect(page.getByText("Long assistant answer 319")).toBeVisible();
+});
+
 test("applies user theme media plugins to the default workbench", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   const heroImage =

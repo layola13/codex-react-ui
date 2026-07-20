@@ -2,6 +2,21 @@
 
 ## 2026-07-20
 
+- Chat waterfall virtualization slice:
+  - Added a dedicated `chat-waterfall` component folder with `ChatWaterfall`, `ChatRow`, `chatRows`, row types, and row size estimates.
+  - Extracted transcript normalization into `buildChatRows()`, preserving reasoning attachment to the following assistant answer and active reasoning preview rows.
+  - Added row-specific rendering: compact right-aligned user bubbles, lighter assistant prose, wide audit rows for tool/file/command output, terminal-style command rows, image attachment preservation, and Thinking dialog access.
+  - Added `@tanstack/react-virtual` and made the main waterfall mount only the visible virtual window with overscan while force-including live rows.
+  - Added bottom-follow behavior plus a Jump to latest control that respects user scroll-away and remains reliable on very long transcripts.
+  - Added Playwright coverage that injects 653 logical chat rows, verifies the mounted DOM row count stays below 80, and proves Jump to latest reaches the final assistant answer.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "renders the workbench|virtualizes long main chat|routes main slash commands|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+    - `bun run build`
+
 - Codex history management slice:
   - Reworked the history rail around Codex `thread/list` semantics instead of filename-derived labels, including non-state-only scan/repair, archived and active pagination, all source kinds, recency sorting, and app-server `searchTerm` where available.
   - Extended `ThreadEntry` parsing for app-server thread metadata: `name`, `title`, `sessionId`, `cwd`, `source`, `threadSource`, `path`, `recencyAt`, `forkedFromId`, and agent fields.

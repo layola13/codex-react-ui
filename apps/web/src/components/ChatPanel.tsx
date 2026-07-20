@@ -15,15 +15,13 @@ import FlagIcon from "@mui/icons-material/Flag";
 import ForumIcon from "@mui/icons-material/Forum";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-import TerminalIcon from "@mui/icons-material/Terminal";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
-import PersonIcon from "@mui/icons-material/Person";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
 import { themeVisualTuning, type ThemePlugin } from "../theme";
-import { MarkdownMessage } from "./MarkdownMessage";
+import { ChatWaterfall } from "./chat-waterfall/ChatWaterfall";
+import { buildChatRows } from "./chat-waterfall/chatRows";
+import type { ChatWaterfallRow } from "./chat-waterfall/types";
 import type { TranslateFn } from "../i18n";
 
 type AgentSession = {
@@ -127,13 +125,6 @@ type Props = {
   onGoalClear?: () => void;
 };
 
-type DisplayConversationItem = {
-  key: string;
-  item: WorkbenchItem;
-  reasoning?: string;
-  activeThinking?: boolean;
-};
-
 function emptyPromptCards(t: TranslateFn) {
   return [
   {
@@ -211,11 +202,11 @@ export function ChatPanel({
     }
   }, [selectedAgentId, visibleAgents]);
 
-  const displayItems = selectedAgent
-    ? agentConversationItems(turns, activeThreadId, selectedAgent)
-    : mainConversationItems(turns, activeThreadId);
+  const chatRows = selectedAgent
+    ? agentConversationRows(turns, activeThreadId, selectedAgent)
+    : mainConversationRows(turns, activeThreadId);
   const hasAnyVisibleThreadActivity = hasThreadActivity(turns, activeThreadId);
-  const showEmptyConversation = displayItems.length === 0 && !welcomeDismissed && (selectedAgent || !hasAnyVisibleThreadActivity);
+  const showEmptyConversation = chatRows.length === 0 && !welcomeDismissed && (selectedAgent || !hasAnyVisibleThreadActivity);
   const hasParallelAgents = visibleAgents.length > 0;
   const showStickyGoal = Boolean(goal);
 
@@ -279,66 +270,62 @@ export function ChatPanel({
             </Box>
           </Box>
         )}
-        <Box sx={{ minHeight: 0, overflow: "auto", p: { xs: 1.5, sm: 2.5, lg: 3 } }}>
-          <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
-            {errors.map((error, index) => (
-              error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null
-            ))}
-            {slashNotice && (
-              <Alert
-                data-testid="slash-command-result"
-                severity={slashNotice.severity}
-                onClose={onSlashNoticeClose}
-                sx={{
-                  alignItems: "flex-start",
-                  "& .MuiAlert-message": {
-                    minWidth: 0,
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere"
-                  }
-                }}
-              >
-                <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
-                  {slashNotice.title}
-                </Typography>
-                <Typography variant="body2" component="div">
-                  {slashNotice.message}
-                </Typography>
-              </Alert>
-            )}
-            {requestMonitor.length > 0 && (
-              <Stack direction="row" alignItems="center" justifyContent="flex-end">
-                <Button
-                  data-testid="request-monitor-button"
-                  size="small"
-                  variant="outlined"
-                  startIcon={<AssessmentIcon />}
-                  onClick={() => setRequestsOpen(true)}
-                  sx={{ borderRadius: 1 }}
+        <ChatWaterfall
+          rows={chatRows}
+          t={t}
+          before={
+            <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
+              {errors.map((error, index) => (error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null))}
+              {slashNotice && (
+                <Alert
+                  data-testid="slash-command-result"
+                  severity={slashNotice.severity}
+                  onClose={onSlashNoticeClose}
+                  sx={{
+                    alignItems: "flex-start",
+                    "& .MuiAlert-message": {
+                      minWidth: 0,
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "anywhere"
+                    }
+                  }}
                 >
-                  {t("chat.requests")}
-                  <Chip size="small" label={requestMonitor.length} sx={{ ml: 1, height: 20 }} />
-                </Button>
-              </Stack>
-            )}
-            {(modes.fast || modes.plan) && (
-              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
-                {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label={t("app.fast")} data-testid="fast-mode-badge" />}
-                {modes.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label={t("app.plan")} data-testid="plan-mode-badge" />}
-              </Stack>
-            )}
-            {statsOpen && stats && <StatsPanel stats={stats} t={t} onClose={onStatsClose} />}
-            {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
-            {showEmptyConversation && <EmptyConversation selectedAgent={selectedAgent} activeThemePlugin={activeThemePlugin} welcomeBackgroundImage={welcomeBackgroundImage} t={t} onPromptSelect={onPromptSelect} />}
-            <Stack spacing={1} data-testid="conversation-waterfall">
-              {displayItems.map(({ key, item, reasoning, activeThinking }) => (
-                <Box key={key} data-testid={`conversation-item-${sanitizeTestId(item.id)}`}>
-                  {renderWorkbenchItem(item, t, { reasoning, activeThinking })}
-                </Box>
-              ))}
+                  <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+                    {slashNotice.title}
+                  </Typography>
+                  <Typography variant="body2" component="div">
+                    {slashNotice.message}
+                  </Typography>
+                </Alert>
+              )}
+              {requestMonitor.length > 0 && (
+                <Stack direction="row" alignItems="center" justifyContent="flex-end">
+                  <Button data-testid="request-monitor-button" size="small" variant="outlined" startIcon={<AssessmentIcon />} onClick={() => setRequestsOpen(true)} sx={{ borderRadius: 1 }}>
+                    {t("chat.requests")}
+                    <Chip size="small" label={requestMonitor.length} sx={{ ml: 1, height: 20 }} />
+                  </Button>
+                </Stack>
+              )}
+              {(modes.fast || modes.plan) && (
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap data-testid="chat-mode-badges">
+                  {modes.fast && <Chip size="small" color="warning" icon={<BoltIcon />} label={t("app.fast")} data-testid="fast-mode-badge" />}
+                  {modes.plan && <Chip size="small" color="primary" icon={<ChecklistIcon />} label={t("app.plan")} data-testid="plan-mode-badge" />}
+                </Stack>
+              )}
+              {statsOpen && stats && <StatsPanel stats={stats} t={t} onClose={onStatsClose} />}
+              {selectedAgent && <AgentConversationHeader agent={selectedAgent} onClose={() => closeAgent(selectedAgent)} />}
+              {showEmptyConversation && (
+                <EmptyConversation
+                  selectedAgent={selectedAgent}
+                  activeThemePlugin={activeThemePlugin}
+                  welcomeBackgroundImage={welcomeBackgroundImage}
+                  t={t}
+                  onPromptSelect={onPromptSelect}
+                />
+              )}
             </Stack>
-          </Stack>
-        </Box>
+          }
+        />
       </Box>
       <Dialog
         open={requestsOpen}
@@ -1011,224 +998,6 @@ function formatUsageCell(usage: TokenUsageBreakdown | undefined, t: TranslateFn)
   return `${formatNumber(usage.totalTokens)} total / ${formatNumber(usage.outputTokens)} out`;
 }
 
-function renderWorkbenchItem(item: WorkbenchItem, t: TranslateFn, options: { reasoning?: string; activeThinking?: boolean } = {}) {
-  return <WorkbenchItemView item={item} t={t} reasoning={options.reasoning} activeThinking={options.activeThinking} />;
-}
-
-function WorkbenchItemView({ item, t, reasoning, activeThinking = false }: { item: WorkbenchItem; t: TranslateFn; reasoning?: string; activeThinking?: boolean }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
-  const isUser = item.type === "userMessage";
-  const isAssistant = item.type === "agentMessage";
-  const isToolLike = !isUser && !isAssistant && item.type !== "reasoning";
-  const align = isUser ? "flex-end" : "flex-start";
-  const reasoningContent = reasoning?.trim() ?? "";
-  return (
-    <Box
-      key={item.id}
-      data-testid={`workbench-item-${sanitizeTestId(item.type)}`}
-      sx={{
-        display: "flex",
-        justifyContent: isToolLike ? "stretch" : align
-      }}
-    >
-      <Box
-        sx={{
-          width: isToolLike ? "100%" : "fit-content",
-          maxWidth: isUser ? { xs: "92%", md: "76%" } : { xs: "96%", md: "84%" },
-          minWidth: 0
-        }}
-      >
-        {item.type === "reasoning" && activeThinking ? (
-          <ReasoningPreview item={item} t={t} />
-        ) : (
-          <Paper
-            variant="outlined"
-            sx={{
-              p: isAssistant || isUser ? 1.35 : 1.2,
-              borderRadius: isUser ? "14px 14px 4px 14px" : isAssistant ? "14px 14px 14px 4px" : 1,
-              bgcolor: isAssistant
-                ? (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.82 : 0.88)
-                : isUser
-                  ? (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.22 : 0.1)
-                  : (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.66 : 0.6),
-              borderColor: isUser ? "primary.main" : "divider",
-              boxShadow: (theme) =>
-                isToolLike
-                  ? theme.customShadows?.z1
-                  : isAssistant
-                    ? theme.customShadows?.z4
-                    : theme.customShadows?.z1
-            }}
-          >
-            <Stack direction="row" alignItems="center" spacing={1}>
-              {item.type === "commandExecution" ? (
-                <TerminalIcon fontSize="small" />
-              ) : item.type === "fileChange" ? (
-                <InsertDriveFileIcon fontSize="small" />
-              ) : item.type === "userMessage" ? (
-                <PersonIcon fontSize="small" />
-              ) : (
-                <SmartToyIcon fontSize="small" />
-              )}
-              <Typography variant="subtitle2" sx={{ fontWeight: 750, flex: 1 }}>
-                {item.title}
-              </Typography>
-              {item.agentName && <Chip size="small" label={item.agentName} />}
-              {item.status && <Chip size="small" label={item.status} />}
-              {isAssistant && reasoningContent && (
-                <Button size="small" variant="text" startIcon={<SmartToyIcon fontSize="small" />} onClick={() => setThinkingOpen(true)} sx={{ borderRadius: 1 }}>
-                  {t("chat.thinking")}
-                </Button>
-              )}
-            </Stack>
-            {item.text && item.type === "commandExecution" && (
-              <Typography
-                component="pre"
-                sx={{
-                  mt: 1,
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "anywhere",
-                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                  fontSize: 12,
-                  m: 0,
-                  pt: 1
-                }}
-              >
-                {item.text}
-              </Typography>
-            )}
-            {item.text && item.type !== "commandExecution" && <MarkdownMessage text={item.text} />}
-            {item.type === "mcpToolCall" && renderMcpToolCall(item)}
-            {item.images && item.images.length > 0 && (
-              <Stack direction="row" spacing={1} sx={{ mt: 1, overflowX: "auto" }}>
-                {item.images.map((image, index) => (
-                  <Paper key={`${image.url}-${index}`} variant="outlined" sx={{ width: 160, flex: "0 0 auto", overflow: "hidden" }}>
-                    {isRenderableImageUrl(image.url) ? (
-                      <Box
-                        component="img"
-                        src={image.url}
-                        alt={image.name ?? `Attached image ${index + 1}`}
-                        sx={{ width: "100%", aspectRatio: "4 / 3", objectFit: "cover", display: "block" }}
-                      />
-                    ) : (
-                      <Box sx={{ p: 1.25 }}>
-                        <Typography variant="caption" sx={{ overflowWrap: "anywhere" }}>
-                          {image.name ?? image.url}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                ))}
-              </Stack>
-            )}
-          </Paper>
-        )}
-      </Box>
-      {isAssistant && reasoningContent && (
-        <Dialog open={thinkingOpen} onClose={() => setThinkingOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <SmartToyIcon color="primary" />
-              <Typography component="span" variant="h6" sx={{ fontWeight: 850 }}>
-                {t("chat.thinking")}
-              </Typography>
-            </Stack>
-          </DialogTitle>
-          <DialogContent dividers>
-            <Box sx={{ maxHeight: "70vh", overflow: "auto" }}>
-              <MarkdownMessage text={reasoningContent} />
-            </Box>
-          </DialogContent>
-        </Dialog>
-      )}
-    </Box>
-  );
-}
-
-function ReasoningPreview({ item, t }: { item: WorkbenchItem; t: TranslateFn }) {
-  const content = reasoningText(item);
-  const preview = content.split(/\r?\n/).slice(0, 3).join("\n").trim();
-  if (!content) {
-    return null;
-  }
-  return (
-    <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
-      <Paper
-        variant="outlined"
-        data-testid="thinking-preview"
-        sx={{
-          width: { xs: "96%", md: "84%" },
-          p: 1,
-          borderRadius: 1,
-          bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.5 : 0.66),
-          borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.16 : 0.12),
-          boxShadow: (theme) => theme.customShadows?.z1
-        }}
-      >
-        <Stack direction="row" alignItems="flex-start" spacing={1}>
-          <SmartToyIcon fontSize="small" sx={{ mt: 0.2, color: "text.secondary" }} />
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "text.secondary" }}>
-              {t("chat.thinking")}
-            </Typography>
-            <Typography
-              component="pre"
-              variant="caption"
-              color="text.secondary"
-              sx={{
-                m: 0,
-                mt: 0.25,
-                fontFamily: "inherit",
-                whiteSpace: "pre-wrap",
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical"
-              }}
-            >
-              {preview}
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
-    </Box>
-  );
-}
-
-function reasoningText(item: WorkbenchItem): string {
-  if (item.text.trim()) {
-    return item.text.trim();
-  }
-  const payload = isRecord(item.payload) ? item.payload : {};
-  const summary = payload.summary;
-  if (typeof summary === "string") {
-    return summary.trim();
-  }
-  if (Array.isArray(summary)) {
-    return summary.map((entry) => (typeof entry === "string" ? entry : summarizeReasoningEntry(entry))).filter(Boolean).join("\n").trim();
-  }
-  if (isRecord(summary)) {
-    return summarizeReasoningEntry(summary).trim();
-  }
-  return "";
-}
-
-function summarizeReasoningEntry(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (isRecord(value)) {
-    for (const key of ["text", "summary", "content", "message"]) {
-      const nested = value[key];
-      if (typeof nested === "string" && nested.trim()) {
-        return nested;
-      }
-    }
-    return prettyJson(value);
-  }
-  return "";
-}
-
 function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], activeThreadId: string | null): AgentSession[] {
   if (!activeThreadId) {
     return [];
@@ -1321,12 +1090,12 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
   return [...sessions.values()];
 }
 
-function mainConversationItems(turns: WorkbenchTurn[], activeThreadId: string | null): DisplayConversationItem[] {
+function mainConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null): ChatWaterfallRow[] {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
-  return conversationItemsForTurns(visibleTurns, (item) => !item.agentId && !item.agentThreadId);
+  return buildChatRows(visibleTurns, (item) => !item.agentId && !item.agentThreadId);
 }
 
-function agentConversationItems(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession): DisplayConversationItem[] {
+function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession): ChatWaterfallRow[] {
   const visibleTurns = turns.map((turn) => {
     if (agent.threadId && turn.threadId === agent.threadId) {
       return turn;
@@ -1336,54 +1105,7 @@ function agentConversationItems(turns: WorkbenchTurn[], activeThreadId: string |
     }
     return { ...turn, items: turn.items.filter((item) => itemBelongsToAgent(item, agent)) };
   });
-  return conversationItemsForTurns(visibleTurns);
-}
-
-function conversationItemsForTurns(turns: WorkbenchTurn[], filterItem: (item: WorkbenchItem) => boolean = () => true): DisplayConversationItem[] {
-  return turns.flatMap((turn) => {
-    const output: DisplayConversationItem[] = [];
-    const reasoningBuffer: string[] = [];
-    const visibleItems = turn.items.filter(filterItem);
-
-    visibleItems.forEach((item, index) => {
-      if (item.type === "reasoning") {
-        const content = reasoningText(item);
-        if (content) {
-          reasoningBuffer.push(content);
-        }
-        return;
-      }
-
-      if (item.type === "agentMessage") {
-        output.push({
-          key: `${turn.id}:${item.id}:${index}`,
-          item,
-          reasoning: reasoningBuffer.join("\n\n").trim() || undefined
-        });
-        reasoningBuffer.length = 0;
-        return;
-      }
-
-      output.push({
-        key: `${turn.id}:${item.id}:${index}`,
-        item
-      });
-    });
-
-    if (reasoningBuffer.length > 0 && turn.status !== "completed") {
-      const lastReasoning = [...visibleItems].reverse().find((item) => item.type === "reasoning");
-      if (lastReasoning) {
-        output.push({
-          key: `${turn.id}:${lastReasoning.id}:thinking`,
-          item: lastReasoning,
-          reasoning: reasoningBuffer.join("\n\n").trim(),
-          activeThinking: true
-        });
-      }
-    }
-
-    return output;
-  });
+  return buildChatRows(visibleTurns);
 }
 
 function hasThreadActivity(turns: WorkbenchTurn[], activeThreadId: string | null): boolean {
