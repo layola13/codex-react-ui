@@ -530,3 +530,10 @@
 - Member smoke: `member1@example.com` / `MemberPass1!`
 - Launch: `CODEX_UI_JWT_SECRET=... bun run launch` on `:43110`
 
+### Password change + concurrency enforcement (2026-07-20)
+
+- Self-service password change on Settings → Security: current/new/confirm + **animated SVG captcha** (always required).
+- API: `POST /api/me/password` verifies captcha then `changeOwnPassword`.
+- Captcha SVG upgraded with SMIL animations (glow border, floating particles, gradient pulse).
+- Concurrency: admin set per member (1–100); `turn/start` refreshes limit from DB, rejects when in-flight ≥ limit; slots released on turn terminal notifications / WS close.
+

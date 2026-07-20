@@ -1757,3 +1757,31 @@ export async function fetchUsageLedger(
   const body = (await response.json()) as { data: Array<Record<string, unknown>> };
   return body.data ?? [];
 }
+
+
+export async function changeOwnPassword(
+  token: string,
+  input: {
+    currentPassword: string;
+    newPassword: string;
+    captchaId: string;
+    captchaAnswer: string;
+  }
+): Promise<AuthUser> {
+  const response = await fetch("/api/me/password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: AuthUser; error?: string };
+  if (!response.ok) {
+    throw new Error(typeof body.error === "string" ? body.error : `Password change failed (${response.status})`);
+  }
+  if (!body.data) {
+    throw new Error("Password change failed");
+  }
+  return body.data;
+}

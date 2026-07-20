@@ -169,8 +169,8 @@ export class SecurityStore {
 
   public createCaptcha(): { id: string; svg: string; expiresAt: number } {
     this.cleanupExpired();
-    const a = randomInt(2, 12);
-    const b = randomInt(1, 10);
+    const a = randomInt(3, 15);
+    const b = randomInt(2, 12);
     const answer = String(a + b);
     const id = randomBytes(16).toString("hex");
     const expiresAt = Date.now() + 5 * 60 * 1000;
@@ -368,31 +368,59 @@ function base32Decode(input: string): Buffer {
 
 function renderCaptchaSvg(text: string): string {
   const noise: string[] = [];
-  for (let i = 0; i < 6; i += 1) {
-    const x1 = randomInt(0, 180);
-    const y1 = randomInt(0, 56);
-    const x2 = randomInt(0, 180);
-    const y2 = randomInt(0, 56);
-    noise.push(`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(120,140,160,0.35)" stroke-width="1"/>`);
-  }
-  for (let i = 0; i < 18; i += 1) {
+  for (let i = 0; i < 8; i += 1) {
+    const x1 = randomInt(0, 220);
+    const y1 = randomInt(0, 72);
+    const x2 = randomInt(0, 220);
+    const y2 = randomInt(0, 72);
     noise.push(
-      `<circle cx="${randomInt(4, 176)}" cy="${randomInt(4, 52)}" r="${randomInt(1, 2)}" fill="rgba(100,120,140,0.28)"/>`
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(148,163,184,0.28)" stroke-width="1">` +
+        `<animate attributeName="x1" values="${x1};${x2};${x1}" dur="${2 + (i % 3)}s" repeatCount="indefinite"/>` +
+        `<animate attributeName="y2" values="${y2};${y1};${y2}" dur="${2.4 + (i % 2)}s" repeatCount="indefinite"/>` +
+      `</line>`
     );
   }
-  const rotate = randomInt(-8, 8);
+  for (let i = 0; i < 22; i += 1) {
+    const cx = randomInt(6, 214);
+    const cy = randomInt(6, 66);
+    const r = randomInt(1, 3);
+    noise.push(
+      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(56,189,248,${0.15 + (i % 4) * 0.05})">` +
+        `<animate attributeName="cy" values="${cy};${Math.max(4, cy - 10)};${cy}" dur="${1.6 + (i % 5) * 0.35}s" repeatCount="indefinite"/>` +
+        `<animate attributeName="opacity" values="0.25;0.7;0.25" dur="${1.2 + (i % 3) * 0.4}s" repeatCount="indefinite"/>` +
+      `</circle>`
+    );
+  }
+  const rotate = randomInt(-10, 10);
+  const uid = randomBytes(3).toString("hex");
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="180" height="56" viewBox="0 0 180 56">
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="72" viewBox="0 0 220 72" role="img" aria-label="captcha">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#1e293b"/>
+    <linearGradient id="bg${uid}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220">
+        <animate attributeName="stop-color" values="#0b1220;#111827;#0b1220" dur="4s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#1e293b">
+        <animate attributeName="stop-color" values="#1e293b;#0f766e;#1e293b" dur="5s" repeatCount="indefinite"/>
+      </stop>
     </linearGradient>
+    <filter id="glow${uid}">
+      <feGaussianBlur stdDeviation="1.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
-  <rect width="180" height="56" rx="10" fill="url(#g)"/>
+  <rect width="220" height="72" rx="14" fill="url(#bg${uid})"/>
+  <rect x="2" y="2" width="216" height="68" rx="12" fill="none" stroke="rgba(56,189,248,0.35)" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.25;0.8;0.25" dur="2.2s" repeatCount="indefinite"/>
+  </rect>
   ${noise.join("")}
-  <text x="90" y="36" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="22" font-weight="700"
-    fill="#e2e8f0" transform="rotate(${rotate} 90 28)" letter-spacing="1">${escapeXml(text)}</text>
+  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="24" font-weight="800"
+    fill="#e2e8f0" filter="url(#glow${uid})" transform="rotate(${rotate} 110 36)" letter-spacing="2">
+    <animate attributeName="opacity" values="0.85;1;0.85" dur="1.5s" repeatCount="indefinite"/>
+    ${escapeXml(text)}
+  </text>
+  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="24" font-weight="800"
+    fill="rgba(56,189,248,0.18)" transform="rotate(${rotate + 2} 112 38)" letter-spacing="2">${escapeXml(text)}</text>
 </svg>`;
 }
 

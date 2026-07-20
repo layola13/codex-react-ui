@@ -675,5 +675,17 @@
   "settings.usage.member": "会员",
   "settings.usage.recharge": "确认调整",
   "settings.usage.rechargeOk": "额度已更新",
-  "settings.usage.invalidAmount": "金额无效"
+  "settings.usage.invalidAmount": "金额无效",
+  "settings.security.passwordTitle": "修改密码",
+  "settings.security.passwordHint": "会员可自行修改密码。修改前需完成动画图形验证码。",
+  "settings.security.currentPassword": "当前密码",
+  "settings.security.newPassword": "新密码",
+  "settings.security.confirmPassword": "确认新密码",
+  "settings.security.captchaLabel": "验证码答案",
+  "settings.security.captchaRefresh": "刷新验证码",
+  "settings.security.changePassword": "更新密码",
+  "settings.security.passwordChanged": "密码已更新",
+  "settings.security.passwordMismatch": "两次输入的新密码不一致",
+  "settings.security.passwordTooShort": "密码至少 8 位",
+  "settings.security.captchaRequired": "请先完成验证码"
 }

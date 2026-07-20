@@ -13,13 +13,17 @@ import {
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import PhonelinkLockIcon from "@mui/icons-material/PhonelinkLock";
+import PasswordIcon from "@mui/icons-material/Password";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { useCallback, useEffect, useState } from "react";
 import type { SystemAuthSettings } from "@codex-ui/shared";
 import type { TranslateFn } from "../i18n";
 import {
+  changeOwnPassword,
   disableTotp,
   enableTotp,
   fetchAdminSettings,
+  fetchCaptcha,
   fetchTotpStatus,
   setupTotp,
   updateAdminSettings
@@ -50,6 +54,14 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
   const [totpCode, setTotpCode] = useState("");
   const [disablePassword, setDisablePassword] = useState("");
   const [totpBusy, setTotpBusy] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaSvg, setCaptchaSvg] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -138,6 +150,57 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setTotpBusy(false);
+    }
+  };
+
+  const refreshPasswordCaptcha = useCallback(async () => {
+    try {
+      const challenge = await fetchCaptcha();
+      setCaptchaId(challenge.id);
+      setCaptchaSvg(challenge.svg);
+      setCaptchaAnswer("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPasswordCaptcha();
+  }, [refreshPasswordCaptcha]);
+
+  const submitPasswordChange = async () => {
+    setError(null);
+    setMessage(null);
+    if (newPassword.length < 8) {
+      setError(t("settings.security.passwordTooShort"));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError(t("settings.security.passwordMismatch"));
+      return;
+    }
+    if (!captchaId || !captchaAnswer.trim()) {
+      setError(t("settings.security.captchaRequired"));
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      await changeOwnPassword(token, {
+        currentPassword,
+        newPassword,
+        captchaId,
+        captchaAnswer: captchaAnswer.trim()
+      });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMessage(t("settings.security.passwordChanged"));
+      await refreshPasswordCaptcha();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      await refreshPasswordCaptcha();
+    } finally {
+      setPasswordBusy(false);
     }
   };
 
@@ -231,6 +294,90 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
           </Stack>
         </Paper>
       ) : null}
+
+      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <PasswordIcon fontSize="small" color="primary" />
+          <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
+            {t("settings.security.passwordTitle")}
+          </Typography>
+        </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          {t("settings.security.passwordHint")}
+        </Typography>
+        <Stack spacing={1.25}>
+          <TextField
+            size="small"
+            type="password"
+            label={t("settings.security.currentPassword")}
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            fullWidth
+          />
+          <TextField
+            size="small"
+            type="password"
+            label={t("settings.security.newPassword")}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+            fullWidth
+          />
+          <TextField
+            size="small"
+            type="password"
+            label={t("settings.security.confirmPassword")}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            fullWidth
+          />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "stretch" }}>
+            <Box
+              sx={{
+                minWidth: 220,
+                height: 72,
+                borderRadius: 2,
+                overflow: "hidden",
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "#0b1220",
+                cursor: "pointer",
+                boxShadow: "0 0 0 1px rgba(56,189,248,0.15), 0 8px 24px rgba(2,6,23,0.35)"
+              }}
+              onClick={() => void refreshPasswordCaptcha()}
+              title={t("settings.security.captchaRefresh")}
+              dangerouslySetInnerHTML={{ __html: captchaSvg || "" }}
+            />
+            <Stack spacing={1} sx={{ flex: 1 }}>
+              <TextField
+                size="small"
+                label={t("settings.security.captchaLabel")}
+                value={captchaAnswer}
+                onChange={(e) => setCaptchaAnswer(e.target.value)}
+                fullWidth
+              />
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={() => void refreshPasswordCaptcha()}
+                sx={{ alignSelf: "flex-start", borderRadius: 999 }}
+              >
+                {t("settings.security.captchaRefresh")}
+              </Button>
+            </Stack>
+          </Stack>
+          <Button
+            variant="contained"
+            disabled={passwordBusy || !currentPassword || !newPassword}
+            onClick={() => void submitPasswordChange()}
+            sx={{ alignSelf: "flex-start", borderRadius: 999, fontWeight: 800 }}
+          >
+            {passwordBusy ? t("settings.permissions.saving") : t("settings.security.changePassword")}
+          </Button>
+        </Stack>
+      </Paper>
 
       <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
         <Typography variant="subtitle1" sx={{ fontWeight: 850, mb: 1 }}>

@@ -275,7 +275,7 @@ export class AuthStore {
         role,
         status,
         Number(input.balance ?? 0),
-        Math.max(1, Math.floor(input.concurrency ?? 5)),
+        Math.min(100, Math.max(1, Math.floor(input.concurrency ?? 5))),
         maxPermission,
         allowWrite ? 1 : 0,
         allowNetwork ? 1 : 0,
@@ -338,7 +338,7 @@ export class AuthStore {
         role,
         status,
         Number(input.balance ?? existing.balance),
-        Math.max(1, Math.floor(input.concurrency ?? existing.concurrency)),
+        Math.min(100, Math.max(1, Math.floor(input.concurrency ?? existing.concurrency))),
         maxPermission,
         allowWrite ? 1 : 0,
         allowNetwork ? 1 : 0,
@@ -766,6 +766,45 @@ export class AuthStore {
       .prepare(`SELECT * FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1`)
       .get(id) as UserRow | undefined;
     return row ?? null;
+  }
+
+
+  public async changeOwnPassword(userId: string, currentPassword: string, newPassword: string): Promise<AuthUser> {
+    if (!currentPassword || !newPassword) {
+      throw new Error("Current and new password are required");
+    }
+    if (newPassword.length < 8) {
+      throw new Error("New password must be at least 8 characters");
+    }
+    if (currentPassword === newPassword) {
+      throw new Error("New password must be different from current password");
+    }
+    const existing = this.getUserRow(userId);
+    if (!existing || existing.status !== "active") {
+      throw new Error("User not found");
+    }
+    if (!(await Bun.password.verify(currentPassword, existing.password_hash))) {
+      throw new Error("Current password is incorrect");
+    }
+    const hash = await Bun.password.hash(newPassword, { algorithm: "bcrypt" });
+    this.db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`).run(hash, Date.now(), userId);
+    const user = this.getUser(userId);
+    if (!user) {
+      throw new Error("User not found after password change");
+    }
+    return user;
+  }
+
+  /** Fresh concurrency limit from DB (admin may have just updated it). */
+  public getConcurrencyLimit(userId: string): number {
+    const row = this.getUserRow(userId);
+    if (!row) {
+      return 1;
+    }
+    if (row.role === "admin") {
+      return Math.max(1, Math.floor(row.concurrency || 20));
+    }
+    return Math.max(1, Math.floor(row.concurrency || 1));
   }
 
   public async verifyPassword(email: string, password: string): Promise<UserRow | null> {

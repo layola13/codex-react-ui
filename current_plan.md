@@ -332,3 +332,6 @@ The Slash Command parity slice is implemented and verified.
 - Optional CSV export of ledger
 - Optional force-admin-TOTP hard block
 
+### Password & concurrency (shipped)
+- Members change own password with animated captcha (Security settings).
+- Admin configures per-user concurrency; server enforces concurrent `turn/start` slots.

@@ -212,7 +212,7 @@ export function MembersPermissionsPanel({
         allowNetwork: createForm.allowNetwork,
         allowDangerBypass: createForm.allowDangerBypass,
         balance: Number(createForm.balance) || 0,
-        concurrency: Math.max(1, Number(createForm.concurrency) || 1),
+        concurrency: Math.min(100, Math.max(1, Number(createForm.concurrency) || 1)),
         notes: createForm.notes.trim() || undefined
       });
       setCreateForm(emptyCreate);
@@ -242,7 +242,7 @@ export function MembersPermissionsPanel({
         allowWrite: editForm.allowWrite,
         allowNetwork: editForm.allowNetwork,
         allowDangerBypass: editForm.allowDangerBypass,
-        concurrency: Math.max(1, Number(editForm.concurrency) || 1),
+        concurrency: Math.min(100, Math.max(1, Number(editForm.concurrency) || 1)),
         notes: editForm.notes,
         allowedProviderIds: editForm.allowedProviders
       };

@@ -29,6 +29,50 @@ type SocketData = {
   token: string | null;
 };
 
+/** In-flight turns per user for concurrency enforcement. */
+const activeTurnsByUser = new Map<string, Set<string>>();
+
+function activeTurnCount(userId: string): number {
+  return activeTurnsByUser.get(userId)?.size ?? 0;
+}
+
+function trackTurnStart(userId: string, turnKey: string): void {
+  let set = activeTurnsByUser.get(userId);
+  if (!set) {
+    set = new Set();
+    activeTurnsByUser.set(userId, set);
+  }
+  set.add(turnKey);
+}
+
+function trackTurnEnd(userId: string, turnKey: string): void {
+  const set = activeTurnsByUser.get(userId);
+  if (!set) return;
+  set.delete(turnKey);
+  if (set.size === 0) {
+    activeTurnsByUser.delete(userId);
+  }
+}
+
+function releaseAllTurnsForUser(userId: string): void {
+  activeTurnsByUser.delete(userId);
+}
+
+function extractTurnKey(result: JsonValue, params: Record<string, unknown>): string | null {
+  const record = asRecord(result);
+  const turn = asRecord(record.turn);
+  const turnId = stringValue(turn.id) ?? stringValue(record.turnId) ?? stringValue(record.id);
+  const threadId = stringValue(params.threadId) ?? stringValue(asRecord(params.thread).id) ?? stringValue(turn.threadId);
+  if (turnId) {
+    return `turn:${turnId}`;
+  }
+  if (threadId) {
+    return `thread:${threadId}:${Date.now()}`;
+  }
+  return null;
+}
+
+
 const PORT = Number(process.env.CODEX_UI_PORT ?? 43110);
 const HOST = process.env.CODEX_UI_HOST ?? "127.0.0.1";
 const sessionToken = process.env.CODEX_UI_TOKEN ?? randomBytes(24).toString("base64url");
@@ -93,6 +137,9 @@ const server = Bun.serve<SocketData>({
     },
     close(ws) {
       clients.delete(ws);
+      if (ws.data.user?.id) {
+        releaseAllTurnsForUser(ws.data.user.id);
+      }
     }
   }
 });
@@ -503,6 +550,27 @@ async function handleApiRequest(
       const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
       return jsonResponse({ data: authStore.listBalanceLedger(user.id, limit) }, 200, headers);
     }
+    case "POST /api/me/password": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        // Always require animated captcha for self-service password change.
+        const captchaOk = securityStore.consumeCaptcha(stringValue(body.captchaId), stringValue(body.captchaAnswer));
+        if (!captchaOk) {
+          return jsonResponse({ error: "Invalid captcha" }, 401, headers);
+        }
+        const updated = await authStore.changeOwnPassword(
+          user.id,
+          stringValue(body.currentPassword) ?? stringValue(body.oldPassword) ?? "",
+          stringValue(body.newPassword) ?? ""
+        );
+        return jsonResponse({ data: updated }, 200, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
     case "GET /api/me": {
       if (!user) {
         return jsonResponse({ user: null }, 200, headers);
@@ -689,6 +757,25 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
           console.warn("Failed to write dangerous permission audit event", { error, method: message.method });
         }
 
+        // Concurrency + balance gates before starting a turn (admins still tracked but high limit).
+        if (authStore && user && message.method === "turn/start") {
+          // Refresh user from DB so admin concurrency edits apply immediately.
+          const fresh = authStore.getUser(user.id) ?? user;
+          ws.data.user = fresh;
+          const limit = authStore.getConcurrencyLimit(fresh.id);
+          const inFlight = activeTurnCount(fresh.id);
+          if (inFlight >= limit) {
+            throw new Error(`Concurrency limit reached (${inFlight}/${limit}). Wait for a turn to finish or ask admin to raise concurrency.`);
+          }
+          if (fresh.role !== "admin") {
+            // Pre-check balance so we do not start a turn that cannot be paid.
+            const bal = Number(fresh.balance);
+            if (!(bal > 0)) {
+              throw new Error("Insufficient balance. Ask an admin to allocate credit.");
+            }
+          }
+        }
+
         let result = await bridge.request(message.method, params);
 
         if (authStore && user) {
@@ -701,19 +788,28 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
           if (message.method === "thread/list") {
             result = authStore.filterThreadsForUser(user, result) as JsonValue;
           }
-          // Flat per-turn debit for non-admin members (Sub2API-style credit gate).
-          if (message.method === "turn/start" && user.role !== "admin") {
-            try {
-              const cost = 0.01; // base unit per turn; refine with token usage later
-              const updated = authStore.debitBalance(user.id, cost, {
-                reason: "turn/start",
-                threadId: stringValue(asRecord(params).threadId) ?? "",
-                method: message.method
-              });
-              ws.data.user = updated;
-            } catch (error) {
-              // Turn already started; log but surface balance error on next turn.
-              console.warn("Balance debit failed after turn/start", error);
+          if (message.method === "turn/start") {
+            const turnKey = extractTurnKey(result, asRecord(params));
+            if (turnKey) {
+              trackTurnStart(user.id, turnKey);
+              // Also index by thread for notifications that only carry threadId.
+              const threadId = stringValue(asRecord(params).threadId);
+              if (threadId) {
+                trackTurnStart(user.id, `thread-active:${threadId}`);
+              }
+            }
+            if (user.role !== "admin") {
+              try {
+                const cost = 0.01; // base unit per turn; refine with token usage later
+                const updated = authStore.debitBalance(user.id, cost, {
+                  reason: "turn/start",
+                  threadId: stringValue(asRecord(params).threadId) ?? "",
+                  method: message.method
+                });
+                ws.data.user = updated;
+              } catch (error) {
+                console.warn("Balance debit failed after turn/start", error);
+              }
             }
           }
         }
@@ -787,6 +883,31 @@ function routeCodexNotification(message: JsonRpcMessage & { method: string; para
     stringValue(params.threadId) ??
     stringValue(asRecord(params.thread).id) ??
     stringValue(asRecord(params.turn).threadId);
+  const turnId =
+    stringValue(asRecord(params.turn).id) ??
+    stringValue(params.turnId) ??
+    stringValue(params.id);
+
+  // Free concurrency slots when turns complete / fail / are interrupted.
+  const method = message.method;
+  const isTerminal =
+    method.includes("turn/completed") ||
+    method.includes("turn/failed") ||
+    method.includes("turn/interrupted") ||
+    method.endsWith("turn/complete") ||
+    method.endsWith("turn/error") ||
+    method === "turn/completed" ||
+    method === "turn/failed";
+  if (isTerminal && authStore) {
+    for (const client of clients) {
+      const user = client.data.user;
+      if (!user) continue;
+      if (threadId && (user.role === "admin" || authStore.ownsThread(threadId, user.id))) {
+        if (turnId) trackTurnEnd(user.id, `turn:${turnId}`);
+        if (threadId) trackTurnEnd(user.id, `thread-active:${threadId}`);
+      }
+    }
+  }
 
   if (!authStore || !threadId) {
     broadcast({ type: "codex.notification", message });
