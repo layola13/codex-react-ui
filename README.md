@@ -22,6 +22,28 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - **Usage & billing**: turn-based debit, usage summary charts, balance ledger, admin recharge with notes.
 - **Settings → Launch adapters**: catalog of [layola13 `*-launch`](https://github.com/layola13) bridges (`https://github.com/layola13/xxxxx-launch`), install/copy commands, and a multi-engine switcher UI (default **Codex** only today).
 
+## One-click host install
+
+On a fresh Linux machine (after cloning this repo):
+
+```bash
+git clone https://github.com/layola13/codex-react-ui.git
+cd codex-react-ui
+./install.sh
+```
+
+`./install.sh` installs Bun if needed, runs `bun install` + `bun run build`, writes `~/.config/codex-react-ui/.env` (JWT + admin), and installs a `codex-react-ui` launcher into `~/.local/bin`.
+
+Useful flags: `./install.sh --help` · `./install.sh --start` · `./install.sh --skip-build` · `./install.sh --force-env`.
+
+Then:
+
+```bash
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
+codex-react-ui
+# open http://127.0.0.1:43110/
+```
+
 ## Development
 
 ```bash
