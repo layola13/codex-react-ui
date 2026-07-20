@@ -1455,6 +1455,33 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
           }
         }
       });
+      if (index === 275) {
+        emit({
+          type: "codex.notification",
+          message: {
+            method: "item/completed",
+            params: {
+              threadId: "thread-1",
+              turnId,
+              item: {
+                type: "mcpToolCall",
+                id: "long-tool-275",
+                server: "filesystem",
+                tool: "readFile",
+                status: "completed",
+                durationMs: 42,
+                arguments: { path: "/tmp/tool-audit-275.txt" },
+                result: {
+                  structuredContent: {
+                    message: "tool audit secret 275",
+                    bytes: 2048
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
       if (index % 25 === 0) {
         const commandText =
           index === 300
@@ -1487,7 +1514,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   });
 
   const waterfall = page.getByTestId("conversation-waterfall");
-  await expect(waterfall).toHaveAttribute("data-row-count", "653");
+  await expect(waterfall).toHaveAttribute("data-row-count", "654");
   await page.waitForTimeout(120);
   const mountedRows = await waterfall.locator('[data-testid^="conversation-item-"]').count();
   expect(mountedRows).toBeGreaterThan(0);
@@ -1506,12 +1533,12 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
   await expect(page.getByTestId("chat-search-overlay")).toBeVisible();
   await page.getByLabel("Search transcript").fill("Long assistant answer 319");
-  await expect(page.getByText("1/1 results in 653 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 654 rows")).toBeVisible();
   await expect(page.getByTestId("conversation-item-long-agent-319").getByText("Long assistant answer 319")).toBeVisible();
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Commands" }).click();
   await page.getByLabel("Search transcript").fill("stdout line 300");
-  await expect(page.getByText("1/1 results in 653 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 654 rows")).toBeVisible();
   const longCommandRow = page.getByTestId("conversation-item-long-command-300");
   await expect(longCommandRow.getByText("stdout line 300")).toBeVisible();
   await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
@@ -1536,6 +1563,15 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("option", { name: "Commands" }).click();
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
   await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Tools" }).click();
+  await page.getByLabel("Search transcript").fill("tool audit secret 275");
+  await expect(page.getByText("1/1 results in 654 rows")).toBeVisible();
+  const toolRow = page.getByTestId("conversation-item-long-tool-275");
+  await expect(toolRow.getByRole("heading", { name: "MCP / filesystem / readFile" })).toBeVisible();
+  await expect(toolRow).not.toContainText("tool audit secret 275");
+  await toolRow.getByRole("button", { name: "Expand tool details" }).click();
+  await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
+  await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Assistant" }).click();
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   const reasoningRow = page.getByTestId("conversation-item-long-agent-310");
@@ -1549,6 +1585,10 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByTestId("conversation-item-long-agent-311").getByText("Long assistant answer 311")).toBeVisible();
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   await expect(reasoningRow.getByTestId("completed-thinking-panel")).toContainText("Completed reasoning detail 310");
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Tools" }).click();
+  await page.getByLabel("Search transcript").fill("tool audit secret 275");
+  await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
 });
 
 test("applies user theme media plugins to the default workbench", async ({ page }) => {
@@ -2125,7 +2165,8 @@ test("shows parallel agents rail with switchable transcripts and completion cont
   await expect(page.getByTestId("parallel-agent-rail")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-button-agent-review-thread")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-button-agent-tests-thread")).toBeVisible();
-  await expect(page.getByText("Tool: spawnAgent")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Parallel agent" })).toBeVisible();
+  await expect(page.getByText("spawnAgent")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-badge-agent-review-thread")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-badge-agent-tests-thread")).toBeVisible();
 
@@ -2145,7 +2186,7 @@ test("shows parallel agents rail with switchable transcripts and completion cont
   await expect(page.getByText("Review agent found missing tests for completion badges.")).toHaveCount(0);
 
   await page.getByTestId("parallel-agent-main").click();
-  await expect(page.getByText("Tool: spawnAgent")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Parallel agent" })).toBeVisible();
   await page.getByTestId("parallel-agent-close-agent-review-thread").click();
   await expect(page.getByTestId("parallel-agent-button-agent-review-thread")).toHaveCount(0);
   await expect(page.getByTestId("parallel-agent-button-agent-tests-thread")).toBeVisible();

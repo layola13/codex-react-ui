@@ -6,6 +6,21 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented compact expandable tool audit details for the virtualized chat waterfall.
+
+1. Tool audit rendering:
+   - Tool rows now show a compact audit header and summary chips by default.
+   - Arguments, results, text, and payload-derived details are hidden behind a `Details` toggle.
+   - Expanded details continue to use the existing structured payload renderer.
+2. Virtualized state:
+   - Tool detail expansion reuses `ChatWaterfall` row expansion state.
+   - Expanded tool details persist after virtualized unmount/remount.
+3. Verification:
+   - Playwright injects an MCP tool payload into a long transcript, finds it through Tools-scope search, verifies the payload detail is hidden by default, expands it, jumps away, returns, and confirms the details remained expanded.
+   - Latest verification passed web/full typecheck, build, focused waterfall/theme/parallel-agent e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented inline completed-thinking expansion for the virtualized chat waterfall.
 
 1. Completed reasoning rendering:

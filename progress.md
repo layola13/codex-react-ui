@@ -2,6 +2,20 @@
 
 ## 2026-07-20
 
+- Chat waterfall tool audit details slice:
+  - Tool audit rows now default to a compact header plus server/tool/status/duration chips.
+  - Arguments, results, row text, and payload-derived detail content are hidden behind a `Details` toggle.
+  - Tool detail expansion reuses `ChatWaterfall` row expansion state, so expanded tool rows survive virtualized unmount/remount.
+  - Extended the long transcript Playwright test with an MCP tool payload, Tools-scope data search, default collapsed-state checks, detail expansion, and persistence after jumping away and returning.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "supports uploaded background images|shows parallel agents rail"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall inline completed-thinking slice:
   - Completed assistant reasoning now expands inline from the Thinking control instead of being dialog-only.
   - Inline completed-thinking panels use the existing Markdown renderer and a lightweight surface above the assistant answer.

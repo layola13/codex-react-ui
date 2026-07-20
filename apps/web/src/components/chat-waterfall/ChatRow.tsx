@@ -32,7 +32,7 @@ export function ChatRow({ row, t, expanded, onToggleExpanded }: Props) {
     case "fileChange":
       return <AuditRow row={row} icon={<InsertDriveFileIcon fontSize="small" />} />;
     case "toolCall":
-      return <ToolCallRow row={row} />;
+      return <ToolCallRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     default:
       return <StatusRow row={row} />;
   }
@@ -258,10 +258,27 @@ function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWat
   );
 }
 
-function ToolCallRow({ row }: { row: ChatWaterfallRow }) {
+function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
+  const hasDetails = Boolean(row.text.trim()) || Boolean(isRecord(row.item.payload));
   return (
-    <AuditRow row={row} icon={<AccountTreeIcon fontSize="small" />}>
-      {renderToolPayload(row)}
+    <AuditRow
+      row={row}
+      icon={<AccountTreeIcon fontSize="small" />}
+      action={
+        hasDetails ? (
+          <Button size="small" variant="text" aria-label={expanded ? "Collapse tool details" : "Expand tool details"} onClick={onToggleExpanded} sx={{ borderRadius: 1 }}>
+            {expanded ? "Collapse" : "Details"}
+          </Button>
+        ) : null
+      }
+    >
+      <ToolAuditSummary row={row} />
+      {hasDetails && expanded && <Box data-testid="tool-audit-details">{renderToolPayload(row)}</Box>}
+      {hasDetails && !expanded && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+          Tool details hidden. Expand to inspect arguments, results, and raw payload context.
+        </Typography>
+      )}
     </AuditRow>
   );
 }
@@ -353,13 +370,30 @@ function ImageAttachments({ row }: { row: ChatWaterfallRow }) {
   );
 }
 
+function ToolAuditSummary({ row }: { row: ChatWaterfallRow }) {
+  const payload = isRecord(row.item.payload) ? row.item.payload : {};
+  const server = stringValue(payload.server);
+  const tool = stringValue(payload.tool);
+  const status = stringValue(payload.status) ?? row.status;
+  const durationMs = typeof payload.durationMs === "number" ? payload.durationMs : undefined;
+  if (!server && !tool && !status && durationMs == null) {
+    return null;
+  }
+  return (
+    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+      {server && <Chip size="small" label={server} />}
+      {tool && <Chip size="small" label={tool} />}
+      {status && <Chip size="small" label={status} />}
+      {durationMs != null && <Chip size="small" label={`${durationMs}ms`} />}
+    </Stack>
+  );
+}
+
 function renderToolPayload(row: ChatWaterfallRow) {
   const payload = isRecord(row.item.payload) ? row.item.payload : null;
   if (!payload) {
     return row.text ? <MarkdownMessage text={row.text} /> : null;
   }
-  const server = stringValue(payload.server);
-  const tool = stringValue(payload.tool);
   const args = "arguments" in payload ? payload.arguments : undefined;
   const result = isRecord(payload.result) ? payload.result : null;
   const errorMessage = payload.error == null ? undefined : formatErrorText(payload.error);
@@ -367,12 +401,6 @@ function renderToolPayload(row: ChatWaterfallRow) {
   return (
     <Box sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
       {row.text && <MarkdownMessage text={row.text} />}
-      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.75 }}>
-        {server && <Chip size="small" label={server} />}
-        {tool && <Chip size="small" label={tool} />}
-        {stringValue(payload.status) && <Chip size="small" label={stringValue(payload.status)} />}
-        {typeof payload.durationMs === "number" && <Chip size="small" label={`${payload.durationMs}ms`} />}
-      </Stack>
       {args != null && (
         <Box sx={{ mb: 1 }}>
           <Typography variant="caption" color="text.secondary">
