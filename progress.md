@@ -511,3 +511,22 @@
 ## Known Gaps
 
 - Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
+
+## 2026-07-20
+
+### Membership / Sub2API admin security
+
+- Implemented app-policy membership (not host SSH users): JWT auth, roles, workspace root jail, permission clamps, thread ownership filtering.
+- Admin members UI: create/edit/delete, capability toggles, balance allocate (set/add/subtract with notes), allowed-relay multi-select.
+- SecurityStore: system settings (registration, captcha, TOTP flags, default balance/concurrency), SVG math captcha, pending-login for 2FA, TOTP setup/enable/disable (crypto-only RFC6238), `user_allowed_providers`.
+- Login flow: captcha → password → optional `requires_2fa` + `/api/login/2fa`; public `/api/register` when enabled.
+- Providers list + `provider.activate` filtered by member allow-list (empty = no relays for members).
+- Usage & billing (Sub2API-style): `GET /api/usage/summary`, `GET /api/usage/ledger`, settings **Usage & Billing** panel with daily bars, by-operation chart, top spenders (admin), ledger table, inline recharge.
+- Build: shared + server + web green. Smoke: wrong captcha 401, register, TOTP enable/login/disable, assign relay, empty ACL returns [], recharge updates ledger.
+
+### Defaults
+
+- Admin: `admin@example.com` / `ChangeMe123!` (env `CODEX_UI_ADMIN_EMAIL` / `CODEX_UI_ADMIN_PASSWORD`)
+- Member smoke: `member1@example.com` / `MemberPass1!`
+- Launch: `CODEX_UI_JWT_SECRET=... bun run launch` on `:43110`
+

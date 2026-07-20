@@ -57,11 +57,67 @@ export interface EngineStatus {
   startedAt?: number;
 }
 
+export type AuthUserRole = "admin" | "user";
+export type AuthUserStatus = "active" | "disabled";
+
 export type PermissionPresetId =
   | "readonlyAsk"
   | "workspaceAsk"
   | "fullAsk"
   | "dangerBypass";
+
+export interface MemberCapabilities {
+  maxPermission: PermissionPresetId;
+  allowWrite: boolean;
+  allowNetwork: boolean;
+  allowDangerBypass: boolean;
+  workspaceRoot: string;
+}
+
+export interface AuthUser extends MemberCapabilities {
+  id: string;
+  email: string;
+  username: string;
+  role: AuthUserRole;
+  status: AuthUserStatus;
+  balance: number;
+  concurrency: number;
+  notes?: string;
+  /** Whether Google Authenticator (TOTP) is enabled for this account. */
+  totpEnabled?: boolean;
+  /** Relay / provider IDs this member may use. Empty = none (admins always all). */
+  allowedProviderIds?: string[];
+}
+
+export interface SystemAuthSettings {
+  registrationEnabled: boolean;
+  captchaEnabled: boolean;
+  totpEnabled: boolean;
+  forceAdminTotp: boolean;
+  defaultMemberBalance: number;
+  defaultMemberConcurrency: number;
+  updatedAt: number;
+}
+
+export interface PublicAuthConfig {
+  registrationEnabled: boolean;
+  captchaEnabled: boolean;
+  totpEnabled: boolean;
+}
+
+export interface CaptchaChallenge {
+  id: string;
+  svg: string;
+  expiresAt: number;
+}
+
+export interface AuthSession {
+  authenticated?: boolean;
+  token: string;
+  user: AuthUser | null;
+  expiresAt?: number;
+  loginRequired?: boolean;
+}
 
 export type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 export type CodexApprovalPolicy = "on-request" | "never";
@@ -289,3 +345,36 @@ export type ServerToClientMessage =
   | { type: "provider.deleted"; id: string; providerId: string }
   | { type: "provider.activated"; id: string; activation: ProviderActivation }
   | { type: "server.error"; message: string };
+
+
+export type BalanceLedgerEntry = {
+  id: string;
+  user_id: string;
+  user_email?: string;
+  delta: number;
+  balance_after: number;
+  operation: string;
+  reason?: string;
+  thread_id?: string;
+  method?: string;
+  created_at: number;
+};
+
+export type UsageDailyPoint = {
+  date: string;
+  debit: number;
+  credit: number;
+  turns: number;
+};
+
+export type UsageSummary = {
+  balance: number | null;
+  totalDebit: number;
+  totalCredit: number;
+  turnCount: number;
+  todayDebit: number;
+  periodDays: number;
+  daily: UsageDailyPoint[];
+  byOperation: Array<{ operation: string; count: number; total: number }>;
+  topUsers?: Array<{ userId: string; email: string; debit: number; turns: number }>;
+};

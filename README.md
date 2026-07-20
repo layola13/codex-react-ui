@@ -47,7 +47,20 @@ The server prints a URL like:
 http://127.0.0.1:43110/?token=<session-token>
 ```
 
-`/api/session` is intentionally the only unauthenticated API. Other API and websocket calls require the token.
+`/api/session` is intentionally the only unauthenticated API in local-token mode. Other API and websocket calls require the token.
+
+## Docker Compose Install
+
+A Sub2API-style Compose deployment is available under `deploy/`. It starts PostgreSQL plus the Codex React UI server, enables the PostgreSQL user system, and creates the first `role='admin'` account from `.env` on first boot.
+
+```bash
+cd deploy
+cp .env.example .env
+nano .env
+docker compose up -d --build
+```
+
+Open `http://127.0.0.1:43110` and sign in with `CODEX_UI_ADMIN_EMAIL` plus `CODEX_UI_ADMIN_PASSWORD` from `.env`. See `deploy/README.md` for secret generation, Codex binary mounting, logs, upgrades, and data-volume notes.
 
 ## README Patrol
 
@@ -82,6 +95,57 @@ Then the bridge restarts `codex app-server` so the selected provider and any in-
 ## UI Profiles
 
 The Config tab can export and import UI profiles as JSON. Profiles include provider metadata and env-key references, but never include API keys or key previews. Importing a profile merges providers by id and preserves any matching local keyring or in-memory credential state already present on this machine.
+
+## User Management
+
+Codex React UI now ships a Sub2API-inspired membership system by default (SQLite under `~/.codex-react-ui/codex-ui.sqlite3`). Password login is enabled unless you set `CODEX_UI_AUTH=off` / `local-token`.
+
+### Default admin
+
+```bash
+CODEX_UI_ADMIN_EMAIL=admin@example.com
+CODEX_UI_ADMIN_PASSWORD=ChangeMe123!
+CODEX_UI_JWT_SECRET=$(openssl rand -hex 32)
+```
+
+On first boot the server creates the admin if none exists. Change the password before any shared deployment.
+
+### Member capabilities (server enforced)
+
+Each member has:
+
+- `role`: `admin` | `user`
+- `status`: `active` | `disabled`
+- `maxPermission`: `readonlyAsk` | `workspaceAsk` | `fullAsk` | `dangerBypass`
+- `allowWrite`, `allowNetwork`, `allowDangerBypass`
+- private `workspaceRoot` under `~/.codex-react-ui/members/<userId>/workspace`
+
+The bridge **clamps/rejects** client `thread/start` and `turn/start` params so members cannot smuggle `--dangerously-bypass-approvals-and-sandbox` or write modes they do not own. Thread ownership is stored so members only see their own chat history.
+
+Admin APIs:
+
+- `GET /api/members`
+- `POST /api/members`
+- `PATCH /api/members/:id`
+- `DELETE /api/members/:id`
+
+UI: **Settings → Members** (admin only).
+
+### Security recommendation (Linux users / SSH / Docker)
+
+| Approach | Use when | Recommendation |
+| --- | --- | --- |
+| App caps + member workspace (default) | Trusted / internal members | **Ship this first** |
+| Per-user Docker workers | Untrusted multi-tenant agents | Phase 2 for hard isolation |
+| Host Linux users + SSH + sudo per member | Almost never | **Avoid as default** — expands SSH attack surface and privilege complexity |
+
+Do **not** auto-provision OS SSH accounts or sudo for each web member. If you need stronger isolation later, prefer Docker/cgroup sandboxes over host accounts.
+
+Disable membership login (legacy local token URL mode):
+
+```bash
+CODEX_UI_AUTH=off
+```
 
 ## User Theme Plugins
 

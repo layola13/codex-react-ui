@@ -174,3 +174,18 @@
 - [x] Package a one-command launcher.
 - [x] Add import/export for UI profiles.
 - [x] Add stronger audit logging for dangerous permission sessions.
+
+## Membership, security & billing (Sub2API-inspired) — 2026-07-20
+
+- [x] Password membership login with JWT sessions (admin seed + member CRUD).
+- [x] Member capability matrix: write / network / danger-bypass / max permission / workspace jail.
+- [x] Admin balance allocate (set/add/subtract) + per-turn debit + balance ledger.
+- [x] Permission configuration page (MembersPermissionsPanel).
+- [x] Login math captcha, open registration toggle, Google Authenticator TOTP 2FA.
+- [x] Per-member allowed relays (中转) whitelist; members view-only keys, activate only assigned.
+- [x] Security settings page (admin policy + personal TOTP).
+- [x] Usage & billing page with stats cards, daily spend/top-up chart, operation breakdown, ledger, admin recharge.
+- [x] `bun run build` green; API smoke for captcha, register, TOTP, relay ACL, usage summary/recharge.
+- [ ] Token-accurate billing (still flat 0.01 per `turn/start`).
+- [ ] Per-user Docker / host Linux isolation (Phase 2, not required for app-policy model).
+

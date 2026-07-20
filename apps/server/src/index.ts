@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import type { Server, ServerWebSocket } from "bun";
 import {
+  type AuthUser,
   type ClientToServerMessage,
   type JsonRpcMessage,
   type JsonValue,
@@ -15,17 +16,33 @@ import { CodexBridge } from "./codexBridge.js";
 import { LocalDatabase } from "./localDatabase.js";
 import { ProviderStore } from "./providerStore.js";
 import { AuditLogStore } from "./auditLogStore.js";
+import { AuthStore } from "./authStore.js";
+import {
+  SecurityStore,
+  generateTotpSecret,
+  totpUri,
+  verifyTotpCode
+} from "./securityStore.js";
+
+type SocketData = {
+  user: AuthUser | null;
+  token: string | null;
+};
 
 const PORT = Number(process.env.CODEX_UI_PORT ?? 43110);
-const HOST = "127.0.0.1";
+const HOST = process.env.CODEX_UI_HOST ?? "127.0.0.1";
 const sessionToken = process.env.CODEX_UI_TOKEN ?? randomBytes(24).toString("base64url");
 const localDatabase = new LocalDatabase();
 const providerStore = new ProviderStore(localDatabase);
 const auditLogStore = new AuditLogStore(localDatabase);
+const authStore = AuthStore.fromEnv(process.env, localDatabase);
+const securityStore = new SecurityStore(localDatabase);
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
-const clients = new Set<ServerWebSocket>();
+const clients = new Set<ServerWebSocket<SocketData>>();
 
 await providerStore.initialize();
+await authStore?.initialize();
+securityStore.initialize();
 
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const hasWebBuild = existsSync(join(webDist, "index.html"));
@@ -37,9 +54,10 @@ bridge.on("status", (status) => {
 
 bridge.on("message", (message: JsonRpcMessage) => {
   if ("method" in message && "id" in message) {
+    // Server requests may need operator confirmation; fan out only to connected sessions.
     broadcast({ type: "codex.serverRequest", message });
   } else if ("method" in message) {
-    broadcast({ type: "codex.notification", message });
+    routeCodexNotification(message);
   }
 });
 
@@ -53,7 +71,7 @@ try {
   console.warn("Codex app-server did not start during boot; UI can retry", error);
 }
 
-const server = Bun.serve({
+const server = Bun.serve<SocketData>({
   hostname: HOST,
   port: PORT,
   fetch: handleHttpRequest,
@@ -79,32 +97,160 @@ const server = Bun.serve({
   }
 });
 
-console.info(`Codex React UI listening at http://${HOST}:${PORT}/?token=${sessionToken}`);
+console.info(
+  authStore
+    ? `Codex React UI listening at http://${HOST}:${PORT}/ with membership login enabled`
+    : `Codex React UI listening at http://${HOST}:${PORT}/?token=${sessionToken}`
+);
 
-async function handleHttpRequest(request: Request, server: Server<undefined>): Promise<Response | undefined> {
+async function handleHttpRequest(request: Request, server: Server<SocketData>): Promise<Response | undefined> {
   const url = new URL(request.url);
   const headers = securityHeaders();
 
   try {
     if (url.pathname === "/ws") {
-      if (!isAuthorized(request, url)) {
+      const auth = await resolveAuth(request, url);
+      if (!auth.ok) {
         return jsonResponse({ error: "Unauthorized" }, 401, headers);
       }
-      if (server.upgrade(request)) {
+      if (
+        server.upgrade(request, {
+          data: {
+            user: auth.user,
+            token: auth.token
+          }
+        })
+      ) {
         return;
       }
       return jsonResponse({ error: "WebSocket upgrade failed" }, 400, headers);
     }
 
     if (url.pathname === "/api/session" && request.method === "GET") {
-      return jsonResponse({ token: sessionToken }, 200, headers);
+      if (authStore) {
+        const token = bearerOrUiToken(request, url);
+        const user = await authStore.getUserByToken(token);
+        if (!user) {
+          return jsonResponse({ authenticated: false, loginRequired: true, token: "", user: null }, 401, headers);
+        }
+        return jsonResponse({ authenticated: true, token, user }, 200, headers);
+      }
+      return jsonResponse({ authenticated: true, token: sessionToken, user: null }, 200, headers);
+    }
+
+    // Public auth config (registration / captcha / totp flags) — no auth required
+    if (url.pathname === "/api/auth/config" && request.method === "GET") {
+      if (!authStore) {
+        return jsonResponse({ registrationEnabled: false, captchaEnabled: false, totpEnabled: false }, 200, headers);
+      }
+      return jsonResponse(securityStore.publicAuthConfig(), 200, headers);
+    }
+
+    if (url.pathname === "/api/auth/captcha" && request.method === "GET") {
+      if (!authStore) {
+        return jsonResponse({ error: "Auth disabled" }, 400, headers);
+      }
+      const captcha = securityStore.createCaptcha();
+      return jsonResponse(captcha, 200, headers);
+    }
+
+    if (url.pathname === "/api/register" && request.method === "POST") {
+      if (!authStore) {
+        return jsonResponse({ error: "Auth disabled" }, 400, headers);
+      }
+      const settings = securityStore.getSettings();
+      if (!settings.registrationEnabled) {
+        return jsonResponse({ error: "Registration is closed" }, 403, headers);
+      }
+      const body = asRecord(await request.json().catch(() => ({})));
+      if (settings.captchaEnabled) {
+        const ok = securityStore.consumeCaptcha(stringValue(body.captchaId), stringValue(body.captchaAnswer));
+        if (!ok) {
+          return jsonResponse({ error: "Invalid captcha" }, 400, headers);
+        }
+      }
+      try {
+        const created = await authStore.createUser({
+          email: stringValue(body.email) ?? "",
+          password: stringValue(body.password) ?? "",
+          username: stringValue(body.username),
+          role: "user",
+          status: "active",
+          balance: settings.defaultMemberBalance,
+          concurrency: settings.defaultMemberConcurrency,
+          maxPermission: "workspaceAsk",
+          allowWrite: true,
+          allowNetwork: false,
+          allowDangerBypass: false
+        });
+        return jsonResponse({ data: created }, 201, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+
+    if (url.pathname === "/api/login" && request.method === "POST") {
+      if (!authStore) {
+        return jsonResponse({ token: sessionToken, user: null }, 200, headers);
+      }
+      const body = asRecord(await request.json().catch(() => ({})));
+      const settings = securityStore.getSettings();
+      if (settings.captchaEnabled) {
+        const ok = securityStore.consumeCaptcha(stringValue(body.captchaId), stringValue(body.captchaAnswer));
+        if (!ok) {
+          return jsonResponse({ error: "Invalid captcha" }, 401, headers);
+        }
+      }
+      const userRow = await authStore.verifyPassword(stringValue(body.email) ?? "", stringValue(body.password) ?? "");
+      if (!userRow) {
+        return jsonResponse({ error: "Invalid email or password" }, 401, headers);
+      }
+      const systemTotpOn = settings.totpEnabled;
+      const userTotpOn = Boolean(userRow.totp_enabled) && Boolean(userRow.totp_secret);
+      if (systemTotpOn && userTotpOn) {
+        const pending = securityStore.createPendingLogin(userRow.id);
+        return jsonResponse(
+          {
+            requires_2fa: true,
+            pendingToken: pending.pendingToken,
+            expiresAt: pending.expiresAt
+          },
+          200,
+          headers
+        );
+      }
+      if (systemTotpOn && settings.forceAdminTotp && userRow.role === "admin" && !userTotpOn) {
+        // Still allow login, but client can prompt setup; do not block cold start.
+      }
+      const result = authStore.issueSessionForUser(userRow.id);
+      return jsonResponse(result, 200, headers);
+    }
+
+    if (url.pathname === "/api/login/2fa" && request.method === "POST") {
+      if (!authStore) {
+        return jsonResponse({ error: "Auth disabled" }, 400, headers);
+      }
+      const body = asRecord(await request.json().catch(() => ({})));
+      const pendingToken = stringValue(body.pendingToken) ?? "";
+      const code = stringValue(body.totpCode) ?? stringValue(body.code) ?? "";
+      const userId = securityStore.consumePendingLogin(pendingToken);
+      if (!userId) {
+        return jsonResponse({ error: "2FA session expired" }, 401, headers);
+      }
+      const secret = authStore.getTotpSecret(userId);
+      if (!secret || !verifyTotpCode(secret, code)) {
+        return jsonResponse({ error: "Invalid authenticator code" }, 401, headers);
+      }
+      const result = authStore.issueSessionForUser(userId);
+      return jsonResponse(result, 200, headers);
     }
 
     if (url.pathname.startsWith("/api")) {
-      if (!isAuthorized(request, url)) {
+      const auth = await resolveAuth(request, url);
+      if (!auth.ok) {
         return jsonResponse({ error: "Unauthorized" }, 401, headers);
       }
-      return await handleApiRequest(request, url, headers);
+      return await handleApiRequest(request, url, headers, auth.user);
     }
 
     return serveStatic(request, url, headers);
@@ -114,30 +260,333 @@ async function handleHttpRequest(request: Request, server: Server<undefined>): P
   }
 }
 
-async function handleApiRequest(request: Request, url: URL, headers: Headers): Promise<Response> {
+async function handleApiRequest(
+  request: Request,
+  url: URL,
+  headers: Headers,
+  user: AuthUser | null
+): Promise<Response> {
   const route = `${request.method} ${url.pathname}`;
   switch (route) {
     case "GET /api/health":
-      return jsonResponse({ ok: true, status: bridge.getStatus() }, 200, headers);
+      return jsonResponse({ ok: true, status: bridge.getStatus(), auth: Boolean(authStore) }, 200, headers);
     case "GET /api/engine/status":
       return jsonResponse(bridge.getStatus(), 200, headers);
     case "POST /api/engine/start":
       return jsonResponse(await bridge.start(), 200, headers);
-    case "GET /api/providers":
-      return jsonResponse({ data: await providerStore.list() }, 200, headers);
-    case "GET /api/profile/export":
+    case "GET /api/providers": {
+      const data = await providerStore.list();
+      if (user && user.role !== "admin") {
+        const allowed = new Set(securityStore.getAllowedProviders(user.id));
+        // Members only see relays assigned by admin; secrets masked.
+        return jsonResponse({
+          data: data
+            .filter((provider) => allowed.has(provider.id))
+            .map((provider) => ({
+              ...provider,
+              apiKeyPreview: provider.apiKeyPreview ? "••••" : undefined,
+              apiKeyRef: provider.apiKeyRef ? "env:REDACTED" : undefined
+            }))
+        }, 200, headers);
+      }
+      return jsonResponse({ data }, 200, headers);
+    }
+    case "GET /api/profile/export": {
+      if (user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: profile export" }, 403, headers);
+      }
       return jsonResponse(await providerStore.exportProfile(), 200, headers);
+    }
     case "POST /api/profile/import": {
+      if (user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: profile import" }, 403, headers);
+      }
       try {
         return jsonResponse(await providerStore.importProfile(await request.json()), 200, headers);
       } catch (error) {
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
       }
     }
-    case "GET /api/audit/events":
+    case "GET /api/audit/events": {
+      if (user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: audit events" }, 403, headers);
+      }
       return jsonResponse({ data: await auditLogStore.list() }, 200, headers);
-    default:
+    }
+    case "GET /api/members": {
+      if (!authStore) {
+        return jsonResponse({ error: "Membership is disabled (CODEX_UI_AUTH=off)" }, 400, headers);
+      }
+      if (!user || user.role !== "admin") {
+        return jsonResponse({ error: "Admin only" }, 403, headers);
+      }
+      const data = authStore.listUsers().map((member) => ({
+        ...member,
+        allowedProviderIds: securityStore.getAllowedProviders(member.id)
+      }));
+      return jsonResponse({ data }, 200, headers);
+    }
+    case "GET /api/admin/settings": {
+      if (!authStore) {
+        return jsonResponse({ error: "Membership is disabled" }, 400, headers);
+      }
+      if (!user || user.role !== "admin") {
+        return jsonResponse({ error: "Admin only" }, 403, headers);
+      }
+      return jsonResponse({ data: securityStore.getSettings() }, 200, headers);
+    }
+    case "PATCH /api/admin/settings": {
+      if (!authStore) {
+        return jsonResponse({ error: "Membership is disabled" }, 400, headers);
+      }
+      if (!user || user.role !== "admin") {
+        return jsonResponse({ error: "Admin only" }, 403, headers);
+      }
+      const body = asRecord(await request.json().catch(() => ({})));
+      const updated = securityStore.updateSettings({
+        registrationEnabled: typeof body.registrationEnabled === "boolean" ? body.registrationEnabled : undefined,
+        captchaEnabled: typeof body.captchaEnabled === "boolean" ? body.captchaEnabled : undefined,
+        totpEnabled: typeof body.totpEnabled === "boolean" ? body.totpEnabled : undefined,
+        forceAdminTotp: typeof body.forceAdminTotp === "boolean" ? body.forceAdminTotp : undefined,
+        defaultMemberBalance: numberValue(body.defaultMemberBalance),
+        defaultMemberConcurrency: numberValue(body.defaultMemberConcurrency)
+      });
+      return jsonResponse({ data: updated }, 200, headers);
+    }
+    case "GET /api/totp/status": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      const settings = securityStore.getSettings();
+      return jsonResponse(
+        {
+          systemEnabled: settings.totpEnabled,
+          enabled: Boolean(user.totpEnabled),
+          forceAdminTotp: settings.forceAdminTotp
+        },
+        200,
+        headers
+      );
+    }
+    case "POST /api/totp/setup": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      if (!securityStore.getSettings().totpEnabled) {
+        return jsonResponse({ error: "TOTP is disabled by admin" }, 403, headers);
+      }
+      const secret = generateTotpSecret();
+      securityStore.storeTotpSetup(user.id, secret);
+      return jsonResponse(
+        {
+          secret,
+          otpauthUrl: totpUri(secret, user.email),
+          qrUrl: `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(totpUri(secret, user.email))}`
+        },
+        200,
+        headers
+      );
+    }
+    case "POST /api/totp/enable": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      const body = asRecord(await request.json().catch(() => ({})));
+      const code = stringValue(body.totpCode) ?? stringValue(body.code) ?? "";
+      const secret = securityStore.takeTotpSetup(user.id);
+      if (!secret) {
+        return jsonResponse({ error: "Run /api/totp/setup first" }, 400, headers);
+      }
+      if (!verifyTotpCode(secret, code)) {
+        // put secret back if failed
+        securityStore.storeTotpSetup(user.id, secret);
+        return jsonResponse({ error: "Invalid authenticator code" }, 400, headers);
+      }
+      const updated = authStore.enableTotp(user.id, secret);
+      return jsonResponse({ data: updated }, 200, headers);
+    }
+    case "POST /api/totp/disable": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      const body = asRecord(await request.json().catch(() => ({})));
+      const code = stringValue(body.totpCode) ?? stringValue(body.code) ?? "";
+      const password = stringValue(body.password) ?? "";
+      const secret = authStore.getTotpSecret(user.id);
+      if (secret) {
+        if (!verifyTotpCode(secret, code)) {
+          // allow password fallback
+          const row = await authStore.verifyPassword(user.email, password);
+          if (!row) {
+            return jsonResponse({ error: "Invalid code or password" }, 400, headers);
+          }
+        }
+      }
+      const updated = authStore.disableTotp(user.id);
+      return jsonResponse({ data: updated }, 200, headers);
+    }
+    case "POST /api/members": {
+      if (!authStore) {
+        return jsonResponse({ error: "Membership is disabled" }, 400, headers);
+      }
+      if (!user || user.role !== "admin") {
+        return jsonResponse({ error: "Admin only" }, 403, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const created = await authStore.createUser({
+          email: stringValue(body.email) ?? "",
+          password: stringValue(body.password) ?? "",
+          username: stringValue(body.username),
+          role: body.role === "admin" ? "admin" : "user",
+          status: body.status === "disabled" ? "disabled" : "active",
+          balance: numberValue(body.balance),
+          concurrency: numberValue(body.concurrency),
+          maxPermission:
+            body.maxPermission === "readonlyAsk" ||
+            body.maxPermission === "workspaceAsk" ||
+            body.maxPermission === "fullAsk" ||
+            body.maxPermission === "dangerBypass"
+              ? body.maxPermission
+              : undefined,
+          allowWrite: typeof body.allowWrite === "boolean" ? body.allowWrite : undefined,
+          allowNetwork: typeof body.allowNetwork === "boolean" ? body.allowNetwork : undefined,
+          allowDangerBypass: typeof body.allowDangerBypass === "boolean" ? body.allowDangerBypass : undefined,
+          notes: stringValue(body.notes)
+        });
+        return jsonResponse({ data: created }, 201, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+
+    case "GET /api/usage/summary": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      const daysRaw = Number(url.searchParams.get("days") ?? "7");
+      const days = Number.isFinite(daysRaw) ? daysRaw : 7;
+      const filterUserId = stringValue(url.searchParams.get("userId"));
+      const isAdmin = user.role === "admin";
+      if (filterUserId && !isAdmin && filterUserId !== user.id) {
+        return jsonResponse({ error: "Forbidden" }, 403, headers);
+      }
+      if (!isAdmin) {
+        const scoped = authStore.getUsageSummary({ userId: user.id, days, isAdmin: false });
+        return jsonResponse({ data: scoped }, 200, headers);
+      }
+      const summary = authStore.getUsageSummary({
+        userId: filterUserId ?? undefined,
+        days,
+        isAdmin: true
+      });
+      return jsonResponse({ data: summary }, 200, headers);
+    }
+    case "GET /api/usage/ledger": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+      const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
+      const filterUserId = stringValue(url.searchParams.get("userId"));
+      if (user.role === "admin") {
+        const data = authStore.listBalanceLedgerForAdmin(limit, filterUserId ?? undefined);
+        return jsonResponse({ data }, 200, headers);
+      }
+      return jsonResponse({ data: authStore.listBalanceLedger(user.id, limit) }, 200, headers);
+    }
+    case "GET /api/me/ledger": {
+      if (!authStore || !user) {
+        return jsonResponse({ error: "Unauthorized" }, 401, headers);
+      }
+      const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+      const limit = Number.isFinite(limitRaw) ? limitRaw : 50;
+      return jsonResponse({ data: authStore.listBalanceLedger(user.id, limit) }, 200, headers);
+    }
+    case "GET /api/me": {
+      if (!user) {
+        return jsonResponse({ user: null }, 200, headers);
+      }
+      return jsonResponse({
+        user: {
+          ...user,
+          allowedProviderIds: securityStore.getAllowedProviders(user.id)
+        }
+      }, 200, headers);
+    }
+    default: {
+      // POST /api/members/:id/balance  admin allocate credit
+      const balanceMatch = url.pathname.match(/^\/api\/members\/([^/]+)\/balance$/);
+      if (balanceMatch && request.method === "POST" && authStore) {
+        if (!user || user.role !== "admin") {
+          return jsonResponse({ error: "Admin only" }, 403, headers);
+        }
+        try {
+          const memberId = decodeURIComponent(balanceMatch[1] ?? "");
+          const body = asRecord(await request.json().catch(() => ({})));
+          const operation = body.operation === "set" || body.operation === "add" || body.operation === "subtract" ? body.operation : "add";
+          const amount = numberValue(body.amount) ?? numberValue(body.balance);
+          if (amount === undefined) {
+            return jsonResponse({ error: "amount is required" }, 400, headers);
+          }
+          const updated = authStore.adjustBalance(memberId, amount, operation, stringValue(body.notes) ?? "");
+          return jsonResponse({ data: updated }, 200, headers);
+        } catch (error) {
+          return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+        }
+      }
+      const memberMatch = url.pathname.match(/^\/api\/members\/([^/]+)$/);
+      if (memberMatch && authStore) {
+        if (!user || user.role !== "admin") {
+          return jsonResponse({ error: "Admin only" }, 403, headers);
+        }
+        const memberId = decodeURIComponent(memberMatch[1] ?? "");
+        if (request.method === "PATCH") {
+          try {
+            const body = asRecord(await request.json().catch(() => ({})));
+            const updated = await authStore.updateUser(memberId, {
+              email: stringValue(body.email),
+              username: stringValue(body.username),
+              role: body.role === "admin" || body.role === "user" ? body.role : undefined,
+              status: body.status === "active" || body.status === "disabled" ? body.status : undefined,
+              balance: numberValue(body.balance),
+              concurrency: numberValue(body.concurrency),
+              maxPermission:
+                body.maxPermission === "readonlyAsk" ||
+                body.maxPermission === "workspaceAsk" ||
+                body.maxPermission === "fullAsk" ||
+                body.maxPermission === "dangerBypass"
+                  ? body.maxPermission
+                  : undefined,
+              allowWrite: typeof body.allowWrite === "boolean" ? body.allowWrite : undefined,
+              allowNetwork: typeof body.allowNetwork === "boolean" ? body.allowNetwork : undefined,
+              allowDangerBypass: typeof body.allowDangerBypass === "boolean" ? body.allowDangerBypass : undefined,
+              notes: stringValue(body.notes),
+              password: stringValue(body.password)
+            });
+            let allowedProviderIds = securityStore.getAllowedProviders(memberId);
+            if (Array.isArray(body.allowedProviderIds)) {
+              allowedProviderIds = securityStore.setAllowedProviders(
+                memberId,
+                body.allowedProviderIds.filter((entry): entry is string => typeof entry === "string")
+              );
+            }
+            return jsonResponse({ data: { ...updated, allowedProviderIds } }, 200, headers);
+          } catch (error) {
+            return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+          }
+        }
+        if (request.method === "DELETE") {
+          try {
+            authStore.softDeleteUser(memberId);
+            return jsonResponse({ ok: true }, 200, headers);
+          } catch (error) {
+            return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+          }
+        }
+      }
       return jsonResponse({ error: "Not found" }, 404, headers);
+    }
   }
 }
 
@@ -156,10 +605,45 @@ function serveStatic(request: Request, url: URL, headers: Headers): Response {
   return new Response(request.method === "HEAD" ? null : Bun.file(join(webDistRoot, "index.html")), { headers });
 }
 
-function isAuthorized(request: Request, url: URL): boolean {
+async function resolveAuth(
+  request: Request,
+  url: URL
+): Promise<{ ok: true; user: AuthUser | null; token: string | null } | { ok: false }> {
+  if (authStore) {
+    const token = bearerOrUiToken(request, url);
+    const user = await authStore.getUserByToken(token);
+    if (!user) {
+      return { ok: false };
+    }
+    return { ok: true, user, token };
+  }
   const queryToken = url.searchParams.get("token");
   const headerToken = request.headers.get("x-codex-ui-token");
-  return (headerToken ?? queryToken) === sessionToken;
+  const token = headerToken ?? queryToken;
+  if (token !== sessionToken) {
+    return { ok: false };
+  }
+  return { ok: true, user: null, token };
+}
+
+function bearerOrUiToken(request: Request, url: URL): string | null {
+  const authorization = request.headers.get("authorization");
+  if (authorization?.toLowerCase().startsWith("bearer ")) {
+    return authorization.slice("bearer ".length).trim();
+  }
+  return request.headers.get("x-codex-ui-token") ?? url.searchParams.get("token");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function jsonResponse(value: unknown, status = 200, headers = securityHeaders()): Response {
@@ -175,16 +659,65 @@ function securityHeaders(): Headers {
   });
 }
 
-async function handleClientMessage(ws: ServerWebSocket, message: ClientToServerMessage): Promise<void> {
+async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: ClientToServerMessage): Promise<void> {
   switch (message.type) {
     case "rpc": {
       try {
+        const user = ws.data.user;
+        let params = message.params;
+        if (authStore && user) {
+          // Full member policy: config writes admin-only, workspace paths clamped, permission caps.
+          params = authStore.enforceMemberRpc(user, message.method, message.params) as JsonValue;
+          if (message.method === "turn/start") {
+            authStore.assertCanStartTurn(user);
+          }
+          if (message.method === "turn/start" || message.method === "thread/resume" || message.method === "thread/read" || message.method === "thread/archive" || message.method === "thread/delete" || message.method === "thread/name/set" || message.method === "thread/goal/set" || message.method === "thread/goal/get" || message.method === "thread/goal/clear") {
+            const threadId = stringValue(asRecord(params).threadId);
+            if (threadId && !authStore.ownsThread(threadId, user.id) && user.role !== "admin") {
+              throw new Error("Thread belongs to another member");
+            }
+          }
+          // fs write only if allowWrite and within workspace (path already checked in enforceMemberRpc)
+          if (message.method === "fs/writeFile" && user.role !== "admin" && !user.allowWrite) {
+            throw new Error("Member policy forbids filesystem writes");
+          }
+        }
+
         try {
-          await auditLogStore.recordDangerousPermission(message.method, message.params);
+          await auditLogStore.recordDangerousPermission(message.method, params);
         } catch (error) {
           console.warn("Failed to write dangerous permission audit event", { error, method: message.method });
         }
-        const result = await bridge.request(message.method, message.params);
+
+        let result = await bridge.request(message.method, params);
+
+        if (authStore && user) {
+          if (message.method === "thread/start") {
+            const threadId = extractThreadId(result);
+            if (threadId) {
+              authStore.claimThread(threadId, user.id);
+            }
+          }
+          if (message.method === "thread/list") {
+            result = authStore.filterThreadsForUser(user, result) as JsonValue;
+          }
+          // Flat per-turn debit for non-admin members (Sub2API-style credit gate).
+          if (message.method === "turn/start" && user.role !== "admin") {
+            try {
+              const cost = 0.01; // base unit per turn; refine with token usage later
+              const updated = authStore.debitBalance(user.id, cost, {
+                reason: "turn/start",
+                threadId: stringValue(asRecord(params).threadId) ?? "",
+                method: message.method
+              });
+              ws.data.user = updated;
+            } catch (error) {
+              // Turn already started; log but surface balance error on next turn.
+              console.warn("Balance debit failed after turn/start", error);
+            }
+          }
+        }
+
         send(ws, { type: "rpc.result", id: message.id, result });
       } catch (error) {
         send(ws, {
@@ -202,17 +735,32 @@ async function handleClientMessage(ws: ServerWebSocket, message: ClientToServerM
       return;
     }
     case "provider.save": {
+      if (ws.data.user && ws.data.user.role !== "admin") {
+        send(ws, { type: "server.error", message: "Admin only: provider management" });
+        return;
+      }
       const provider = await providerStore.save(message.provider, message.apiKey);
       send(ws, { type: "provider.saved", id: message.id, provider });
       return;
     }
     case "provider.delete": {
+      if (ws.data.user && ws.data.user.role !== "admin") {
+        send(ws, { type: "server.error", message: "Admin only: provider management" });
+        return;
+      }
       await providerStore.delete(message.providerId);
       send(ws, { type: "provider.deleted", id: message.id, providerId: message.providerId });
       return;
     }
     case "provider.activate": {
       try {
+        const actor = ws.data.user;
+        if (actor && actor.role !== "admin") {
+          if (!securityStore.isProviderAllowed(actor.id, message.providerId, false)) {
+            send(ws, { type: "server.error", message: "Relay not assigned to this member" });
+            return;
+          }
+        }
         const activation = await activateProvider(message.providerId, message.model);
         send(ws, { type: "provider.activated", id: message.id, activation });
       } catch (error) {
@@ -222,6 +770,37 @@ async function handleClientMessage(ws: ServerWebSocket, message: ClientToServerM
         });
       }
       return;
+    }
+  }
+}
+
+function extractThreadId(result: JsonValue): string | null {
+  const record = asRecord(result);
+  const thread = asRecord(record.thread);
+  const id = stringValue(thread.id) ?? stringValue(record.id) ?? stringValue(record.threadId);
+  return id ?? null;
+}
+
+function routeCodexNotification(message: JsonRpcMessage & { method: string; params?: JsonValue }): void {
+  const params = asRecord(message.params);
+  const threadId =
+    stringValue(params.threadId) ??
+    stringValue(asRecord(params.thread).id) ??
+    stringValue(asRecord(params.turn).threadId);
+
+  if (!authStore || !threadId) {
+    broadcast({ type: "codex.notification", message });
+    return;
+  }
+
+  for (const client of clients) {
+    const user = client.data.user;
+    if (!user) {
+      send(client, { type: "codex.notification", message });
+      continue;
+    }
+    if (user.role === "admin" || authStore.ownsThread(threadId, user.id)) {
+      send(client, { type: "codex.notification", message });
     }
   }
 }
@@ -300,7 +879,7 @@ function providerToCodexConfig(provider: ProviderConfig): JsonValue {
   return config;
 }
 
-function send(ws: ServerWebSocket, message: ServerToClientMessage): void {
+function send(ws: ServerWebSocket<SocketData>, message: ServerToClientMessage): void {
   try {
     ws.send(JSON.stringify(message));
   } catch {

@@ -33,6 +33,7 @@ import {
 import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
+import AssessmentIcon from "@mui/icons-material/Assessment";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ColorLensIcon from "@mui/icons-material/ColorLens";
@@ -61,7 +62,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import WavesIcon from "@mui/icons-material/Waves";
-import { permissionPresets, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
+import { permissionPresets, type AuthUser, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
 import {
   CODEX_CONFIG_FIELD_META,
   formatConfigValueForField,
@@ -98,6 +99,9 @@ import type {
 import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
+import { MembersPermissionsPanel } from "./MembersPermissionsPanel";
+import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
+import { UsageBillingPanel } from "./UsageBillingPanel";
 import type { TranslateFn, TranslationKey } from "../i18n";
 
 export type ReasoningOption = {
@@ -116,6 +120,9 @@ export type SettingsSectionId =
   | "skills"
   | "plugins"
   | "pet"
+  | "members"
+  | "usage"
+  | "security"
   | "privacy";
 
 type Props = {
@@ -153,6 +160,11 @@ type Props = {
   mcpResourceContents: Record<string, McpResourceContentEntry[]>;
   mcpOauthUrls: Record<string, string>;
   auditEvents: DangerousPermissionAuditEvent[];
+  currentUser: AuthUser | null;
+  members: AuthUser[];
+  membersLoading: boolean;
+  membersError: string | null;
+  allowedPermissions: PermissionPresetId[];
   t: TranslateFn;
   onClose: () => void;
   onThemeModeChange: (mode: ThemeMode) => void;
@@ -193,6 +205,24 @@ type Props = {
   onInsertPluginMention: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onInstallPlugin: (marketplace: PluginMarketplace, plugin: PluginEntry) => void;
   onUninstallPlugin: (plugin: PluginEntry) => void;
+  onReloadMembers: () => Promise<void>;
+  onCreateMember: (input: {
+    email: string;
+    password: string;
+    username?: string;
+    role?: "admin" | "user";
+    maxPermission?: PermissionPresetId;
+    allowWrite?: boolean;
+    allowNetwork?: boolean;
+    allowDangerBypass?: boolean;
+    balance?: number;
+    concurrency?: number;
+    notes?: string;
+  }) => Promise<void>;
+  onUpdateMember: (id: string, input: Record<string, unknown>) => Promise<void>;
+  onDeleteMember: (id: string) => Promise<void>;
+  onAllocateMemberBalance?: (id: string, amount: number, operation?: "set" | "add" | "subtract", notes?: string) => Promise<void>;
+  sessionToken?: string | null;
 };
 
 const NAV_ITEMS: Array<{ id: SettingsSectionId; labelKey: TranslationKey; icon: ReactNode }> = [
@@ -205,6 +235,9 @@ const NAV_ITEMS: Array<{ id: SettingsSectionId; labelKey: TranslationKey; icon: 
   { id: "skills", labelKey: "settings.nav.skills", icon: <PsychologyIcon fontSize="small" /> },
   { id: "plugins", labelKey: "settings.nav.plugins", icon: <ExtensionIcon fontSize="small" /> },
   { id: "pet", labelKey: "settings.nav.pet", icon: <PetsIcon fontSize="small" /> },
+  { id: "members", labelKey: "settings.nav.permissions", icon: <SecurityIcon fontSize="small" /> },
+  { id: "usage", labelKey: "settings.nav.usage", icon: <AssessmentIcon fontSize="small" /> },
+  { id: "security", labelKey: "settings.nav.security", icon: <SecurityIcon fontSize="small" /> },
   { id: "privacy", labelKey: "settings.nav.privacy", icon: <SecurityIcon fontSize="small" /> }
 ];
 
@@ -243,6 +276,12 @@ export function SettingsDrawer({
   mcpResourceContents,
   mcpOauthUrls,
   auditEvents,
+  currentUser,
+  sessionToken,
+  members,
+  membersLoading,
+  membersError,
+  allowedPermissions,
   t,
   onClose,
   onThemeModeChange,
@@ -282,7 +321,12 @@ export function SettingsDrawer({
   onReadPluginSkill,
   onInsertPluginMention,
   onInstallPlugin,
-  onUninstallPlugin
+  onUninstallPlugin,
+  onReloadMembers,
+  onCreateMember,
+  onUpdateMember,
+  onDeleteMember,
+  onAllocateMemberBalance
 }: Props) {
   const [section, setSection] = useState<SettingsSectionId>("codex");
   const [codexConfigMode, setCodexConfigMode] = useState<"quick" | "all">("quick");
@@ -290,6 +334,18 @@ export function SettingsDrawer({
   const [editingThemePlugin, setEditingThemePlugin] = useState<ThemePlugin | null>(null);
   const activeProvider = providers.find((provider) => provider.id === activeProviderId);
   const selectedReasoning = reasoningOptions.find((option) => option.value === reasoningEffort);
+  const visibleNavItems = useMemo(
+    () => NAV_ITEMS.filter((item) => item.id !== "members" || currentUser?.role === "admin"),
+    [currentUser?.role]
+  );
+  const permissionChoices = useMemo(
+    () => permissionPresets.filter((preset) => allowedPermissions.includes(preset.id)),
+    [allowedPermissions]
+  );
+  const isAdmin = currentUser?.role === "admin";
+  const canEditCodexConfig = isAdmin || !currentUser; // local-token mode: full access
+  const canManageRelay = isAdmin || !currentUser;
+
   const allThemePlugins = useMemo(
     () => [...themePlugins, ...customThemePlugins.filter((plugin) => !themePlugins.some((entry) => entry.id === plugin.id))],
     [customThemePlugins]
@@ -323,8 +379,11 @@ export function SettingsDrawer({
       setSection(initialSection);
       setCodexConfigMode("quick");
       setCodexConfigSearch("");
+      if (initialSection === "members" && currentUser?.role === "admin") {
+        void onReloadMembers();
+      }
     }
-  }, [initialSection, open]);
+  }, [currentUser?.role, initialSection, onReloadMembers, open]);
 
   return (
     <Drawer
@@ -391,13 +450,18 @@ export function SettingsDrawer({
             }}
           >
             <List dense disablePadding sx={{ py: 1 }}>
-              {NAV_ITEMS.map((item) => {
+              {visibleNavItems.map((item) => {
                 const label = t(item.labelKey);
                 return (
                 <ListItemButton
                   key={item.id}
                   selected={section === item.id}
-                  onClick={() => setSection(item.id)}
+                  onClick={() => {
+                    setSection(item.id);
+                    if (item.id === "members") {
+                      void onReloadMembers();
+                    }
+                  }}
                   aria-label={t("settings.openSection", { section: label })}
                   sx={{ mx: 1, borderRadius: 1 }}
                 >
@@ -415,6 +479,13 @@ export function SettingsDrawer({
           <Box sx={{ overflow: "auto", px: { xs: 1.5, sm: 2.5 }, py: 2, bgcolor: "background.default" }}>
             {section === "codex" && (
               <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.codex")} subtitle={t("settings.codex.subtitle")}>
+                {!canEditCodexConfig ? (
+                  <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
+                    <Alert severity="info" variant="outlined">
+                      {t("settings.codex.memberReadOnly")}
+                    </Alert>
+                  </Box>
+                ) : null}
                 <SettingRow
                   title={t("settings.codex.userConfigSync")}
                   description={t("settings.codex.userConfigSyncDescription")}
@@ -482,7 +553,7 @@ export function SettingsDrawer({
                           options={localizedField.options}
                           readOnly={field.readOnly}
                           value={codexConfig?.[field.key] ?? ""}
-                          disabled={!codexConfig || Boolean(field.readOnly) || codexConfigSaving}
+                          disabled={!codexConfig || Boolean(field.readOnly) || codexConfigSaving || !canEditCodexConfig}
                           unsetLabel={t("settings.codex.unset")}
                           onCommit={(next) => onCodexConfigFieldChange(field.key, next)}
                         />
@@ -517,7 +588,7 @@ export function SettingsDrawer({
                             key={field.keyPath}
                             field={field}
                             value={getConfigValueAtPath(codexConfig?.rawConfig ?? {}, field.keyPath)}
-                            disabled={!codexConfig || codexConfigSaving}
+                            disabled={!codexConfig || codexConfigSaving || !canEditCodexConfig}
                             t={t}
                             onCommit={(next) => onCodexConfigValueChange(field.keyPath, next)}
                           />
@@ -615,7 +686,14 @@ export function SettingsDrawer({
                   <Chip size="small" label={t("settings.layout.toolbarControlled")} color="primary" variant="outlined" />
                 </SettingRow>
                 <SettingRow title={t("settings.layout.workspaceCwd")} description={t("settings.layout.workspaceCwdDescription")}>
-                  <TextField size="small" value={cwd} onChange={(event) => onCwdChange(event.target.value)} sx={{ minWidth: 240 }} />
+                  <TextField
+                    size="small"
+                    value={cwd}
+                    onChange={(event) => onCwdChange(event.target.value)}
+                    disabled={Boolean(currentUser) && currentUser?.role !== "admin"}
+                    helperText={currentUser && currentUser.role !== "admin" ? currentUser.workspaceRoot : undefined}
+                    sx={{ minWidth: 240 }}
+                  />
                 </SettingRow>
               </SettingsSection>
             )}
@@ -627,6 +705,7 @@ export function SettingsDrawer({
                   fileDirectories={fileDirectories}
                   openFile={openFile}
                   filesPanelLayout={filesPanelLayout}
+                  t={t}
                   onFilesPanelLayoutChange={onFilesPanelLayoutChange}
                   onReadDirectory={onReadDirectory}
                   onReadFile={onReadFile}
@@ -662,7 +741,7 @@ export function SettingsDrawer({
                   <FormControl size="small" sx={{ minWidth: 220 }}>
                     <InputLabel>{t("settings.session.permissions")}</InputLabel>
                     <Select value={permission} label={t("settings.session.permissions")} onChange={(event) => onPermissionChange(event.target.value as PermissionPresetId)}>
-                      {permissionPresets.map((preset) => (
+                      {permissionChoices.map((preset) => (
                         <MenuItem key={preset.id} value={preset.id}>
                           {preset.label}
                         </MenuItem>
@@ -670,6 +749,16 @@ export function SettingsDrawer({
                     </Select>
                   </FormControl>
                 </SettingRow>
+                {currentUser ? (
+                  <SettingRow title={t("settings.members.yourCaps")} description={t("settings.members.yourCapsDescription")}>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Chip size="small" label={currentUser.maxPermission} color="primary" variant="outlined" />
+                      <Chip size="small" label={currentUser.allowWrite ? "write" : "no-write"} variant="outlined" />
+                      <Chip size="small" label={currentUser.allowDangerBypass ? "danger-ok" : "no-danger"} color={currentUser.allowDangerBypass ? "warning" : "default"} variant="outlined" />
+                      <Chip size="small" label={`${t("settings.members.balance")}: ${Number(currentUser.balance).toFixed(2)}`} color="secondary" variant="outlined" />
+                    </Stack>
+                  </SettingRow>
+                ) : null}
               </SettingsSection>
             )}
 
@@ -679,6 +768,8 @@ export function SettingsDrawer({
                 activeProviderId={activeProviderId}
                 activeProvider={activeProvider}
                 selectedModel={selectedModel}
+                canManage={canManageRelay}
+                t={t}
                 onSaveProvider={onSaveProvider}
                 onActivateProvider={onActivateProvider}
                 onDeleteProvider={onDeleteProvider}
@@ -737,6 +828,35 @@ export function SettingsDrawer({
                 <PetDock enabled={petDockEnabled} />
               </SettingsSection>
             )}
+
+            {section === "members" && currentUser?.role === "admin" && (
+              <MembersPermissionsPanel
+                members={members}
+                providers={providers}
+                loading={membersLoading}
+                error={membersError}
+                t={t}
+                onReload={onReloadMembers}
+                onCreate={onCreateMember}
+                onUpdate={onUpdateMember}
+                onDelete={onDeleteMember}
+                onAllocateBalance={onAllocateMemberBalance}
+              />
+            )}
+
+            {section === "usage" && sessionToken ? (
+              <UsageBillingPanel
+                token={sessionToken}
+                currentUser={currentUser}
+                members={members}
+                t={t}
+                onBalanceChanged={() => void onReloadMembers()}
+              />
+            ) : null}
+
+            {section === "security" && sessionToken ? (
+              <SecuritySettingsPanel token={sessionToken} isAdmin={currentUser?.role === "admin"} t={t} />
+            ) : null}
 
             {section === "privacy" && (
               <SettingsSection icon={<SecurityIcon fontSize="small" />} title={t("settings.section.privacy")} subtitle={t("settings.privacy.subtitle")}>
@@ -860,6 +980,8 @@ function RelaySettingsPanel({
   activeProviderId,
   activeProvider,
   selectedModel,
+  canManage = true,
+  t,
   onSaveProvider,
   onActivateProvider,
   onDeleteProvider
@@ -868,6 +990,8 @@ function RelaySettingsPanel({
   activeProviderId: string | null;
   activeProvider?: ProviderConfig;
   selectedModel: string;
+  canManage?: boolean;
+  t: TranslateFn;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => Promise<void>;
   onActivateProvider: (providerId: string, model?: string) => Promise<void>;
   onDeleteProvider: (providerId: string) => Promise<void>;
@@ -880,7 +1004,7 @@ function RelaySettingsPanel({
   const [templateId, setTemplateId] = useState<RelayTemplateId>("openai");
   const template = RELAY_PROVIDER_TEMPLATES.find((entry) => entry.id === templateId) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
   const [apiFormat, setApiFormat] = useState<ProviderConfig["kind"]>(template.apiFormat);
-  const [name, setName] = useState("My Channel");
+  const [name, setName] = useState(t("settings.relay.defaultChannelName"));
   const [baseUrl, setBaseUrl] = useState(template.baseUrl);
   const [apiKey, setApiKey] = useState("");
   const [nativeModels, setNativeModels] = useState(template.nativeModels);
@@ -891,6 +1015,12 @@ function RelaySettingsPanel({
   const [saving, setSaving] = useState(false);
   const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
   const [testStatuses, setTestStatuses] = useState<Record<string, TestStatus>>({});
+
+  useEffect(() => {
+    if (!canManage && relayView === "form") {
+      setRelayView("list");
+    }
+  }, [canManage, relayView]);
 
   const filteredProviders = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -907,7 +1037,7 @@ function RelaySettingsPanel({
   const resetFormFromTemplate = (entry: (typeof RELAY_PROVIDER_TEMPLATES)[number]) => {
     setTemplateId(entry.id);
     setApiFormat(entry.apiFormat);
-    setName(entry.label === "OpenAI" ? "My Channel" : `${entry.label} Relay`);
+    setName(entry.label === "OpenAI" ? t("settings.relay.defaultChannelName") : t("settings.relay.templateChannelName", { provider: entry.label }));
     setBaseUrl(entry.baseUrl);
     setNativeModels(entry.nativeModels);
     setModelAliases(entry.modelAliases);
@@ -916,12 +1046,18 @@ function RelaySettingsPanel({
   };
 
   const startAddChannel = () => {
+    if (!canManage) {
+      return;
+    }
     setEditingProviderId(null);
     resetFormFromTemplate(DEFAULT_RELAY_PROVIDER_TEMPLATE);
     setRelayView("form");
   };
 
   const startEditChannel = (provider: ProviderConfig) => {
+    if (!canManage) {
+      return;
+    }
     const matchingTemplate = RELAY_PROVIDER_TEMPLATES.find((entry) => entry.kind === provider.kind) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
     setTemplateId(matchingTemplate.id);
     setApiFormat(provider.kind);
@@ -936,7 +1072,7 @@ function RelaySettingsPanel({
   };
 
   const saveChannel = async () => {
-    if (saving) {
+    if (!canManage || saving) {
       return;
     }
     const nativeModelList = parseCsv(nativeModels);
@@ -981,10 +1117,10 @@ function RelaySettingsPanel({
 
   const testChannel = async (provider: ProviderConfig, model?: string) => {
     setBusyProviderId(provider.id);
-    setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: "Testing..." } }));
+    setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: t("settings.relay.testing") } }));
     try {
       await onActivateProvider(provider.id, model || undefined);
-      setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: "Test passed" } }));
+      setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: t("settings.relay.testPassed") } }));
     } catch (error) {
       setTestStatuses((current) => ({
         ...current,
@@ -996,7 +1132,10 @@ function RelaySettingsPanel({
   };
 
   const deleteChannel = async (provider: ProviderConfig) => {
-    if (!window.confirm(`Delete channel "${provider.name}"?`)) {
+    if (!canManage) {
+      return;
+    }
+    if (!window.confirm(t("settings.relay.deleteConfirm", { name: provider.name }))) {
       return;
     }
     setBusyProviderId(provider.id);
@@ -1013,15 +1152,22 @@ function RelaySettingsPanel({
   };
 
   const editingProvider = providers.find((provider) => provider.id === editingProviderId);
-  const formTitle = editingProvider ? "Edit Channel" : "Add Channel";
+  const formTitle = editingProvider ? t("settings.relay.editChannel") : t("settings.relay.addChannel");
 
   return (
     <SettingsSection
       icon={<MemoryIcon fontSize="small" />}
-      title={relayView === "form" ? "Model Channel" : "Channels"}
-      subtitle={relayView === "form" ? `${formTitle} backed by a relay provider` : "Manage AI model channels, configure providers, and monitor health status"}
+      title={relayView === "form" ? t("settings.relay.modelChannel") : t("settings.relay.channels")}
+      subtitle={relayView === "form" ? t("settings.relay.formSubtitle", { title: formTitle }) : t("settings.relay.channelsSubtitle")}
     >
-      {relayView === "form" ? (
+      {!canManage ? (
+        <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
+          <Alert severity="info" variant="outlined">
+            {t("settings.relay.memberReadOnly")}
+          </Alert>
+        </Box>
+      ) : null}
+      {relayView === "form" && canManage ? (
       <Box
         sx={{
           display: "grid",
@@ -1032,7 +1178,7 @@ function RelaySettingsPanel({
         <Box sx={{ borderRight: { lg: "1px solid" }, borderBottom: { xs: "1px solid", lg: 0 }, borderColor: "divider", bgcolor: "background.default" }}>
           <Box sx={{ px: 1.5, py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
             <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-              Service Provider
+              {t("settings.relay.serviceProvider")}
             </Typography>
           </Box>
           <Stack spacing={1} sx={{ p: 1.25 }}>
@@ -1074,35 +1220,39 @@ function RelaySettingsPanel({
                   {formTitle}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {editingProvider ? "Update this saved relay channel. Leave API key blank to keep the existing key." : "Create a new AI model channel backed by a relay provider."}
+                  {editingProvider ? t("settings.relay.editDescription") : t("settings.relay.addDescription")}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                <Chip size="small" label={activeProvider?.name ?? "Official/default"} color={activeProvider ? "primary" : "default"} />
-                <Chip size="small" label={`${providers.length} saved`} variant="outlined" />
+                <Chip size="small" label={activeProvider?.name ?? t("settings.relay.officialDefault")} color={activeProvider ? "primary" : "default"} />
+                <Chip size="small" label={t("settings.relay.savedCount", { count: providers.length })} variant="outlined" />
               </Stack>
             </Stack>
 
             <Stack spacing={1.5}>
-              <RelayFormRow label="API Format">
+              <RelayFormRow label={t("settings.relay.apiFormat")}>
                 <Stack spacing={1}>
                   <FormControl size="small" sx={{ maxWidth: 360 }}>
-                    <InputLabel>API Format</InputLabel>
+                    <InputLabel>{t("settings.relay.apiFormat")}</InputLabel>
                     <Select
                       value={apiFormat}
-                      label="API Format"
-                      inputProps={{ "aria-label": "API Format" }}
+                      label={t("settings.relay.apiFormat")}
+                      inputProps={{ "aria-label": t("settings.relay.apiFormat") }}
                       onChange={(event) => setApiFormat(event.target.value as ProviderConfig["kind"])}
                     >
-                      <MenuItem value="responsesRelay">OpenAI (Responses relay)</MenuItem>
-                      <MenuItem value="openai">OpenAI API key</MenuItem>
-                      <MenuItem value="ollama">Ollama compatible</MenuItem>
-                      <MenuItem value="lmstudio">LM Studio compatible</MenuItem>
-                      <MenuItem value="bedrock">Bedrock experimental</MenuItem>
+                      <MenuItem value="responsesRelay">{t("settings.relay.apiFormat.responsesRelay")}</MenuItem>
+                      <MenuItem value="openai">{t("settings.relay.apiFormat.openai")}</MenuItem>
+                      <MenuItem value="ollama">{t("settings.relay.apiFormat.ollama")}</MenuItem>
+                      <MenuItem value="lmstudio">{t("settings.relay.apiFormat.lmstudio")}</MenuItem>
+                      <MenuItem value="bedrock">{t("settings.relay.apiFormat.bedrock")}</MenuItem>
                     </Select>
                   </FormControl>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap" useFlexGap>
-                    {["OpenAI (Responses)", "OpenAI (Chat Completions)", "OpenAI-compatible relay"].map((label, index) => (
+                    {[
+                      t("settings.relay.compat.responses"),
+                      t("settings.relay.compat.chatCompletions"),
+                      t("settings.relay.compat.openaiRelay")
+                    ].map((label, index) => (
                       <FormControlLabel
                         key={label}
                         control={<Switch size="small" checked={index === 0 || apiFormat === "openai"} />}
@@ -1113,51 +1263,51 @@ function RelaySettingsPanel({
                   </Stack>
                 </Stack>
               </RelayFormRow>
-              <RelayFormRow label="Channel Name">
-                <TextField size="small" fullWidth label="Channel Name" value={name} onChange={(event) => setName(event.target.value)} inputProps={{ "aria-label": "Channel Name" }} />
+              <RelayFormRow label={t("settings.relay.channelName")}>
+                <TextField size="small" fullWidth label={t("settings.relay.channelName")} value={name} onChange={(event) => setName(event.target.value)} inputProps={{ "aria-label": t("settings.relay.channelName") }} />
               </RelayFormRow>
-              <RelayFormRow label="Base URL">
-                <TextField size="small" fullWidth label="Base URL" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} inputProps={{ "aria-label": "Base URL" }} />
+              <RelayFormRow label={t("settings.relay.baseUrl")}>
+                <TextField size="small" fullWidth label={t("settings.relay.baseUrl")} value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} inputProps={{ "aria-label": t("settings.relay.baseUrl") }} />
               </RelayFormRow>
-              <RelayFormRow label="API Key">
+              <RelayFormRow label={t("settings.relay.apiKey")}>
                 <TextField
                   size="small"
                   fullWidth
-                  label={editingProvider?.apiKeyPreview ? `API Key (${editingProvider.apiKeyPreview})` : "API Key"}
+                  label={editingProvider?.apiKeyPreview ? t("settings.relay.apiKeyWithPreview", { preview: editingProvider.apiKeyPreview }) : t("settings.relay.apiKey")}
                   type="password"
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
-                  inputProps={{ "aria-label": "Relay API key" }}
+                  inputProps={{ "aria-label": t("settings.relay.relayApiKey") }}
                 />
               </RelayFormRow>
-              <RelayFormRow label="Supported Models">
+              <RelayFormRow label={t("settings.relay.supportedModels")}>
                 <TextField
                   size="small"
                   fullWidth
-                  label="Native models, comma-separated"
+                  label={t("settings.relay.nativeModels")}
                   value={nativeModels}
                   onChange={(event) => setNativeModels(event.target.value)}
                 />
               </RelayFormRow>
-              <RelayFormRow label="Model Aliases">
+              <RelayFormRow label={t("settings.relay.modelAliases")}>
                 <TextField
                   size="small"
                   fullWidth
-                  label="Model aliases, comma-separated alias=model"
+                  label={t("settings.relay.modelAliasesHelp")}
                   value={modelAliases}
                   onChange={(event) => setModelAliases(event.target.value)}
                 />
               </RelayFormRow>
-              <RelayFormRow label="Model Rates">
+              <RelayFormRow label={t("settings.relay.modelRates")}>
                 <TextField
                   size="small"
                   fullWidth
                   multiline
                   minRows={3}
-                  label="Model rates: model=input/cached/cacheWrite/output/multiplier"
+                  label={t("settings.relay.modelRatesHelp")}
                   value={modelRates}
                   onChange={(event) => setModelRates(event.target.value)}
-                  helperText="USD per 1M tokens. Multiplier defaults to 1; cacheWrite defaults to input if omitted."
+                  helperText={t("settings.relay.modelRatesDescription")}
                 />
               </RelayFormRow>
               <Stack direction="row" spacing={1} justifyContent="space-between" sx={{ pt: 0.5 }}>
@@ -1165,7 +1315,7 @@ function RelaySettingsPanel({
                   variant="outlined"
                   onClick={() => setRelayView("list")}
                 >
-                  Back to Channels
+                  {t("settings.relay.backToChannels")}
                 </Button>
                 <Stack direction="row" spacing={1}>
                   <Button
@@ -1179,10 +1329,10 @@ function RelaySettingsPanel({
                     }}
                     disabled={saving}
                   >
-                    Reset
+                    {t("settings.relay.reset")}
                   </Button>
                   <Button variant="contained" startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <SaveIcon />} onClick={() => void saveChannel()} disabled={saving}>
-                    {editingProvider ? "Save" : "Create"}
+                    {editingProvider ? t("settings.relay.save") : t("settings.relay.create")}
                   </Button>
                 </Stack>
               </Stack>
@@ -1198,31 +1348,37 @@ function RelaySettingsPanel({
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "flex-end" }} justifyContent="space-between">
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="h4" sx={{ fontWeight: 900, fontSize: { xs: 28, sm: 36 }, lineHeight: 1.1 }}>
-                Channels
+                {t("settings.relay.channels")}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mt: 0.75, maxWidth: 720 }}>
-                Manage AI model channels, configure providers, and monitor health status.
+                {t("settings.relay.channelsSubtitle")}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap justifyContent={{ xs: "flex-start", md: "flex-end" }}>
-              <Button size="small" variant="outlined" startIcon={<SettingsSuggestIcon />} sx={{ borderRadius: 999 }}>
-                Settings
-              </Button>
-              <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ borderRadius: 999 }}>
-                Batch Import
-              </Button>
-              <Button size="small" variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 999 }}>
-                Batch Adjust Weight
-              </Button>
-              <Button size="small" variant="contained" startIcon={<AddIcon />} sx={{ borderRadius: 999 }} onClick={startAddChannel}>
-                Add Channel
-              </Button>
+              {canManage ? (
+                <>
+                  <Button size="small" variant="outlined" startIcon={<SettingsSuggestIcon />} sx={{ borderRadius: 999 }}>
+                    {t("settings.relay.settings")}
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} sx={{ borderRadius: 999 }}>
+                    {t("settings.relay.batchImport")}
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 999 }}>
+                    {t("settings.relay.batchAdjustWeight")}
+                  </Button>
+                  <Button size="small" variant="contained" startIcon={<AddIcon />} sx={{ borderRadius: 999 }} onClick={startAddChannel}>
+                    {t("settings.relay.addChannel")}
+                  </Button>
+                </>
+              ) : (
+                <Chip size="small" label={t("settings.relay.viewOnly")} color="default" variant="outlined" sx={{ borderRadius: 999, fontWeight: 700 }} />
+              )}
             </Stack>
           </Stack>
 
           <Stack spacing={1.5}>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip size="small" label={`All ${providers.length}`} color="primary" sx={{ borderRadius: 999, fontWeight: 800 }} />
+              <Chip size="small" label={t("settings.relay.allCount", { count: providers.length })} color="primary" sx={{ borderRadius: 999, fontWeight: 800 }} />
               {Object.entries(providerCounts(providers)).map(([kind, count]) => (
                 <Chip
                   key={kind}
@@ -1238,7 +1394,7 @@ function RelaySettingsPanel({
             <Stack direction={{ xs: "column", xl: "row" }} spacing={1.25} alignItems={{ xs: "stretch", xl: "center" }} justifyContent="space-between">
               <TextField
                 size="small"
-                placeholder="Search by ID, Name, or Owner"
+                placeholder={t("settings.relay.searchPlaceholder")}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
@@ -1248,14 +1404,19 @@ function RelaySettingsPanel({
                 }}
               />
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {["Status", "Tag", "Model", "Provider"].map((label) => (
+                {[
+                  t("settings.relay.status"),
+                  t("settings.relay.tag"),
+                  t("settings.relay.model"),
+                  t("settings.relay.provider")
+                ].map((label) => (
                   <Button key={label} size="small" variant="outlined" startIcon={<AddIcon />} sx={{ borderRadius: 999, color: "text.secondary" }}>
                     {label}
                   </Button>
                 ))}
                 <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", sm: "block" } }} />
                 <Button size="small" variant="outlined" startIcon={<TuneIcon />} sx={{ borderRadius: 1.5, color: "text.secondary" }}>
-                  Columns
+                  {t("settings.relay.columns")}
                 </Button>
               </Stack>
             </Stack>
@@ -1288,16 +1449,16 @@ function RelaySettingsPanel({
                   <TableCell padding="checkbox">
                     <Checkbox size="small" disabled />
                   </TableCell>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Provider</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Tags</TableCell>
-                  <TableCell>Supported Models</TableCell>
-                  <TableCell>Proxy</TableCell>
-                  <TableCell align="center">Health</TableCell>
-                  <TableCell align="center">Ordering Weight</TableCell>
-                  <TableCell align="center">Created At</TableCell>
-                  <TableCell align="right">Action</TableCell>
+                  <TableCell>{t("settings.relay.name")}</TableCell>
+                  <TableCell>{t("settings.relay.provider")}</TableCell>
+                  <TableCell>{t("settings.relay.status")}</TableCell>
+                  <TableCell>{t("settings.relay.tags")}</TableCell>
+                  <TableCell>{t("settings.relay.supportedModels")}</TableCell>
+                  <TableCell>{t("settings.relay.proxy")}</TableCell>
+                  <TableCell align="center">{t("settings.relay.health")}</TableCell>
+                  <TableCell align="center">{t("settings.relay.orderingWeight")}</TableCell>
+                  <TableCell align="center">{t("settings.relay.createdAt")}</TableCell>
+                  <TableCell align="right">{t("settings.relay.action")}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1305,7 +1466,7 @@ function RelaySettingsPanel({
                   <TableRow>
                     <TableCell colSpan={12}>
                       <Typography color="text.secondary" sx={{ py: 2 }}>
-                        No relay channels saved yet.
+                        {t("settings.relay.noChannels")}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -1326,7 +1487,7 @@ function RelaySettingsPanel({
                         }}
                       >
                         <TableCell>
-                          <IconButton size="small" aria-label={`Expand ${provider.name}`}>
+                          <IconButton size="small" aria-label={t("settings.relay.expandProvider", { name: provider.name })}>
                             <KeyboardArrowRightIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
@@ -1339,13 +1500,13 @@ function RelaySettingsPanel({
                               <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
                                 {provider.name}
                               </Typography>
-                              {active ? <Chip size="small" color="primary" label="active" sx={{ height: 20, borderRadius: 1 }} /> : null}
+                              {active ? <Chip size="small" color="primary" label={t("settings.relay.active")} sx={{ height: 20, borderRadius: 1 }} /> : null}
                             </Stack>
                             <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", color: "text.secondary" }}>
                               {providerTableId(provider, index)}
                             </Typography>
                             <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere", display: "block" }}>
-                              {provider.baseUrl || "managed provider"} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
+                              {provider.baseUrl || t("settings.relay.managedProvider")} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
                             </Typography>
                           </Stack>
                         </TableCell>
@@ -1364,7 +1525,7 @@ function RelaySettingsPanel({
                         <TableCell>
                           <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ minWidth: 150 }}>
                             {providerTags(provider, active).map((tag) => (
-                              <Chip key={tag} size="small" label={tag} variant="outlined" sx={{ height: 22, borderRadius: 1 }} />
+                              <Chip key={tag} size="small" label={translateProviderTag(tag, t)} variant="outlined" sx={{ height: 22, borderRadius: 1 }} />
                             ))}
                           </Stack>
                         </TableCell>
@@ -1385,7 +1546,7 @@ function RelaySettingsPanel({
                           <Stack spacing={0.5} alignItems="center">
                             <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: active ? "primary.main" : "success.main", mx: "auto", boxShadow: "0 0 8px rgba(34,197,94,0.42)" }} />
                             <Typography variant="caption" color="text.secondary">
-                              {active ? "Active" : "Ready"}
+                              {active ? t("settings.relay.activeHealth") : t("settings.relay.readyHealth")}
                             </Typography>
                           </Stack>
                         </TableCell>
@@ -1402,10 +1563,10 @@ function RelaySettingsPanel({
                         <TableCell align="right" sx={{ minWidth: 238 }}>
                           <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                             <FormControl size="small" sx={{ minWidth: 112 }}>
-                              <InputLabel>Model</InputLabel>
+                              <InputLabel>{t("settings.relay.model")}</InputLabel>
                               <Select
                                 value={selectedProviderModel}
-                                label="Model"
+                                label={t("settings.relay.model")}
                                 onChange={(event) => setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))}
                               >
                                 {modelOptions.map((option) => (
@@ -1423,7 +1584,7 @@ function RelaySettingsPanel({
                               disabled={busyProviderId === provider.id}
                               sx={{ minWidth: 104 }}
                             >
-                              Activate
+                              {t("settings.relay.activate")}
                             </Button>
                             <Button
                               size="small"
@@ -1432,14 +1593,18 @@ function RelaySettingsPanel({
                               onClick={() => void testChannel(provider, selectedProviderModel)}
                               disabled={busyProviderId === provider.id}
                             >
-                              Test
+                              {t("settings.relay.test")}
                             </Button>
-                            <IconButton size="small" aria-label={`Edit ${provider.name}`} onClick={() => startEditChannel(provider)}>
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" color="error" aria-label={`Delete ${provider.name}`} onClick={() => void deleteChannel(provider)} disabled={busyProviderId === provider.id}>
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
+                            {canManage ? (
+                              <>
+                                <IconButton size="small" aria-label={t("settings.relay.editProvider", { name: provider.name })} onClick={() => startEditChannel(provider)}>
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                                <IconButton size="small" color="error" aria-label={t("settings.relay.deleteProvider", { name: provider.name })} onClick={() => void deleteChannel(provider)} disabled={busyProviderId === provider.id}>
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              </>
+                            ) : null}
                           </Stack>
                           {testStatus ? (
                             <Typography
@@ -1461,14 +1626,14 @@ function RelaySettingsPanel({
 
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }}>
             <Typography variant="body2" color="text.secondary">
-              Showing {filteredProviders.length === 0 ? 0 : 1} to {filteredProviders.length} of {providers.length} entries
+              {t("settings.relay.showingEntries", { start: filteredProviders.length === 0 ? 0 : 1, end: filteredProviders.length, total: providers.length })}
             </Typography>
             <Stack direction="row" spacing={1} justifyContent="flex-end">
               <Button size="small" variant="outlined" disabled>
-                Previous
+                {t("settings.relay.previous")}
               </Button>
               <Button size="small" variant="outlined" disabled>
-                Next
+                {t("settings.relay.next")}
               </Button>
             </Stack>
           </Stack>
@@ -1582,6 +1747,10 @@ function providerTableId(provider: ProviderConfig, index: number): string {
 
 function providerTags(provider: ProviderConfig, active: boolean): string[] {
   return [provider.kind === "responsesRelay" ? "relay" : provider.kind, active ? "active" : "saved"].filter(Boolean);
+}
+
+function translateProviderTag(tag: string, t: TranslateFn): string {
+  return translateWithFallback(t, `settings.relay.tag.${tag}`, tag);
 }
 
 function formatProviderCreatedAt(createdAt?: number): string {
@@ -2021,6 +2190,8 @@ function SettingsSection({
     </Box>
   );
 }
+
+
 
 function ProfileSettingsPanel({
   providerCount,

@@ -307,3 +307,28 @@ The Slash Command parity slice is implemented and verified.
 
 1. Keep sidechat slash-shaped input unparsed so sidechat remains an isolated Codex thread surface.
 2. Treat commands without app-server support as normal Codex prompt text until a real backend capability exists.
+
+## Membership & billing plan (active)
+
+### Product model
+- Prefer **application policy** over host Linux users / Docker-per-user (Phase 2 only if demanded).
+- Admin vs member: config write, relay CRUD, member admin, system security — admin only.
+- Members: own threads, workspace root only, use-only codex config, view masked relays, activate only `allowedProviderIds`.
+- Credits: admin set/add/subtract; members blocked when balance ≤ 0 on turn gate; flat **0.01** debit per `turn/start` until token metering.
+
+### Security (shipped)
+1. Captcha on login/register (toggle)
+2. Optional TOTP per user (system toggle)
+3. Open registration toggle (always role=user)
+4. Allowed relays per member
+
+### Usage UI (shipped, Sub2API-inspired)
+- Stats: balance, spent, topped-up, turns, today spend
+- Charts: daily debit/credit bars, by-operation bars, admin top spenders
+- Ledger table + admin recharge form
+
+### Next
+- Token-based cost from usage notifications
+- Optional CSV export of ledger
+- Optional force-admin-TOTP hard block
+

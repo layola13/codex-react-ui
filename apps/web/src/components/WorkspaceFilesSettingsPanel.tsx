@@ -9,6 +9,7 @@ import * as monaco from "monaco-editor";
 import { Group as PanelGroup, Panel } from "react-resizable-panels";
 import { ResizeHandle } from "./ResizeHandle";
 import type { FsDirectoryEntry } from "../state/codexClient";
+import type { TranslateFn } from "../i18n";
 
 loader.config({ monaco });
 
@@ -25,6 +26,7 @@ type Props = {
   fileDirectories: Record<string, FsDirectoryEntry[]>;
   openFile: OpenWorkspaceFile | null;
   filesPanelLayout?: Record<string, number>;
+  t: TranslateFn;
   onFilesPanelLayoutChange?: (layout: Record<string, number>) => void;
   onReadDirectory: (path: string) => void;
   onReadFile: (path: string) => void;
@@ -37,6 +39,7 @@ export function WorkspaceFilesSettingsPanel({
   fileDirectories,
   openFile,
   filesPanelLayout,
+  t,
   onFilesPanelLayoutChange,
   onReadDirectory,
   onReadFile,
@@ -61,9 +64,9 @@ export function WorkspaceFilesSettingsPanel({
     <Box sx={{ height: { xs: "auto", md: "min(68vh, 720px)" }, minHeight: 500, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)" }}>
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1, bgcolor: "background.default" }}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-          <TextField size="small" label="Root path" value={rootPath} onChange={(event) => setRootPath(event.target.value)} sx={{ flex: 1 }} />
+          <TextField size="small" label={t("settings.workspace.files.rootPath")} value={rootPath} onChange={(event) => setRootPath(event.target.value)} sx={{ flex: 1 }} />
           <Button size="small" startIcon={<RefreshIcon />} onClick={() => onReadDirectory(rootPath)}>
-            Load
+            {t("settings.workspace.files.load")}
           </Button>
         </Stack>
       </Paper>
@@ -82,7 +85,7 @@ export function WorkspaceFilesSettingsPanel({
           <Panel id="settings-files-explorer" defaultSize="32%" minSize="20%" maxSize="52%">
             <Paper variant="outlined" sx={{ p: 1, height: "100%", minWidth: 0, overflow: "auto", bgcolor: "background.paper" }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                Explorer
+                {t("settings.workspace.files.explorer")}
               </Typography>
               <Box sx={{ mt: 1 }}>{renderDirectory(rootPath, 0)}</Box>
             </Paper>
@@ -93,11 +96,11 @@ export function WorkspaceFilesSettingsPanel({
               <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
-                    {openFile?.path ?? "No file selected"}
+                    {openFile?.path ?? t("settings.workspace.files.noFileSelected")}
                   </Typography>
                   {openFile && (
                     <Typography variant="caption" color="text.secondary">
-                      {dirty ? "Unsaved changes" : "Saved"}
+                      {dirty ? t("settings.workspace.files.unsavedChanges") : t("settings.workspace.files.saved")}
                     </Typography>
                   )}
                 </Box>
@@ -108,7 +111,7 @@ export function WorkspaceFilesSettingsPanel({
                   disabled={!openFile || openFile.loading || openFile.saving || !dirty}
                   onClick={onSaveOpenFile}
                 >
-                  {openFile?.saving ? "Saving" : "Save"}
+                  {openFile?.saving ? t("settings.workspace.files.saving") : t("settings.workspace.files.save")}
                 </Button>
               </Stack>
               <Box sx={{ minHeight: 0 }}>
@@ -118,9 +121,9 @@ export function WorkspaceFilesSettingsPanel({
                     path={openFile.path}
                     language={languageForPath(openFile.path)}
                     value={openFile.content}
-                    loading="Loading editor..."
+                    loading={t("settings.workspace.files.loadingEditor")}
                     options={{
-                      ariaLabel: "Editor content",
+                      ariaLabel: t("settings.workspace.files.editorContent"),
                       minimap: { enabled: false },
                       scrollBeyondLastLine: false,
                       fontSize: 13,
@@ -131,7 +134,7 @@ export function WorkspaceFilesSettingsPanel({
                   />
                 ) : (
                   <Box sx={{ p: 2 }}>
-                    <Typography color="text.secondary">Select a file to edit.</Typography>
+                    <Typography color="text.secondary">{t("settings.workspace.files.selectFile")}</Typography>
                   </Box>
                 )}
               </Box>
@@ -147,14 +150,14 @@ export function WorkspaceFilesSettingsPanel({
     if (!entries) {
       return (
         <Button size="small" startIcon={<FolderIcon />} onClick={() => onReadDirectory(path)} sx={{ justifyContent: "flex-start", pl: 1 + depth }}>
-          Load {path === rootPath ? "root" : path.split("/").pop()}
+          {t("settings.workspace.files.loadDirectory", { name: path === rootPath ? t("settings.workspace.files.root") : path.split("/").pop() ?? path })}
         </Button>
       );
     }
     if (entries.length === 0) {
       return (
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", pl: 1 + depth }}>
-          Empty directory
+          {t("settings.workspace.files.emptyDirectory")}
         </Typography>
       );
     }

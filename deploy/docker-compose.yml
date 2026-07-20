@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-codex_ui}
+      POSTGRES_USER: ${POSTGRES_USER:-codex_ui}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  codex-react-ui:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${CODEX_UI_PORT:-43110}:43110"
+    environment:
+      CODEX_UI_HOST: 0.0.0.0
+      CODEX_UI_PORT: 43110
+      CODEX_UI_DATABASE_URL: postgres://${POSTGRES_USER:-codex_ui}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-codex_ui}
+      CODEX_UI_JWT_SECRET: ${CODEX_UI_JWT_SECRET:?set CODEX_UI_JWT_SECRET in .env}
+      CODEX_UI_ADMIN_EMAIL: ${CODEX_UI_ADMIN_EMAIL:-admin@example.com}
+      CODEX_UI_ADMIN_PASSWORD: ${CODEX_UI_ADMIN_PASSWORD:?set CODEX_UI_ADMIN_PASSWORD in .env}
+      CODEX_UI_JWT_EXPIRE_HOURS: ${CODEX_UI_JWT_EXPIRE_HOURS:-24}
+      CODEX_BIN: ${CODEX_BIN:-codex}
+    volumes:
+      - codex_ui_home:/root/.codex-react-ui
+      - codex_home:/root/.codex
+      # Optional: mount a host Codex binary or wrapper into the container.
+      # - /absolute/path/to/codex:/usr/local/bin/codex:ro
+
+volumes:
+  postgres_data:
+  codex_ui_home:
+  codex_home:

@@ -10,10 +10,10 @@ export const localeOptions = [
 ] as const;
 
 export type Locale = (typeof localeOptions)[number]["value"];
-export type TranslationKey = keyof typeof enTranslations;
+export type TranslationKey = string;
 export type TranslateFn = (key: TranslationKey, values?: Record<string, string | number>) => string;
 
-const translations: Record<Locale, Record<TranslationKey, string>> = {
+const translations: Record<Locale, Record<string, string>> = {
   en: enTranslations,
   zh: cnTranslations
 };

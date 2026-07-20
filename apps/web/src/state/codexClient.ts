@@ -1,11 +1,18 @@
 import {
   DANGER_CONFIRMATION,
+  type AuthSession,
+  type AuthUser,
+  type CaptchaChallenge,
+  type PublicAuthConfig,
+  type SystemAuthSettings,
+  type UsageSummary,
   type EngineStatus,
   type JsonRpcFailure,
   type JsonRpcNotification,
   type JsonRpcRequest,
   type JsonValue,
   type DangerousPermissionAuditEvent,
+  type PermissionPresetId,
   type ProviderActivation,
   type ProviderConfig,
   type ServerToClientMessage,
@@ -525,13 +532,266 @@ export class CodexSocketClient extends EventTarget {
   }
 }
 
-export async function fetchSessionToken(): Promise<string> {
-  const response = await fetch("/api/session");
+export async function fetchSessionToken(token?: string | null): Promise<AuthSession> {
+  const response = await fetch("/api/session", token ? { headers: { "x-codex-ui-token": token } } : undefined);
   if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { loginRequired?: boolean };
+    if (response.status === 401 && body.loginRequired) {
+      throw new LoginRequiredError();
+    }
     throw new Error(`Failed to read UI session: ${response.status}`);
   }
-  const body = (await response.json()) as { token: string };
-  return body.token;
+  const body = (await response.json()) as AuthSession;
+  return body;
+}
+
+export type LoginResponse =
+  | AuthSession
+  | {
+      requires_2fa: true;
+      pendingToken: string;
+      expiresAt: number;
+    };
+
+export async function fetchPublicAuthConfig(): Promise<PublicAuthConfig> {
+  const response = await fetch("/api/auth/config");
+  if (!response.ok) {
+    return { registrationEnabled: false, captchaEnabled: false, totpEnabled: false };
+  }
+  return (await response.json()) as PublicAuthConfig;
+}
+
+export async function fetchCaptcha(): Promise<CaptchaChallenge> {
+  const response = await fetch("/api/auth/captcha");
+  if (!response.ok) {
+    throw new Error(`Captcha failed: ${response.status}`);
+  }
+  return (await response.json()) as CaptchaChallenge;
+}
+
+export async function login(
+  email: string,
+  password: string,
+  captcha?: { captchaId?: string; captchaAnswer?: string }
+): Promise<LoginResponse> {
+  const response = await fetch("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      password,
+      captchaId: captcha?.captchaId,
+      captchaAnswer: captcha?.captchaAnswer
+    })
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    throw new Error(typeof body.error === "string" ? body.error : response.status === 401 ? "Invalid email or password" : `Login failed: ${response.status}`);
+  }
+  return body as LoginResponse;
+}
+
+export async function loginWith2fa(pendingToken: string, totpCode: string): Promise<AuthSession> {
+  const response = await fetch("/api/login/2fa", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pendingToken, totpCode })
+  });
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    throw new Error(typeof body.error === "string" ? body.error : "2FA failed");
+  }
+  return body as unknown as AuthSession;
+}
+
+export async function registerAccount(input: {
+  email: string;
+  password: string;
+  username?: string;
+  captchaId?: string;
+  captchaAnswer?: string;
+}): Promise<AuthUser> {
+  const response = await fetch("/api/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: AuthUser; error?: string };
+  if (!response.ok) {
+    throw new Error(body.error || `Register failed: ${response.status}`);
+  }
+  if (!body.data) {
+    throw new Error("Register failed");
+  }
+  return body.data;
+}
+
+export async function fetchAdminSettings(token: string): Promise<SystemAuthSettings> {
+  const response = await fetch("/api/admin/settings", {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) throw new Error(`Failed to load settings: ${response.status}`);
+  const body = (await response.json()) as { data: SystemAuthSettings };
+  return body.data;
+}
+
+export async function updateAdminSettings(token: string, input: Partial<SystemAuthSettings>): Promise<SystemAuthSettings> {
+  const response = await fetch("/api/admin/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "x-codex-ui-token": token },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: SystemAuthSettings; error?: string };
+  if (!response.ok) throw new Error(body.error || `Update settings failed: ${response.status}`);
+  if (!body.data) throw new Error("Update settings failed");
+  return body.data;
+}
+
+export async function fetchTotpStatus(token: string): Promise<{ systemEnabled: boolean; enabled: boolean; forceAdminTotp: boolean }> {
+  const response = await fetch("/api/totp/status", {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) throw new Error(`TOTP status failed: ${response.status}`);
+  return (await response.json()) as { systemEnabled: boolean; enabled: boolean; forceAdminTotp: boolean };
+}
+
+export async function setupTotp(token: string): Promise<{ secret: string; otpauthUrl: string; qrUrl: string }> {
+  const response = await fetch("/api/totp/setup", {
+    method: "POST",
+    headers: { "x-codex-ui-token": token }
+  });
+  const body = (await response.json().catch(() => ({}))) as { secret?: string; otpauthUrl?: string; qrUrl?: string; error?: string };
+  if (!response.ok) throw new Error(body.error || `TOTP setup failed: ${response.status}`);
+  return body as { secret: string; otpauthUrl: string; qrUrl: string };
+}
+
+export async function enableTotp(token: string, totpCode: string): Promise<AuthUser> {
+  const response = await fetch("/api/totp/enable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-codex-ui-token": token },
+    body: JSON.stringify({ totpCode })
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: AuthUser; error?: string };
+  if (!response.ok) throw new Error(body.error || `Enable TOTP failed: ${response.status}`);
+  if (!body.data) throw new Error("Enable TOTP failed");
+  return body.data;
+}
+
+export async function disableTotp(token: string, input: { totpCode?: string; password?: string }): Promise<AuthUser> {
+  const response = await fetch("/api/totp/disable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-codex-ui-token": token },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: AuthUser; error?: string };
+  if (!response.ok) throw new Error(body.error || `Disable TOTP failed: ${response.status}`);
+  if (!body.data) throw new Error("Disable TOTP failed");
+  return body.data;
+}
+
+export class LoginRequiredError extends Error {
+  public constructor() {
+    super("Login required");
+    this.name = "LoginRequiredError";
+  }
+}
+
+export async function listMembers(token: string): Promise<AuthUser[]> {
+  const response = await fetch("/api/members", {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to list members: ${response.status}`);
+  }
+  const body = (await response.json()) as { data?: AuthUser[] };
+  return body.data ?? [];
+}
+
+export async function createMember(
+  token: string,
+  input: {
+    email: string;
+    password: string;
+    username?: string;
+    role?: "admin" | "user";
+    status?: "active" | "disabled";
+    maxPermission?: PermissionPresetId;
+    allowWrite?: boolean;
+    allowNetwork?: boolean;
+    allowDangerBypass?: boolean;
+    concurrency?: number;
+    balance?: number;
+    notes?: string;
+  }
+): Promise<AuthUser> {
+  const response = await fetch("/api/members", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Failed to create member: ${response.status}`);
+  }
+  const body = (await response.json()) as { data: AuthUser };
+  return body.data;
+}
+
+export async function updateMember(
+  token: string,
+  id: string,
+  input: Record<string, unknown>
+): Promise<AuthUser> {
+  const response = await fetch(`/api/members/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Failed to update member: ${response.status}`);
+  }
+  const body = (await response.json()) as { data: AuthUser };
+  return body.data;
+}
+
+export async function deleteMember(token: string, id: string): Promise<void> {
+  const response = await fetch(`/api/members/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Failed to delete member: ${response.status}`);
+  }
+}
+
+
+export async function allocateMemberBalance(
+  token: string,
+  id: string,
+  input: { amount: number; operation?: "set" | "add" | "subtract"; notes?: string }
+): Promise<AuthUser> {
+  const response = await fetch(`/api/members/${encodeURIComponent(id)}/balance`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(typeof body.error === "string" ? body.error : `Balance update failed (${response.status})`);
+  }
+  const body = (await response.json()) as { data: AuthUser };
+  return body.data;
 }
 
 export async function fetchProviders(token: string): Promise<ProviderConfig[]> {
@@ -1459,4 +1719,41 @@ function summarizeJsonValue(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+
+export async function fetchUsageSummary(
+  token: string,
+  options?: { days?: number; userId?: string }
+): Promise<UsageSummary> {
+  const params = new URLSearchParams();
+  if (options?.days) params.set("days", String(options.days));
+  if (options?.userId) params.set("userId", options.userId);
+  const qs = params.toString() ? `?${params}` : "";
+  const response = await fetch(`/api/usage/summary${qs}`, {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load usage summary: ${response.status}`);
+  }
+  const body = (await response.json()) as { data: UsageSummary };
+  return body.data;
+}
+
+export async function fetchUsageLedger(
+  token: string,
+  options?: { limit?: number; userId?: string }
+): Promise<Array<Record<string, unknown>>> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.userId) params.set("userId", options.userId);
+  const qs = params.toString() ? `?${params}` : "";
+  const response = await fetch(`/api/usage/ledger${qs}`, {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load usage ledger: ${response.status}`);
+  }
+  const body = (await response.json()) as { data: Array<Record<string, unknown>> };
+  return body.data ?? [];
 }

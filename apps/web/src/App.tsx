@@ -44,6 +44,8 @@ import { Group as PanelGroup, Panel } from "react-resizable-panels";
 import {
   permissionPresets,
   permissionToTurnOverrides,
+  type AuthSession,
+  type AuthUser,
   type DangerousPermissionAuditEvent,
   type JsonValue,
   type PermissionPresetId,
@@ -55,11 +57,22 @@ import {
   applyNotification,
   composerInputToUserInput,
   exportProfile,
+  createMember,
+  deleteMember,
   fetchAuditEvents,
   fetchProviders,
   fetchSessionToken,
   importProfile,
   initialClientState,
+  listMembers,
+  login,
+  fetchPublicAuthConfig,
+  fetchCaptcha,
+  loginWith2fa,
+  registerAccount,
+  LoginRequiredError,
+  allocateMemberBalance,
+  updateMember,
   parseHookGroups,
   parseMcpServers,
   parseMcpResourceContents,
@@ -254,8 +267,19 @@ function reducer(state: ClientState, action: Action): ClientState {
   }
 }
 
+const AUTH_TOKEN_STORAGE_KEY = "codex-react-ui.authToken";
+
+type AuthStatus = "checking" | "loginRequired" | "authenticated";
+
 export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustomThemePluginsChange }: AppProps) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
+  const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [members, setMembers] = useState<AuthUser[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
   const [permission, setPermission] = useState<PermissionPresetId>("workspaceAsk");
   const [dangerBypassConfirmed, setDangerBypassConfirmed] = useState(false);
   const [dangerDialogIntent, setDangerDialogIntent] = useState<DangerDialogIntent | null>(null);
@@ -338,6 +362,128 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     setSettingsOpen(true);
   }, []);
+
+  const allowedPermissions = useMemo((): PermissionPresetId[] => {
+    const user = authSession?.user;
+    if (!user || user.role === "admin") {
+      return permissionPresets.map((preset) => preset.id);
+    }
+    const rank: Record<PermissionPresetId, number> = {
+      readonlyAsk: 0,
+      workspaceAsk: 1,
+      fullAsk: 2,
+      dangerBypass: 3
+    };
+    return permissionPresets
+      .map((preset) => preset.id)
+      .filter((id) => {
+        if (!user.allowDangerBypass && id === "dangerBypass") return false;
+        if (!user.allowWrite && id !== "readonlyAsk") return false;
+        return rank[id] <= rank[user.maxPermission];
+      });
+  }, [authSession?.user]);
+
+  useEffect(() => {
+    if (!allowedPermissions.includes(permission)) {
+      setPermission(allowedPermissions[0] ?? "readonlyAsk");
+      setDangerBypassConfirmed(false);
+    }
+  }, [allowedPermissions, permission]);
+
+  useEffect(() => {
+    const root = authSession?.user?.workspaceRoot;
+    if (root) {
+      setCwd(root);
+      setWorkspacePickerPath(root);
+      setWorkspaceSelectionPending(false);
+    }
+  }, [authSession?.user?.workspaceRoot]);
+
+  // Members may only use paths under their workspace root.
+  useEffect(() => {
+    const user = authSession?.user;
+    if (!user || user.role === "admin" || !user.workspaceRoot) {
+      return;
+    }
+    const root = user.workspaceRoot.replace(/\/+$/, "");
+    const normalized = cwd.replace(/\/+$/, "") || root;
+    if (normalized !== root && !normalized.startsWith(`${root}/`)) {
+      setCwd(root);
+    }
+  }, [authSession?.user, cwd]);
+
+  const reloadMembers = useCallback(async () => {
+    if (!state.token || authSession?.user?.role !== "admin") {
+      setMembers([]);
+      return;
+    }
+    setMembersLoading(true);
+    setMembersError(null);
+    try {
+      setMembers(await listMembers(state.token));
+    } catch (error) {
+      setMembersError(formatErrorText(error));
+    } finally {
+      setMembersLoading(false);
+    }
+  }, [authSession?.user?.role, state.token]);
+
+  const handleCreateMember = useCallback(
+    async (input: {
+      email: string;
+      password: string;
+      username?: string;
+      role?: "admin" | "user";
+      maxPermission?: PermissionPresetId;
+      allowWrite?: boolean;
+      allowNetwork?: boolean;
+      allowDangerBypass?: boolean;
+      balance?: number;
+      concurrency?: number;
+      notes?: string;
+    }) => {
+      if (!state.token) throw new Error("Not authenticated");
+      await createMember(state.token, input);
+      await reloadMembers();
+    },
+    [reloadMembers, state.token]
+  );
+
+  const handleUpdateMember = useCallback(
+    async (id: string, input: Record<string, unknown>) => {
+      if (!state.token) throw new Error("Not authenticated");
+      await updateMember(state.token, id, input);
+      await reloadMembers();
+    },
+    [reloadMembers, state.token]
+  );
+
+  const handleDeleteMember = useCallback(
+    async (id: string) => {
+      if (!state.token) throw new Error("Not authenticated");
+      await deleteMember(state.token, id);
+      await reloadMembers();
+    },
+    [reloadMembers, state.token]
+  );
+
+  const handleAllocateMemberBalance = useCallback(
+    async (id: string, amount: number, operation: "set" | "add" | "subtract" = "add", notes?: string) => {
+      if (!state.token) throw new Error("Not authenticated");
+      await allocateMemberBalance(state.token, id, { amount, operation, notes });
+      await reloadMembers();
+      // refresh self session balance if admin topped up themselves
+      if (authSession?.user?.id === id) {
+        try {
+          const me = await fetchSessionToken(state.token);
+          setAuthSession(me);
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    [authSession?.user?.id, reloadMembers, state.token]
+  );
 
   const handleInstallApp = useCallback(async () => {
     if (!installPromptEvent) {
@@ -572,6 +718,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const writeCodexConfigField = useCallback(
     async (field: CodexConfigFieldKey, value: string) => {
+      if (authSession?.user && authSession.user.role !== "admin") {
+        setCodexConfigError("Member accounts cannot edit Codex configuration");
+        return;
+      }
       const write = buildConfigValueWrite(field, value);
       if (!write) {
         return;
@@ -604,11 +754,15 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setCodexConfigSaving(false);
       }
     },
-    [client, codexConfig]
+    [authSession?.user, client, codexConfig]
   );
 
   const writeCodexConfigValue = useCallback(
     async (keyPath: string, value: JsonValue) => {
+      if (authSession?.user && authSession.user.role !== "admin") {
+        setCodexConfigError("Member accounts cannot edit Codex configuration");
+        return;
+      }
       const write = buildDynamicConfigValueWrite(keyPath, value);
       if (!write) {
         return;
@@ -635,7 +789,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setCodexConfigSaving(false);
       }
     },
-    [client]
+    [authSession?.user, client]
   );
 
   useEffect(() => {
@@ -820,11 +974,17 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     let mounted = true;
     void (async () => {
       try {
-        const token = await fetchSessionToken();
+        const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+        const session = await fetchSessionToken(storedToken);
         if (!mounted) return;
-        dispatch({ type: "token", token });
-        await client.connect(token);
-        const providers = await fetchProviders(token);
+        if (session.token) {
+          window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
+        }
+        setAuthSession(session);
+        setAuthStatus("authenticated");
+        dispatch({ type: "token", token: session.token });
+        await client.connect(session.token);
+        const providers = await fetchProviders(session.token);
         if (!mounted) return;
         dispatch({ type: "providers", providers });
         try {
@@ -844,7 +1004,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         }
         await loadBasics();
       } catch (error) {
+        if (!mounted) return;
+        if (error instanceof LoginRequiredError) {
+          window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+          setAuthStatus("loginRequired");
+          return;
+        }
         dispatch({ type: "error", message: formatErrorText(error) });
+        setAuthStatus("loginRequired");
       }
     })();
     return () => {
@@ -1707,6 +1874,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const saveProvider = useCallback(
     async (provider: ProviderConfig, apiKey?: string) => {
+      if (authSession?.user && authSession.user.role !== "admin") {
+        throw new Error("Admin only: provider management");
+      }
       try {
         const saved = await client.saveProvider(provider, apiKey);
         dispatch({
@@ -1740,6 +1910,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const deleteProvider = useCallback(
     async (providerId: string) => {
+      if (authSession?.user && authSession.user.role !== "admin") {
+        throw new Error("Admin only: provider management");
+      }
       try {
         const deletedProviderId = await client.deleteProvider(providerId);
         dispatch({
@@ -2343,6 +2516,111 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     );
   }
 
+  const completeLoginSession = useCallback(
+    async (session: AuthSession) => {
+      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
+      setAuthSession(session);
+      dispatch({ type: "token", token: session.token });
+      setAuthStatus("authenticated");
+      await client.connect(session.token);
+      const providers = await fetchProviders(session.token);
+      dispatch({ type: "providers", providers });
+      try {
+        const configResult = await client.rpc("config/read", { includeLayers: false });
+        const view = parseConfigReadResponse(configResult);
+        setCodexConfig(view);
+        const providerFromConfig = view.modelProvider ? providers.find((provider) => provider.id === view.modelProvider) : undefined;
+        if (providerFromConfig) {
+          setActiveProviderId(providerFromConfig.id);
+        }
+        if (view.model) {
+          setSelectedModel((current) => current || view.model || current);
+        }
+      } catch {
+        /* optional */
+      }
+      await loadBasics();
+    },
+    [client, loadBasics]
+  );
+
+  const handleLogin = useCallback(
+    async (email: string, password: string, captcha?: { captchaId?: string; captchaAnswer?: string }) => {
+      setLoginSubmitting(true);
+      setLoginError(null);
+      try {
+        const result = await login(email, password, captcha);
+        if ("requires_2fa" in result && result.requires_2fa) {
+          return { requires_2fa: true as const, pendingToken: result.pendingToken };
+        }
+        await completeLoginSession(result as AuthSession);
+      } catch (error) {
+        setLoginError(formatErrorText(error));
+        throw error;
+      } finally {
+        setLoginSubmitting(false);
+      }
+    },
+    [completeLoginSession]
+  );
+
+  const handleLogin2fa = useCallback(
+    async (pendingToken: string, totpCode: string) => {
+      setLoginSubmitting(true);
+      setLoginError(null);
+      try {
+        const session = await loginWith2fa(pendingToken, totpCode);
+        await completeLoginSession(session);
+      } catch (error) {
+        setLoginError(formatErrorText(error));
+        throw error;
+      } finally {
+        setLoginSubmitting(false);
+      }
+    },
+    [completeLoginSession]
+  );
+
+  const handleRegister = useCallback(
+    async (input: {
+      email: string;
+      password: string;
+      username?: string;
+      captchaId?: string;
+      captchaAnswer?: string;
+    }) => {
+      setLoginSubmitting(true);
+      setLoginError(null);
+      try {
+        await registerAccount(input);
+        setLoginError(null);
+      } catch (error) {
+        setLoginError(formatErrorText(error));
+        throw error;
+      } finally {
+        setLoginSubmitting(false);
+      }
+    },
+    []
+  );
+
+  if (authStatus === "checking") {
+    return <AuthLoadingScreen />;
+  }
+
+  if (authStatus === "loginRequired") {
+    return (
+      <LoginScreen
+        error={loginError}
+        submitting={loginSubmitting}
+        onSubmit={handleLogin}
+        onRegister={handleRegister}
+        onLogin2fa={handleLogin2fa}
+      />
+    );
+  }
+
+  const currentUserLabel = authSession?.user?.email ?? "Local session";
   const statusColor =
     state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
   const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((threadId): threadId is string => Boolean(threadId)));
@@ -2391,6 +2669,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const workspacePickerEntries = fileDirectories[workspacePickerPath] ?? [];
   const workspacePickerFolders = workspacePickerEntries.filter((entry) => entry.isDirectory);
   const workspacePickerParent = parentWorkspacePath(workspacePickerPath);
+  void currentUserLabel;
 
   return (
     <Box
@@ -3060,6 +3339,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         </DialogActions>
       </Dialog>
       <SettingsDrawer
+        sessionToken={state.token}
         open={settingsOpen}
         initialSection={settingsSection}
         initialPluginTab={settingsPluginTab}
@@ -3094,6 +3374,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         mcpResourceContents={mcpResourceContents}
         mcpOauthUrls={mcpOauthUrls}
         auditEvents={auditEvents}
+        currentUser={authSession?.user ?? null}
+        members={members}
+        membersLoading={membersLoading}
+        membersError={membersError}
+        allowedPermissions={allowedPermissions}
         t={t}
         onClose={() => setSettingsOpen(false)}
         onThemeModeChange={onThemeModeChange}
@@ -3137,6 +3422,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onInsertPluginMention={insertPluginMention}
         onInstallPlugin={(marketplace, plugin) => void installPlugin(marketplace, plugin)}
         onUninstallPlugin={(plugin) => void uninstallPlugin(plugin)}
+        onReloadMembers={reloadMembers}
+        onCreateMember={handleCreateMember}
+        onUpdateMember={handleUpdateMember}
+        onDeleteMember={handleDeleteMember}
+        onAllocateMemberBalance={handleAllocateMemberBalance}
       />
       <Snackbar
         open={state.errors.length > 0}
@@ -3785,6 +4075,272 @@ function safeThemeVideoUrl(value?: string): string | undefined {
     return trimmed;
   }
   return undefined;
+}
+
+function AuthLoadingScreen() {
+  return (
+    <Box
+      sx={{
+        minHeight: "100dvh",
+        display: "grid",
+        placeItems: "center",
+        bgcolor: "background.default",
+        color: "text.primary"
+      }}
+    >
+      <Stack spacing={2} alignItems="center">
+        <CircularProgress size={30} />
+        <Typography variant="body2" color="text.secondary">
+          Checking session
+        </Typography>
+      </Stack>
+    </Box>
+  );
+}
+
+function LoginScreen({
+  error,
+  submitting,
+  onSubmit,
+  onRegister,
+  onLogin2fa
+}: {
+  error: string | null;
+  submitting: boolean;
+  onSubmit: (
+    email: string,
+    password: string,
+    captcha?: { captchaId?: string; captchaAnswer?: string }
+  ) => Promise<{ requires_2fa?: boolean; pendingToken?: string } | void>;
+  onRegister?: (input: {
+    email: string;
+    password: string;
+    username?: string;
+    captchaId?: string;
+    captchaAnswer?: string;
+  }) => Promise<void>;
+  onLogin2fa?: (pendingToken: string, totpCode: string) => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [mode, setMode] = useState<"login" | "register" | "2fa">("login");
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaSvg, setCaptchaSvg] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [pendingToken, setPendingToken] = useState("");
+  const [authConfig, setAuthConfig] = useState<{ registrationEnabled: boolean; captchaEnabled: boolean; totpEnabled: boolean }>({
+    registrationEnabled: false,
+    captchaEnabled: true,
+    totpEnabled: true
+  });
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const refreshCaptcha = useCallback(async () => {
+    try {
+      const challenge = await fetchCaptcha();
+      setCaptchaId(challenge.id);
+      setCaptchaSvg(challenge.svg);
+      setCaptchaAnswer("");
+    } catch {
+      setCaptchaId("");
+      setCaptchaSvg("");
+    }
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setAuthConfig(await fetchPublicAuthConfig());
+      } catch {
+        /* keep defaults */
+      }
+      await refreshCaptcha();
+    })();
+  }, [refreshCaptcha]);
+
+  const captchaPayload = authConfig.captchaEnabled
+    ? { captchaId, captchaAnswer: captchaAnswer.trim() }
+    : undefined;
+
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        px: 2,
+        background: (theme) =>
+          theme.palette.mode === "dark"
+            ? "radial-gradient(circle at top, rgba(56,189,248,0.12), transparent 40%), #0b1220"
+            : "radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 40%), #f4f7fb"
+      }}
+    >
+      <Box
+        component="form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void (async () => {
+            setLocalError(null);
+            try {
+              if (mode === "2fa") {
+                await onLogin2fa?.(pendingToken, totpCode.trim());
+                return;
+              }
+              if (mode === "register") {
+                await onRegister?.({
+                  email: email.trim(),
+                  password,
+                  username: username.trim() || undefined,
+                  captchaId: captchaPayload?.captchaId,
+                  captchaAnswer: captchaPayload?.captchaAnswer
+                });
+                setMode("login");
+                await refreshCaptcha();
+                return;
+              }
+              const result = await onSubmit(email.trim(), password, captchaPayload);
+              if (result?.requires_2fa && result.pendingToken) {
+                setPendingToken(result.pendingToken);
+                setMode("2fa");
+                setTotpCode("");
+                return;
+              }
+            } catch (err) {
+              setLocalError(err instanceof Error ? err.message : String(err));
+              await refreshCaptcha();
+            }
+          })();
+        }}
+        sx={{
+          width: "100%",
+          maxWidth: 440,
+          p: 3,
+          borderRadius: 3,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: (theme) => (theme.palette.mode === "dark" ? "rgba(15,23,42,0.88)" : "rgba(255,255,255,0.92)"),
+          backdropFilter: "blur(16px)",
+          boxShadow: 8
+        }}
+      >
+        <Stack spacing={2}>
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 900, letterSpacing: -0.5 }}>
+              Codex React UI
+            </Typography>
+            <Typography color="text.secondary">
+              {mode === "register" ? t("auth.registerTitle") : mode === "2fa" ? t("auth.totpTitle") : t("auth.loginTitle")}
+            </Typography>
+          </Box>
+
+          {(error || localError) && (
+            <Alert severity="error" variant="outlined">
+              {localError || error}
+            </Alert>
+          )}
+
+          {mode === "2fa" ? (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                {t("auth.totpHint")}
+              </Typography>
+              <TextField
+                id="login-totp"
+                size="small"
+                label={t("auth.totpCode")}
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value)}
+                inputProps={{ inputMode: "numeric", maxLength: 6, autoComplete: "one-time-code" }}
+                autoFocus
+              />
+              <Button type="submit" variant="contained" disabled={submitting || totpCode.trim().length < 6} sx={{ borderRadius: 999, py: 1.1, fontWeight: 800 }}>
+                {submitting ? t("auth.verifying") : t("auth.verify")}
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setMode("login");
+                  setPendingToken("");
+                  setTotpCode("");
+                  void refreshCaptcha();
+                }}
+              >
+                {t("auth.backToLogin")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <TextField id="login-email" size="small" label={t("auth.email")} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+              <TextField
+                id="login-password"
+                size="small"
+                type="password"
+                label={t("auth.password")}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                required
+              />
+              {mode === "register" ? (
+                <TextField id="login-username" size="small" label={t("auth.username")} value={username} onChange={(e) => setUsername(e.target.value)} />
+              ) : null}
+
+              {authConfig.captchaEnabled ? (
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Box
+                      sx={{
+                        flex: 1,
+                        height: 56,
+                        borderRadius: 2,
+                        overflow: "hidden",
+                        border: "1px solid",
+                        borderColor: "divider",
+                        bgcolor: "#0f172a"
+                      }}
+                      dangerouslySetInnerHTML={{ __html: captchaSvg || "" }}
+                    />
+                    <Button size="small" variant="outlined" onClick={() => void refreshCaptcha()} sx={{ borderRadius: 999, minWidth: 72 }}>
+                      {t("auth.refreshCaptcha")}
+                    </Button>
+                  </Stack>
+                  <TextField
+                    id="login-captcha"
+                    size="small"
+                    label={t("auth.captcha")}
+                    value={captchaAnswer}
+                    onChange={(e) => setCaptchaAnswer(e.target.value)}
+                    required
+                    placeholder={t("auth.captchaPlaceholder")}
+                  />
+                </Stack>
+              ) : null}
+
+              <Button type="submit" variant="contained" disabled={submitting} sx={{ borderRadius: 999, py: 1.1, fontWeight: 800 }}>
+                {submitting ? t("auth.submitting") : mode === "register" ? t("auth.register") : t("auth.login")}
+              </Button>
+
+              {authConfig.registrationEnabled ? (
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setMode((current) => (current === "register" ? "login" : "register"));
+                    setLocalError(null);
+                    void refreshCaptcha();
+                  }}
+                >
+                  {mode === "register" ? t("auth.haveAccount") : t("auth.needAccount")}
+                </Button>
+              ) : null}
+            </>
+          )}
+        </Stack>
+      </Box>
+    </Box>
+  );
 }
 
 function sideChatTitle(text: string, fallbackIndex: number): string {
