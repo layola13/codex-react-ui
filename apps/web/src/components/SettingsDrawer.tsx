@@ -918,7 +918,7 @@ function RelaySettingsPanel({
     setBaseUrl(provider.baseUrl ?? "");
     setNativeModels(provider.nativeModels.join(", "));
     setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
-    setModelRates(formatModelRates(provider.modelRates));
+    setModelRates(formatModelRates(provider.modelRates) || formatModelRates(defaultRatesForProvider(provider)));
     setApiKey("");
     setEditingProviderId(provider.id);
     setRelayView("form");
@@ -1517,6 +1517,18 @@ function providerModelOptions(provider: ProviderConfig): Array<{ value: string; 
     ...provider.modelAliases.map((entry) => ({ value: entry.alias, label: `${entry.alias} -> ${entry.model}` })),
     ...nativeModelOptions.map((model) => ({ value: model, label: model }))
   ].filter((entry, index, entries) => entries.findIndex((candidate) => candidate.value === entry.value) === index);
+}
+
+const OPENAI_DEFAULT_MODEL_RATES: NonNullable<ProviderConfig["modelRates"]> = [
+  { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 },
+  { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1 },
+  { model: "gpt-5.6-sol", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 }
+];
+
+function defaultRatesForProvider(provider: ProviderConfig): ProviderConfig["modelRates"] {
+  const models = new Set([provider.defaultModel, ...provider.nativeModels, ...provider.modelAliases.flatMap((entry) => [entry.alias, entry.model])].filter(Boolean));
+  const rates = OPENAI_DEFAULT_MODEL_RATES.filter((rate) => models.has(rate.model));
+  return rates.length > 0 ? rates : undefined;
 }
 
 function providerCounts(providers: ProviderConfig[]): Record<string, number> {
