@@ -2,12 +2,18 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
+  CircularProgress,
   Divider,
+  FormControlLabel,
   Link,
   Paper,
+  Radio,
+  RadioGroup,
   Snackbar,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography
@@ -17,7 +23,11 @@ import DownloadIcon from "@mui/icons-material/Download";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 import HubIcon from "@mui/icons-material/Hub";
-import { useMemo, useState } from "react";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import InstallDesktopIcon from "@mui/icons-material/InstallDesktop";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n, type TranslateFn } from "../i18n";
 import {
   CODE_LAUNCH,
@@ -27,6 +37,14 @@ import {
   codeLaunchCloneCommand,
   type LaunchAdapter
 } from "../launchAdapters";
+import {
+  fetchLaunchAdapters,
+  installLaunchAdapters,
+  writeLaunchAdapterEnvs,
+  type LaunchAdapterStatus,
+  type LaunchEnvValues,
+  type InstallLaunchResultItem
+} from "../state/codexClient";
 
 /** Chat engines planned for multi-engine UI (only codex is live today). */
 export type ChatEngineId =
@@ -184,16 +202,157 @@ type CatalogProps = {
   t: TranslateFn;
   /** When true, show full settings page chrome (engine switcher + roadmap). */
   fullPage?: boolean;
+  /** Session token for host detect / one-click install APIs. */
+  token?: string | null;
+  /** When membership is on, only admin can mutate host installs. */
+  isAdmin?: boolean;
 };
 
 /**
- * Full settings surface: engine plan (default Codex) + layola13 *-launch download catalog.
+ * Full settings surface: engine plan (default Codex) + layola13 *-launch download catalog
+ * with host install detection and optional one-click install + .env write.
  */
-export function LaunchAdaptersCatalog({ t, fullPage = false }: CatalogProps) {
+export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdmin = true }: CatalogProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [engine, setEngine] = useState<ChatEngineId>("codex");
   const { locale } = useI18n();
   const localeIsCn = locale === "zh";
+
+  const [statusMap, setStatusMap] = useState<Record<string, LaunchAdapterStatus>>({});
+  const [sourceRoot, setSourceRoot] = useState<string>("");
+  const [detectLoading, setDetectLoading] = useState(false);
+  const [detectError, setDetectError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [envMode, setEnvMode] = useState<"shared" | "separate" | "none">("shared");
+  const [sharedEnv, setSharedEnv] = useState<LaunchEnvValues>({ baseUrl: "", model: "", apiKey: "" });
+  const [separateEnv, setSeparateEnv] = useState<Record<string, LaunchEnvValues>>({});
+  const [skipCli, setSkipCli] = useState(true);
+  const [forceEnv, setForceEnv] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [installLog, setInstallLog] = useState<InstallLaunchResultItem[] | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const canMutate = Boolean(token) && isAdmin;
+
+  const reloadStatus = useCallback(async () => {
+    if (!token) {
+      setDetectError(null);
+      return;
+    }
+    setDetectLoading(true);
+    setDetectError(null);
+    try {
+      const data = await fetchLaunchAdapters(token);
+      setSourceRoot(data.sourceRoot);
+      const map: Record<string, LaunchAdapterStatus> = {};
+      const nextSelected: Record<string, boolean> = {};
+      for (const row of data.adapters) {
+        map[row.id] = row;
+        nextSelected[row.id] = row.needsInstall && row.cloneable;
+      }
+      setStatusMap(map);
+      setSelected((prev) => {
+        // Keep user choices if already set
+        if (Object.keys(prev).length) {
+          const merged = { ...nextSelected };
+          for (const [k, v] of Object.entries(prev)) {
+            if (k in merged) merged[k] = v;
+          }
+          return merged;
+        }
+        return nextSelected;
+      });
+    } catch (err) {
+      setDetectError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDetectLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void reloadStatus();
+  }, [reloadStatus]);
+
+  const missingCount = useMemo(
+    () => Object.values(statusMap).filter((s) => s.needsInstall).length,
+    [statusMap]
+  );
+  const selectedIds = useMemo(
+    () => Object.entries(selected).filter(([, v]) => v).map(([id]) => id),
+    [selected]
+  );
+
+  const onInstall = async (ids?: string[]) => {
+    if (!token || !canMutate) return;
+    setInstalling(true);
+    setActionMsg(null);
+    setInstallLog(null);
+    try {
+      const payload = {
+        ids: ids && ids.length ? ids : selectedIds,
+        missingOnly: false,
+        skipCli,
+        envMode,
+        sharedEnv: envMode === "shared" ? sharedEnv : undefined,
+        separateEnv: envMode === "separate" ? separateEnv : undefined,
+        forceEnv
+      };
+      const result = await installLaunchAdapters(token, payload);
+      setInstallLog(result.results);
+      const map: Record<string, LaunchAdapterStatus> = {};
+      for (const row of result.adapters) map[row.id] = row;
+      setStatusMap(map);
+      const ok = result.results.filter((r) => r.ok).length;
+      const fail = result.results.filter((r) => !r.ok).length;
+      setActionMsg(t("settings.launch.installDone", { ok: String(ok), fail: String(fail) }));
+    } catch (err) {
+      setDetectError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const onWriteEnvOnly = async () => {
+    if (!token || !canMutate || envMode === "none") return;
+    setInstalling(true);
+    setActionMsg(null);
+    try {
+      const result = await writeLaunchAdapterEnvs(token, {
+        mode: envMode === "separate" ? "separate" : "shared",
+        ids: selectedIds.length ? selectedIds : undefined,
+        sharedEnv: envMode === "shared" ? sharedEnv : undefined,
+        separateEnv: envMode === "separate" ? separateEnv : undefined,
+        force: forceEnv
+      });
+      const map: Record<string, LaunchAdapterStatus> = {};
+      for (const row of result.adapters) map[row.id] = row;
+      setStatusMap(map);
+      setActionMsg(t("settings.launch.envWrote", { count: String(result.results.filter((r) => r.ok).length) }));
+    } catch (err) {
+      setDetectError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const statusChip = (adapter: LaunchAdapter) => {
+    const st = statusMap[adapter.id];
+    if (!token) {
+      return <Chip size="small" variant="outlined" label={t("settings.launch.statusUnknown")} />;
+    }
+    if (!st) {
+      return <Chip size="small" variant="outlined" label={t("settings.launch.statusChecking")} />;
+    }
+    if (st.installed && st.envConfigured) {
+      return <Chip size="small" color="success" icon={<CheckCircleIcon />} label={t("settings.launch.statusReady")} />;
+    }
+    if (st.installed && !st.envConfigured) {
+      return <Chip size="small" color="warning" label={t("settings.launch.statusNeedEnv")} />;
+    }
+    if (!st.cloneable) {
+      return <Chip size="small" color="default" label={t("settings.launch.statusNoRepo")} />;
+    }
+    return <Chip size="small" color="error" icon={<ErrorOutlineIcon />} label={t("settings.launch.statusMissing")} />;
+  };
 
   const activeEngine: ChatEnginePlan = useMemo(() => {
     return CHAT_ENGINE_PLAN.find((e) => e.id === engine) ?? {
@@ -350,6 +509,250 @@ export function LaunchAdaptersCatalog({ t, fullPage = false }: CatalogProps) {
         <Typography variant="body2">{t("settings.launch.catalogInfo")}</Typography>
       </Alert>
 
+      <Paper
+        variant="outlined"
+        sx={{
+          p: 2,
+          borderRadius: 2.5,
+          borderColor: "primary.main",
+          background: (theme) =>
+            theme.palette.mode === "dark"
+              ? "linear-gradient(135deg, rgba(34,197,94,0.08), rgba(56,189,248,0.05))"
+              : "linear-gradient(135deg, rgba(34,197,94,0.1), rgba(14,165,233,0.06))"
+        }}
+      >
+        <Stack spacing={1.75}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ sm: "center" }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
+                {t("settings.launch.oneClickTitle")}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t("settings.launch.oneClickHint", {
+                  missing: String(missingCount),
+                  root: sourceRoot || "~/.codex-react-ui/launch-src"
+                })}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={detectLoading ? <CircularProgress size={14} /> : <RefreshIcon />}
+                onClick={() => void reloadStatus()}
+                disabled={!token || detectLoading}
+                sx={{ borderRadius: 999 }}
+              >
+                {t("settings.launch.detect")}
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                color="success"
+                startIcon={installing ? <CircularProgress size={14} color="inherit" /> : <InstallDesktopIcon />}
+                onClick={() => void onInstall(selectedIds)}
+                disabled={!canMutate || installing || selectedIds.length === 0}
+                sx={{ borderRadius: 999, fontWeight: 800 }}
+              >
+                {t("settings.launch.installSelected", { count: String(selectedIds.length) })}
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() =>
+                  void onInstall(
+                    Object.values(statusMap)
+                      .filter((s) => s.needsInstall && (s.cloneable || s.sourcePresent))
+                      .map((s) => s.id)
+                  )
+                }
+                disabled={!canMutate || installing || missingCount === 0}
+                sx={{ borderRadius: 999, fontWeight: 800 }}
+              >
+                {t("settings.launch.installMissing")}
+              </Button>
+            </Stack>
+          </Stack>
+
+          {!token ? (
+            <Alert severity="warning" variant="outlined" sx={{ borderRadius: 2 }}>
+              {t("settings.launch.needToken")}
+            </Alert>
+          ) : null}
+          {token && !isAdmin ? (
+            <Alert severity="info" variant="outlined" sx={{ borderRadius: 2 }}>
+              {t("settings.launch.adminOnlyMutate")}
+            </Alert>
+          ) : null}
+          {detectError ? (
+            <Alert severity="error" variant="outlined" sx={{ borderRadius: 2 }}>
+              {detectError}
+            </Alert>
+          ) : null}
+          {actionMsg ? (
+            <Alert severity="success" variant="outlined" sx={{ borderRadius: 2 }}>
+              {actionMsg}
+            </Alert>
+          ) : null}
+
+          <Divider />
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+            {t("settings.launch.envModeTitle")}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t("settings.launch.envModeHint")}
+          </Typography>
+          <RadioGroup
+            row
+            value={envMode}
+            onChange={(_, v) => setEnvMode(v as "shared" | "separate" | "none")}
+          >
+            <FormControlLabel value="shared" control={<Radio size="small" />} label={t("settings.launch.envShared")} />
+            <FormControlLabel value="separate" control={<Radio size="small" />} label={t("settings.launch.envSeparate")} />
+            <FormControlLabel value="none" control={<Radio size="small" />} label={t("settings.launch.envNone")} />
+          </RadioGroup>
+
+          {envMode === "shared" ? (
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
+              <TextField
+                size="small"
+                fullWidth
+                label={t("settings.launch.envBaseUrl")}
+                value={sharedEnv.baseUrl ?? ""}
+                onChange={(e) => setSharedEnv((s) => ({ ...s, baseUrl: e.target.value }))}
+                placeholder="https://api.example.com/v1"
+              />
+              <TextField
+                size="small"
+                fullWidth
+                label={t("settings.launch.envModel")}
+                value={sharedEnv.model ?? ""}
+                onChange={(e) => setSharedEnv((s) => ({ ...s, model: e.target.value }))}
+                placeholder="gpt-4o"
+              />
+              <TextField
+                size="small"
+                fullWidth
+                type="password"
+                label={t("settings.launch.envApiKey")}
+                value={sharedEnv.apiKey ?? ""}
+                onChange={(e) => setSharedEnv((s) => ({ ...s, apiKey: e.target.value }))}
+                placeholder="sk-..."
+              />
+            </Stack>
+          ) : null}
+
+          {envMode === "separate" ? (
+            <Stack spacing={1.25}>
+              {LAUNCH_ADAPTERS.filter((a) => selected[a.id]).map((adapter) => {
+                const env = separateEnv[adapter.id] ?? {};
+                return (
+                  <Paper key={adapter.id} variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800 }}>
+                      {adapter.name} ({adapter.envPrefix}*)
+                    </Typography>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 1 }}>
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="BASE_URL"
+                        value={env.baseUrl ?? ""}
+                        onChange={(e) =>
+                          setSeparateEnv((s) => ({
+                            ...s,
+                            [adapter.id]: { ...s[adapter.id], baseUrl: e.target.value }
+                          }))
+                        }
+                      />
+                      <TextField
+                        size="small"
+                        fullWidth
+                        label="MODEL"
+                        value={env.model ?? ""}
+                        onChange={(e) =>
+                          setSeparateEnv((s) => ({
+                            ...s,
+                            [adapter.id]: { ...s[adapter.id], model: e.target.value }
+                          }))
+                        }
+                      />
+                      <TextField
+                        size="small"
+                        fullWidth
+                        type="password"
+                        label="API_KEY"
+                        value={env.apiKey ?? ""}
+                        onChange={(e) =>
+                          setSeparateEnv((s) => ({
+                            ...s,
+                            [adapter.id]: { ...s[adapter.id], apiKey: e.target.value }
+                          }))
+                        }
+                      />
+                    </Stack>
+                  </Paper>
+                );
+              })}
+              {selectedIds.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  {t("settings.launch.selectForSeparateEnv")}
+                </Typography>
+              ) : null}
+            </Stack>
+          ) : null}
+
+          <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+            <FormControlLabel
+              control={<Checkbox size="small" checked={skipCli} onChange={(_, v) => setSkipCli(v)} />}
+              label={t("settings.launch.skipCli")}
+            />
+            <FormControlLabel
+              control={<Checkbox size="small" checked={forceEnv} onChange={(_, v) => setForceEnv(v)} />}
+              label={t("settings.launch.forceEnv")}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!canMutate || installing || envMode === "none"}
+              onClick={() => void onWriteEnvOnly()}
+              sx={{ borderRadius: 999 }}
+            >
+              {t("settings.launch.writeEnvOnly")}
+            </Button>
+          </Stack>
+
+          {installLog ? (
+            <Box
+              component="pre"
+              sx={{
+                m: 0,
+                p: 1.25,
+                borderRadius: 1.5,
+                bgcolor: "action.hover",
+                fontSize: 11,
+                fontFamily: "JetBrains Mono, ui-monospace, monospace",
+                maxHeight: 220,
+                overflow: "auto",
+                whiteSpace: "pre-wrap"
+              }}
+            >
+              {installLog
+                .map((r) =>
+                  [
+                    `# ${r.id} ${r.ok ? "OK" : "FAIL"}`,
+                    ...r.steps.map((s) => `  ${s}`),
+                    r.error ? `  error: ${r.error}` : ""
+                  ]
+                    .filter(Boolean)
+                    .join("\n")
+                )
+                .join("\n\n")}
+            </Box>
+          ) : null}
+        </Stack>
+      </Paper>
+
       <Divider />
 
       <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
@@ -387,10 +790,19 @@ export function LaunchAdaptersCatalog({ t, fullPage = false }: CatalogProps) {
             >
               <Stack spacing={1}>
                 <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                  <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
-                    {adapter.name}
-                  </Typography>
-                  <Stack direction="row" spacing={0.5}>
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Checkbox
+                      size="small"
+                      checked={Boolean(selected[adapter.id])}
+                      onChange={(_, v) => setSelected((s) => ({ ...s, [adapter.id]: v }))}
+                      disabled={!token}
+                    />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
+                      {adapter.name}
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                    {statusChip(adapter)}
                     {adapter.requiredForCodexUi ? (
                       <Chip size="small" color="warning" label={t("settings.launch.requiredForUi")} />
                     ) : (
@@ -400,8 +812,18 @@ export function LaunchAdaptersCatalog({ t, fullPage = false }: CatalogProps) {
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
                   {adapter.product}
+                  {statusMap[adapter.id]?.wrapperPath
+                    ? ` · ${statusMap[adapter.id]?.wrapperPath}`
+                    : statusMap[adapter.id]?.sourceDir
+                      ? ` · src:${statusMap[adapter.id]?.sourceDir}`
+                      : ""}
                 </Typography>
                 <Typography variant="body2">{summary}</Typography>
+                {statusMap[adapter.id] && !statusMap[adapter.id]?.cloneable && !statusMap[adapter.id]?.installed ? (
+                  <Alert severity="warning" variant="outlined" sx={{ borderRadius: 1.5, py: 0 }}>
+                    {t("settings.launch.noPublicRepo")}
+                  </Alert>
+                ) : null}
                 <Box
                   component="pre"
                   sx={{
@@ -418,6 +840,19 @@ export function LaunchAdaptersCatalog({ t, fullPage = false }: CatalogProps) {
                   {install}
                 </Box>
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {statusMap[adapter.id]?.needsInstall && (statusMap[adapter.id]?.cloneable || statusMap[adapter.id]?.sourcePresent) ? (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="success"
+                      startIcon={<InstallDesktopIcon />}
+                      disabled={!canMutate || installing}
+                      onClick={() => void onInstall([adapter.id])}
+                      sx={{ borderRadius: 999, fontWeight: 800 }}
+                    >
+                      {t("settings.launch.oneClick")}
+                    </Button>
+                  ) : null}
                   <Button
                     size="small"
                     variant={adapter.requiredForCodexUi ? "contained" : "outlined"}

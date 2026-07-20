@@ -785,7 +785,7 @@ export function SettingsDrawer({
             {section === "launch" && (
               <SettingsSection icon={<RocketLaunchIcon fontSize="small" />} title={t("settings.section.launch")} subtitle={t("settings.launch.subtitle")}>
                 <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
-                  <LaunchAdaptersCatalog t={t} fullPage />
+                  <LaunchAdaptersCatalog t={t} fullPage token={sessionToken} isAdmin={!currentUser || currentUser.role === "admin"} />
                 </Box>
               </SettingsSection>
             )}

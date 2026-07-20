@@ -1786,3 +1786,120 @@ export async function changeOwnPassword(
   }
   return body.data;
 }
+
+export type LaunchEnvValues = {
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+};
+
+export type LaunchAdapterStatus = {
+  id: string;
+  repo: string;
+  cloneUrl: string | null;
+  cloneable: boolean;
+  installed: boolean;
+  wrapperPath: string | null;
+  productCliPath: string | null;
+  productCliPresent: boolean;
+  sourceDir: string | null;
+  sourcePresent: boolean;
+  envPath: string;
+  envPresent: boolean;
+  envConfigured: boolean;
+  envPreview: { baseUrl: string | null; model: string | null; hasApiKey: boolean };
+  needsInstall: boolean;
+};
+
+export type LaunchAdaptersDetectResponse = {
+  sourceRoot: string;
+  adapters: LaunchAdapterStatus[];
+};
+
+export type InstallLaunchResultItem = {
+  id: string;
+  ok: boolean;
+  steps: string[];
+  error?: string;
+  status?: LaunchAdapterStatus;
+};
+
+export async function fetchLaunchAdapters(token: string): Promise<LaunchAdaptersDetectResponse> {
+  const response = await fetch("/api/launch-adapters", {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Failed to detect launch adapters: ${response.status}`);
+  }
+  return (await response.json()) as LaunchAdaptersDetectResponse;
+}
+
+export async function installLaunchAdapters(
+  token: string,
+  input: {
+    ids?: string[];
+    missingOnly?: boolean;
+    skipCli?: boolean;
+    envMode?: "shared" | "separate" | "none";
+    sharedEnv?: LaunchEnvValues;
+    separateEnv?: Record<string, LaunchEnvValues>;
+    forceEnv?: boolean;
+  }
+): Promise<{ results: InstallLaunchResultItem[]; adapters: LaunchAdapterStatus[] }> {
+  const response = await fetch("/api/launch-adapters/install", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    results?: InstallLaunchResultItem[];
+    adapters?: LaunchAdapterStatus[];
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(body.error || `Install failed: ${response.status}`);
+  }
+  return {
+    results: body.results ?? [],
+    adapters: body.adapters ?? []
+  };
+}
+
+export async function writeLaunchAdapterEnvs(
+  token: string,
+  input: {
+    mode: "shared" | "separate";
+    ids?: string[];
+    sharedEnv?: LaunchEnvValues;
+    separateEnv?: Record<string, LaunchEnvValues>;
+    force?: boolean;
+  }
+): Promise<{
+  results: Array<{ id: string; ok: boolean; path: string; wrote: boolean; error?: string }>;
+  adapters: LaunchAdapterStatus[];
+}> {
+  const response = await fetch("/api/launch-adapters/env", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    results?: Array<{ id: string; ok: boolean; path: string; wrote: boolean; error?: string }>;
+    adapters?: LaunchAdapterStatus[];
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(body.error || `Write env failed: ${response.status}`);
+  }
+  return {
+    results: body.results ?? [],
+    adapters: body.adapters ?? []
+  };
+}

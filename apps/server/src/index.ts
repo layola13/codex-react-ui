@@ -23,6 +23,13 @@ import {
   totpUri,
   verifyTotpCode
 } from "./securityStore.js";
+import {
+  detectAll,
+  installLaunchAdapters,
+  writeEnvsOnly,
+  type InstallLaunchRequest,
+  type LaunchEnvValues
+} from "./launchInstall.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -589,6 +596,64 @@ async function handleApiRequest(
         }
       }, 200, headers);
     }
+    case "GET /api/launch-adapters": {
+      // Host-local install detection; any authenticated session (or token mode) may read.
+      return jsonResponse(detectAll(), 200, headers);
+    }
+    case "POST /api/launch-adapters/install": {
+      // Mutates host filesystem (git clone, install.sh, ~/.config/*-launch/.env).
+      // Prefer admin when membership is on; allow any authed session in token-only mode.
+      if (authStore && user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: install launch adapters on the host" }, 403, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const ids = Array.isArray(body.ids)
+          ? body.ids.filter((entry): entry is string => typeof entry === "string")
+          : undefined;
+        const envMode =
+          body.envMode === "shared" || body.envMode === "separate" || body.envMode === "none"
+            ? body.envMode
+            : "none";
+        const sharedEnv = parseLaunchEnv(body.sharedEnv);
+        const separateEnv = parseSeparateLaunchEnv(body.separateEnv);
+        const installRequest: InstallLaunchRequest = {
+          ids,
+          missingOnly: body.missingOnly === true || (!ids?.length && body.missingOnly !== false),
+          skipCli: body.skipCli !== false,
+          envMode,
+          sharedEnv,
+          separateEnv,
+          forceEnv: body.forceEnv === true
+        };
+        const result = await installLaunchAdapters(installRequest);
+        return jsonResponse(result, 200, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/launch-adapters/env": {
+      if (authStore && user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: write launch adapter .env" }, 403, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const mode = body.mode === "separate" ? "separate" : "shared";
+        const ids = Array.isArray(body.ids)
+          ? body.ids.filter((entry): entry is string => typeof entry === "string")
+          : undefined;
+        const result = writeEnvsOnly(
+          mode,
+          parseLaunchEnv(body.sharedEnv),
+          parseSeparateLaunchEnv(body.separateEnv),
+          ids,
+          body.force === true
+        );
+        return jsonResponse({ ...result, adapters: detectAll().adapters }, 200, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
     default: {
       // POST /api/members/:id/balance  admin allocate credit
       const balanceMatch = url.pathname.match(/^\/api\/members\/([^/]+)\/balance$/);
@@ -719,6 +784,32 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function parseLaunchEnv(value: unknown): LaunchEnvValues | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const out: LaunchEnvValues = {};
+  if (typeof record.baseUrl === "string") out.baseUrl = record.baseUrl;
+  if (typeof record.model === "string") out.model = record.model;
+  if (typeof record.apiKey === "string") out.apiKey = record.apiKey;
+  return out;
+}
+
+function parseSeparateLaunchEnv(value: unknown): Record<string, LaunchEnvValues> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const out: Record<string, LaunchEnvValues> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const parsed = parseLaunchEnv(entry);
+    if (parsed) {
+      out[key] = parsed;
+    }
+  }
+  return out;
 }
 
 function jsonResponse(value: unknown, status = 200, headers = securityHeaders()): Response {
