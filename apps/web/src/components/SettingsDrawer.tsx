@@ -100,6 +100,8 @@ import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPl
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
 import { MembersPermissionsPanel } from "./MembersPermissionsPanel";
+import { CodeLaunchRelayBanner, ProviderCodeLaunchHint } from "./LaunchAdaptersPanel";
+import { relayLikelyNeedsCodeLaunch } from "../launchAdapters";
 import { SecuritySettingsPanel } from "./SecuritySettingsPanel";
 import { UsageBillingPanel } from "./UsageBillingPanel";
 import type { TranslateFn, TranslationKey } from "../i18n";
@@ -1168,6 +1170,9 @@ function RelaySettingsPanel({
           </Alert>
         </Box>
       ) : null}
+      <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
+        <CodeLaunchRelayBanner t={t} />
+      </Box>
       {relayView === "form" && canManage ? (
       <Box
         sx={{
@@ -1577,6 +1582,7 @@ function RelaySettingsPanel({
                                 ))}
                               </Select>
                             </FormControl>
+                            <ProviderCodeLaunchHint t={t} needsCodeLaunch={relayLikelyNeedsCodeLaunch(provider)} />
                             <Button
                               size="small"
                               variant={active ? "outlined" : "contained"}

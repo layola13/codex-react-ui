@@ -542,3 +542,8 @@
 - Create/edit member dialogs include relay multi-select (select all / clear, empty = no access).
 - `POST /api/members` accepts `allowedProviderIds` and persists via SecurityStore.
 
+### Launch adapters UX
+- Catalog of layola13 `*-launch` (pattern `https://github.com/layola13/xxxxx-launch`).
+- Relay settings banner + per-provider chip when Chat Completions bridge needed.
+- Plugins tab **启动器适配** with clone/install commands.
+

@@ -339,3 +339,6 @@ The Slash Command parity slice is implemented and verified.
 ### Member–relay assignment (shipped)
 - Admin assigns which relays a member may use at create and edit time.
 
+### Launch plugins (shipped)
+- Remind users to install [code-launch](https://github.com/layola13/code-launch) for Chat Completions-only relays; list sibling `*-launch` adapters.
+

@@ -192,4 +192,5 @@
 - [ ] Token-accurate billing (still flat 0.01 per `turn/start`).
 - [ ] Per-user Docker / host Linux isolation (Phase 2, not required for app-policy model).
 - [x] Member system UX: create/edit with relay whitelist picker; nav renamed from permissions to members.
+- [x] Launch adapters catalog + relay/plugin download reminders (layola13/*-launch, code-launch required for Chat Completions relays).
 

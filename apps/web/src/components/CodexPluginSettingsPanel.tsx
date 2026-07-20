@@ -35,8 +35,9 @@ import type {
   ToolingState
 } from "../state/codexClient";
 import type { TranslateFn } from "../i18n";
+import { LaunchAdaptersCatalog } from "./LaunchAdaptersPanel";
 
-export type CodexPluginSettingsTab = "marketplace" | "installed" | "mcp" | "hooks" | "apps";
+export type CodexPluginSettingsTab = "marketplace" | "installed" | "mcp" | "hooks" | "apps" | "launch";
 
 type Props = {
   activeThreadId: string | null;
@@ -140,6 +141,7 @@ export function CodexPluginSettingsPanel({
           <Tab value="mcp" label={t("settings.plugins.tab.mcp", { count: tooling.mcpServers.length })} />
           <Tab value="hooks" label={t("settings.plugins.tab.hooks", { count: hookCount })} />
           <Tab value="apps" label={t("settings.plugins.tab.apps", { count: tooling.apps.length })} />
+          <Tab value="launch" label={t("settings.plugins.tab.launch")} />
         </Tabs>
         <Box sx={{ p: { xs: 1.25, sm: 1.5 } }}>
           {tab === "marketplace" && (
@@ -183,6 +185,7 @@ export function CodexPluginSettingsPanel({
           )}
           {tab === "hooks" && <HooksSettings hookGroups={tooling.hookGroups} t={t} />}
           {tab === "apps" && <PluginAppsSettings apps={tooling.apps} t={t} />}
+          {tab === "launch" && <LaunchAdaptersCatalog t={t} />}
         </Box>
       </Paper>
     </Stack>
