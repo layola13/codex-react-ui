@@ -30,6 +30,7 @@ Reduced command audit output to a one-line collapsed preview by default.
    - Playwright verifies live assistant first-token latency metadata.
    - Playwright verifies per-answer cache hit, speed, cost line items, and total cost details.
    - Latest verification passed full typecheck, production build, and focused Working/virtualized transcript e2e.
+   - Real-browser simulation used workspace `~/projects/` and prompt `详细评估sci工程`, with screenshots saved for working state, completed cost details, and relay rate settings.
 
 ## Previous Completed Slice
 
