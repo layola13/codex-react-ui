@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, Button, Chip } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import KeyboardDoubleArrowDownIcon from "@mui/icons-material/KeyboardDoubleArrowDown";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import type { TranslateFn } from "../../i18n";
 import { ChatRow } from "./ChatRow";
+import { ChatFloorRail, type ChatFloorEntry } from "./ChatFloorRail";
 import { estimateChatRowSize } from "./chatRowEstimates";
 import type { ChatWaterfallRow } from "./types";
 
@@ -18,6 +20,7 @@ export function ChatWaterfall({ rows, t, before }: Props) {
   const previousRowCountRef = useRef(rows.length);
   const [nearBottom, setNearBottom] = useState(true);
   const [newRowsCount, setNewRowsCount] = useState(0);
+  const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
   const beforeOffset = before ? 1 : 0;
   const virtualCount = rows.length + beforeOffset;
   const liveIndexes = useMemo(
@@ -43,6 +46,28 @@ export function ChatWaterfall({ rows, t, before }: Props) {
     rangeExtractor
   });
   const virtualRows = virtualizer.getVirtualItems();
+  const firstVisibleVirtualIndex =
+    virtualRows.find((virtualRow) => virtualRow.index >= beforeOffset && virtualRow.end > (parentRef.current?.scrollTop ?? 0))?.index ?? beforeOffset;
+  const firstVisibleRowIndex = Math.max(0, firstVisibleVirtualIndex - beforeOffset);
+  const floors = useMemo<ChatFloorEntry[]>(() => {
+    const activeFloorRowIndex = [...rows].reverse().find((row, reverseIndex) => {
+      const rowIndex = rows.length - reverseIndex - 1;
+      return Boolean(row.floor && rowIndex <= firstVisibleRowIndex);
+    });
+    const activeFloorIndex = activeFloorRowIndex?.floor?.index ?? rows.find((row) => row.floor)?.floor?.index ?? null;
+    return rows
+      .map((row, rowIndex) =>
+        row.floor
+          ? {
+              rowIndex,
+              index: row.floor.index,
+              label: row.floor.label,
+              active: row.floor.index === activeFloorIndex
+            }
+          : null
+      )
+      .filter((entry): entry is ChatFloorEntry => Boolean(entry));
+  }, [firstVisibleRowIndex, rows]);
 
   const updateNearBottom = useCallback(() => {
     const element = parentRef.current;
@@ -92,6 +117,17 @@ export function ChatWaterfall({ rows, t, before }: Props) {
     setNewRowsCount(0);
   }
 
+  function jumpToRow(rowIndex: number) {
+    const row = rows[rowIndex];
+    if (!row) {
+      return;
+    }
+    virtualizer.scrollToIndex(rowIndex + beforeOffset, { align: "start" });
+    setNearBottom(false);
+    setFlashRowKey(row.key);
+    window.setTimeout(() => setFlashRowKey((current) => (current === row.key ? null : current)), 1400);
+  }
+
   function scrollToBottom() {
     virtualizer.scrollToIndex(virtualCount - 1, { align: "end" });
     requestAnimationFrame(() => {
@@ -111,11 +147,30 @@ export function ChatWaterfall({ rows, t, before }: Props) {
       ref={parentRef}
       data-testid="chat-waterfall-scroll"
       sx={{
+        position: "relative",
         minHeight: 0,
         overflow: "auto",
         p: { xs: 1.5, sm: 2.5, lg: 3 }
       }}
     >
+      {floors.length > 1 && (
+        <Box
+          sx={{
+            position: "sticky",
+            top: 12,
+            zIndex: 4,
+            height: 0,
+            display: { xs: "none", lg: "flex" },
+            justifyContent: "flex-end",
+            pointerEvents: "none",
+            pr: 0.5
+          }}
+        >
+          <Box sx={{ pointerEvents: "auto" }}>
+            <ChatFloorRail floors={floors} onJump={jumpToRow} />
+          </Box>
+        </Box>
+      )}
       <Box sx={{ maxWidth: "min(100%, 1600px)", mx: "auto" }}>
         <Box
           data-testid="conversation-waterfall"
@@ -163,7 +218,14 @@ export function ChatWaterfall({ rows, t, before }: Props) {
                   left: 0,
                   width: "100%",
                   transform: `translateY(${virtualRow.start}px)`,
-                  pb: 1.1
+                  pb: 1.1,
+                  borderRadius: 1,
+                  animation: flashRowKey === row.key ? "chatRowFlash 1400ms ease" : "none",
+                  "@keyframes chatRowFlash": {
+                    "0%": { boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0.32)}` },
+                    "38%": { boxShadow: (theme) => `0 0 0 6px ${alpha(theme.palette.primary.main, 0.18)}` },
+                    "100%": { boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}` }
+                  }
                 }}
               >
                 <ChatRow row={row} t={t} />

@@ -6,6 +6,23 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented desktop floor navigation for the virtualized chat waterfall.
+
+1. Floor rail:
+   - Added `ChatFloorRail` as a compact right-side desktop prompt rail inside the chat viewport.
+   - User prompt rows provide floor metadata through `buildChatRows()`, so the rail is data-driven rather than DOM-driven.
+   - Hover/focus expands the rail to show prompt previews while the collapsed state remains a narrow marker strip.
+2. Navigation behavior:
+   - The active floor follows the current visible prompt region.
+   - Clicking a prompt floor jumps through the virtualizer to that row.
+   - The target prompt flashes briefly after landing.
+   - Jump to latest continues to work after prompt-floor navigation.
+3. Verification:
+   - Playwright injects 653 logical chat rows, verifies fewer than 80 DOM rows are mounted, checks floor rail visibility, jumps to prompt 150, and returns to the final answer with Jump to latest.
+   - Latest verification passed web/full typecheck, build, focused waterfall navigation e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented the first chat waterfall redesign slice with row normalization, row-specific rendering, and virtual scrolling.
 
 1. Architecture:

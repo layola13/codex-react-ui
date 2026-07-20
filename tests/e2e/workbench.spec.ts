@@ -1471,6 +1471,10 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   expect(mountedRows).toBeGreaterThan(0);
   expect(mountedRows).toBeLessThan(80);
 
+  await expect(page.getByTestId("chat-floor-rail")).toBeVisible();
+  await page.getByRole("button", { name: /Jump to prompt 150: Long user prompt 149/ }).click();
+  await expect(page.getByTestId("conversation-item-long-user-149").getByText("Long user prompt 149")).toBeVisible();
+
   const scroll = page.getByTestId("chat-waterfall-scroll");
   await scroll.evaluate((element) => {
     element.scrollTop = 0;

@@ -2,6 +2,20 @@
 
 ## 2026-07-20
 
+- Chat waterfall floor navigation slice:
+  - Added `ChatFloorRail` for desktop prompt-floor navigation on top of the virtualized waterfall.
+  - Reused `ChatWaterfallRow.floor` metadata so user prompts become clickable floor markers without DOM scanning.
+  - The rail stays compact by default, expands on hover/focus to show prompt previews, tracks the active prompt floor, and jumps through the virtualizer to the selected prompt.
+  - Jumped prompt rows flash briefly so long-session navigation has a visible landing target.
+  - Extended the long transcript Playwright test to prove floor rail visibility, prompt 150 jump behavior, virtualized row mounting, and Jump to latest.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall virtualization slice:
   - Added a dedicated `chat-waterfall` component folder with `ChatWaterfall`, `ChatRow`, `chatRows`, row types, and row size estimates.
   - Extracted transcript normalization into `buildChatRows()`, preserving reasoning attachment to the following assistant answer and active reasoning preview rows.
