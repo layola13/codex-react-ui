@@ -348,6 +348,24 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     clientRef.current = socketClient;
     return socketClient;
   }, []);
+  const threadCwdById = useMemo(() => {
+    const entries = state.threads
+      .map((thread) => [thread.id, normalizeWorkspaceCwd(thread.cwd ?? "")] as const)
+      .filter((entry): entry is readonly [string, string] => Boolean(entry[0] && entry[1]));
+    return new Map(entries);
+  }, [state.threads]);
+  const cwdForThread = useCallback(
+    (threadId?: string | null) => {
+      if (threadId) {
+        const threadCwd = threadCwdById.get(threadId);
+        if (threadCwd) {
+          return threadCwd;
+        }
+      }
+      return normalizeWorkspaceCwd(cwd);
+    },
+    [cwd, threadCwdById]
+  );
 
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.installedThemes, JSON.stringify(installedThemePluginIds));
@@ -888,6 +906,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const result = await client.rpc("thread/read", { threadId, includeTurns: true });
         const loaded = threadReadToTurns(result);
+        syncWorkspaceFromThread(loaded.thread, setCwd, setWorkspaceSelectionPending);
         dispatch({ type: "threadLoaded", thread: loaded.thread, turns: loaded.turns });
         void loadThreadGoal(threadId);
       } catch (error) {
@@ -902,22 +921,26 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const result = await client.rpc("thread/read", { threadId, includeTurns: true });
         const loaded = threadReadToTurns(result);
+        if (threadId === state.activeThreadId) {
+          syncWorkspaceFromThread(loaded.thread, setCwd, setWorkspaceSelectionPending);
+        }
         dispatch({ type: "threadMerged", thread: loaded.thread, turns: loaded.turns });
       } catch (error) {
         dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
-    [client]
+    [client, state.activeThreadId]
   );
 
   const openExistingThread = useCallback(
     async (threadId: string) => {
       try {
+        const resumeCwd = cwdForThread(threadId);
         const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
-        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        const permissionOverrides = permissionToTurnOverrides(permission, resumeCwd);
         const resumeParams: Record<string, JsonValue> = {
           threadId,
-          cwd,
+          cwd: resumeCwd,
           approvalPolicy: permissionOverrides.approvalPolicy,
           sandbox: permissionOverrides.sandbox
         };
@@ -931,7 +954,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         await loadThread(threadId);
       }
     },
-    [activeProviderId, client, cwd, loadThread, permission, selectedModel, state.providers]
+    [activeProviderId, client, cwdForThread, loadThread, permission, selectedModel, state.providers]
   );
 
   useEffect(() => {
@@ -1080,9 +1103,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       throw new Error(t("workspace.required"));
     }
     const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
-    const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+    const startCwd = cwdForThread(null);
+    const permissionOverrides = permissionToTurnOverrides(permission, startCwd);
     const startParams: Record<string, JsonValue> = {
-      cwd,
+      cwd: startCwd,
       sandbox: permissionOverrides.sandbox,
       approvalPolicy: permissionOverrides.approvalPolicy,
       sessionStartSource: "startup"
@@ -1098,7 +1122,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     dispatch({ type: "activeThread", threadId });
     return threadId;
-  }, [activeProviderId, client, cwd, permission, selectedModel, state.activeThreadId, state.providers, t, workspaceSelectionPending]);
+  }, [activeProviderId, client, cwdForThread, permission, selectedModel, state.activeThreadId, state.providers, t, workspaceSelectionPending]);
 
   const startCodexTurn = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[], options: { preserveText?: boolean; forceEffort?: string } = {}) => {
@@ -1113,12 +1137,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
       try {
         const threadId = await ensureActiveThread();
+        const turnCwd = cwdForThread(threadId);
         const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
-        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        const permissionOverrides = permissionToTurnOverrides(permission, turnCwd);
         const turnParams: Record<string, JsonValue> = {
           threadId,
           input,
-          cwd,
+          cwd: turnCwd,
           sandboxPolicy: permissionOverrides.sandboxPolicy,
           approvalPolicy: permissionOverrides.approvalPolicy,
           effort: options.forceEffort ?? (fastModeEnabled ? fastReasoningEffort(reasoningOptions, reasoningEffort) : reasoningEffort)
@@ -1137,7 +1162,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [
       activeProviderId,
       client,
-      cwd,
+      cwdForThread,
       dangerBypassConfirmed,
       ensureActiveThread,
       fastModeEnabled,
@@ -1378,11 +1403,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         return;
       }
       try {
+        const resumeCwd = cwdForThread(targetThreadId);
         const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
-        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        const permissionOverrides = permissionToTurnOverrides(permission, resumeCwd);
         const resumeParams: Record<string, JsonValue> = {
           threadId: targetThreadId,
-          cwd,
+          cwd: resumeCwd,
           approvalPolicy: permissionOverrides.approvalPolicy,
           sandbox: permissionOverrides.sandbox
         };
@@ -1401,7 +1427,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: errorMessage("Resume thread", error) });
       }
     },
-    [activeProviderId, client, cwd, loadThread, permission, selectedModel, sideChatTabs, state.activeThreadId, state.providers, state.threads]
+    [activeProviderId, client, cwdForThread, loadThread, permission, selectedModel, sideChatTabs, state.activeThreadId, state.providers, state.threads]
   );
 
   const handleComposerSlashCommand = useCallback(
@@ -1584,11 +1610,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       );
       try {
         let threadId = tab.threadId;
+        let turnCwd = cwdForThread(threadId);
         const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
-        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        let permissionOverrides = permissionToTurnOverrides(permission, turnCwd);
         if (!threadId) {
           const startParams: Record<string, JsonValue> = {
-            cwd,
+            cwd: turnCwd,
             sandbox: permissionOverrides.sandbox,
             approvalPolicy: permissionOverrides.approvalPolicy,
             sessionStartSource: "startup"
@@ -1604,11 +1631,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           }
           const nextThreadId = threadId;
           setSideChatTabs((current) => current.map((entry) => (entry.id === tabId ? { ...entry, threadId: nextThreadId } : entry)));
+        } else {
+          turnCwd = cwdForThread(threadId);
+          permissionOverrides = permissionToTurnOverrides(permission, turnCwd);
         }
         const turnParams: Record<string, JsonValue> = {
           threadId,
           input: composerInputToUserInput(commandText, [], [], { preserveText: true }),
-          cwd,
+          cwd: turnCwd,
           sandboxPolicy: permissionOverrides.sandboxPolicy,
           approvalPolicy: permissionOverrides.approvalPolicy,
           effort: reasoningEffort
@@ -1637,7 +1667,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [
       activeProviderId,
       client,
-      cwd,
+      cwdForThread,
       dangerBypassConfirmed,
       loadAuditEvents,
       permission,
@@ -3620,6 +3650,19 @@ function normalizeWorkspaceCwd(value: string): string {
     return `/root/${trimmed.slice(2)}`;
   }
   return trimmed;
+}
+
+function syncWorkspaceFromThread(
+  thread: ClientState["threads"][number] | null,
+  setCwd: (cwd: string) => void,
+  setWorkspaceSelectionPending: (pending: boolean) => void
+): void {
+  const threadCwd = normalizeWorkspaceCwd(thread?.cwd ?? "");
+  if (!threadCwd) {
+    return;
+  }
+  setCwd(threadCwd);
+  setWorkspaceSelectionPending(false);
 }
 
 function parentWorkspacePath(path: string): string | null {

@@ -6,6 +6,21 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Fixed resumed/history thread follow-up turns using the wrong cwd after refresh.
+
+1. Cwd resolution:
+   - Added thread-aware cwd resolution in `App.tsx`.
+   - Existing active threads now prefer their stored `thread.cwd` for `thread/resume`, `turn/start`, `/resume`, and sidechat follow-up turns.
+   - New conversations still use the confirmed workspace cwd.
+2. Reload behavior:
+   - `thread/read` now syncs the workspace field from the loaded thread's cwd.
+   - This prevents refreshed sessions from keeping the new-chat default `~/` when continuing an existing conversation.
+3. Verification:
+   - Playwright covers a history row with `cwd: /root/projects/indexed`, then verifies both resume and the next follow-up turn use that cwd.
+   - Latest verification passed full typecheck, production build, and the focused history resume e2e.
+
+## Previous Completed Slice
+
 Implemented a Codex-style Working status indicator for unfinished chat turns.
 
 1. Source alignment:

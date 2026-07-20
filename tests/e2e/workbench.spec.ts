@@ -916,7 +916,7 @@ test.beforeEach(async ({ page }) => {
             model: "gpt-5.6-sol",
             modelProvider: "openai",
             serviceTier: null,
-            cwd: "/root/projects",
+            cwd: typeof row?.cwd === "string" ? row.cwd : "/root/projects",
             instructionSources: [],
             approvalPolicy: "on-request",
             approvalsReviewer: "appServer",
@@ -1416,10 +1416,32 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
 
   await page.getByRole("button", { name: "Open history Session Index Title" }).click();
   await page.waitForFunction(() => {
-    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
-    return messages.some((message) => message.method === "thread/resume" && message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092");
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string; cwd?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) =>
+        message.method === "thread/resume" &&
+        message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092" &&
+        message.params?.cwd === "/root/projects/indexed"
+    );
   });
   await expect(page.getByRole("tab", { name: "Session Index Title" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Continue indexed thread");
+  await page.getByRole("button", { name: "Send" }).click();
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string; cwd?: string; input?: Array<{ text?: string }> } }>;
+      }
+    ).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) =>
+        message.method === "turn/start" &&
+        message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092" &&
+        message.params?.cwd === "/root/projects/indexed" &&
+        message.params?.input?.some((input) => input.text === "Continue indexed thread")
+    );
+  });
 
   await page.getByRole("button", { name: "Rename history Session Index Title" }).click();
   await page.getByLabel("Thread name").fill("Renamed history row");

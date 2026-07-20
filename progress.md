@@ -2,6 +2,17 @@
 
 ## 2026-07-20
 
+- Resumed-thread cwd follow-up fix:
+  - Fixed history/resume and follow-up turn requests to prefer the active thread's stored `cwd` over the current/default workspace field.
+  - `thread/read` now syncs the workspace field from `thread.cwd`, so refreshed or reloaded conversations do not keep using the new-chat default `~/`.
+  - Applied the same cwd resolution to `/resume` and sidechat follow-up turns.
+  - Added Playwright coverage that resumes a history row with `cwd: /root/projects/indexed` and verifies both `thread/resume` and the next `turn/start` use that cwd.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "searches Codex history"`
+
 - Chat waterfall Working status slice:
   - Used the local `code-index` Rust engine to index `/root/projects/codex` and inspect the TUI status implementation.
   - Matched the Codex TUI pattern: an unfinished turn keeps a visible `Working` status indicator while the model is waiting, thinking, streaming, running tools, or running commands.
