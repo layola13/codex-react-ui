@@ -6,6 +6,27 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented a Codex-style Working status indicator for unfinished chat turns.
+
+1. Source alignment:
+   - Indexed `/root/projects/codex` with the local `code-index` Rust engine.
+   - Inspected Codex TUI `StatusIndicatorWidget` and chatwidget turn-runtime behavior.
+   - Matched the core pattern: an unfinished task keeps showing `Working` even while individual messages, tools, or reasoning chunks change underneath.
+2. Waterfall status:
+   - Added a sticky bottom Working marquee to `ChatWaterfall`.
+   - `ChatPanel` now derives working state from active in-progress/pending turns and live rows.
+   - The primary visible label stays `Working`; reasoning, answer, command, tool, or file activity only appears as compact detail text.
+   - The marquee matches the Codex-style status format with elapsed time, `esc`, background terminal count, `/ps`, and `/stop` hints.
+   - Active unfinished turns keep the virtualized transcript scrolled to the latest row as new output arrives.
+3. Status wording:
+   - Suppressed user-visible `completed` status chips in chat rows, agent headers/tooltips, request monitor, sidechat, history, tool payloads, and terminal status chips.
+   - Terminal completion now renders as `exit` / `exit <code>` instead of `completed`.
+4. Verification:
+   - Playwright covers a pending -> thinking -> answer -> turn-completed flow and asserts no visible `completed` label appears during the active chat.
+   - Latest verification passed full typecheck, production build, and the focused Working/virtualized transcript/parallel agents e2e suite.
+
+## Previous Completed Slice
+
 Implemented dedicated compact file-change audit rows for the virtualized chat waterfall.
 
 1. File audit rendering:

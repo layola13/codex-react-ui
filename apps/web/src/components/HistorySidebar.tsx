@@ -241,7 +241,7 @@ export function HistorySidebar({
                     secondary={
                       <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
                         <Chip size="small" label={threadSourceLabel(thread, t)} variant="outlined" />
-                        <Chip size="small" label={thread.status ?? t("history.stored")} />
+                        <VisibleStatusChip status={thread.status} fallback={t("history.stored")} />
                         {thread.model && <Chip size="small" label={thread.model} variant="outlined" />}
                         {thread.modelProvider && <Typography variant="caption">{thread.modelProvider}</Typography>}
                         {thread.cwd && <Typography variant="caption" title={thread.cwd}>{shortCwd(thread.cwd)}</Typography>}
@@ -342,4 +342,15 @@ function shortCwd(cwd: string): string {
     return normalized || cwd;
   }
   return `.../${parts.slice(-2).join("/")}`;
+}
+
+function VisibleStatusChip({ status, fallback }: { status?: string; fallback: string }) {
+  if (status && isSilentStatus(status)) {
+    return null;
+  }
+  return <Chip size="small" label={status ?? fallback} />;
+}
+
+function isSilentStatus(status: string): boolean {
+  return ["completed", "complete", "done", "success", "shutdown"].includes(status.trim().toLowerCase());
 }

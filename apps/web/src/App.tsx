@@ -2179,6 +2179,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           slashNotice={slashNotice}
           stats={statsState}
           requestMonitor={requestMonitor}
+          terminalSessions={terminalSessions}
           statsOpen={Boolean(statsPanelScope)}
           modes={modeState}
           activeThemePlugin={activeThemePlugin}

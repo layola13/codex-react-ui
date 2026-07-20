@@ -94,26 +94,32 @@ function AssistantMessageRow({
           minWidth: 0
         }}
       >
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.4, color: "text.secondary" }}>
-          <SmartToyIcon sx={{ fontSize: 17 }} />
-          <Typography variant="caption" sx={{ fontWeight: 850 }}>
-            {row.title}
-          </Typography>
-          {row.item.agentName && <Chip size="small" label={row.item.agentName} />}
-          {row.status && <Chip size="small" label={row.status} />}
-          {reasoningContent && (
-            <Button
-              size="small"
-              variant="text"
-              startIcon={<SmartToyIcon fontSize="small" />}
-              aria-label={expanded ? "Collapse thinking" : "Expand thinking"}
-              onClick={onToggleExpanded}
-              sx={{ borderRadius: 1, ml: "auto" }}
-            >
-              {t("chat.thinking")}
-            </Button>
-          )}
-        </Stack>
+        {(!row.hideHeader || reasoningContent) && (
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: row.hideHeader ? 0.15 : 0.4, color: "text.secondary" }}>
+            {!row.hideHeader && (
+              <>
+                <SmartToyIcon data-testid="assistant-message-header" sx={{ fontSize: 17 }} />
+                <Typography variant="caption" sx={{ fontWeight: 850 }}>
+                  {row.title}
+                </Typography>
+                {row.item.agentName && <Chip size="small" label={row.item.agentName} />}
+                <StatusChip status={row.status} />
+              </>
+            )}
+            {reasoningContent && (
+              <Button
+                size="small"
+                variant="text"
+                startIcon={<SmartToyIcon fontSize="small" />}
+                aria-label={expanded ? "Collapse thinking" : "Expand thinking"}
+                onClick={onToggleExpanded}
+                sx={{ borderRadius: 1, ml: row.hideHeader ? 0 : "auto" }}
+              >
+                {t("chat.thinking")}
+              </Button>
+            )}
+          </Stack>
+        )}
         {reasoningContent && expanded && (
           <Paper
             data-testid="completed-thinking-panel"
@@ -320,7 +326,7 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
     >
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
         {summary.primaryPath && <Chip size="small" label={summary.primaryPath} />}
-        {summary.status && <Chip size="small" label={summary.status} />}
+        <StatusChip status={summary.status} />
         {summary.changes.length > 1 && <Chip size="small" label={`${summary.changes.length} files`} />}
       </Stack>
       {hasDetails && expanded && (
@@ -332,7 +338,7 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
                   <Typography variant="caption" sx={{ fontWeight: 850, overflowWrap: "anywhere" }}>
                     {change.path}
                   </Typography>
-                  {change.status && <Chip size="small" label={change.status} />}
+                  <StatusChip status={change.status} />
                 </Stack>
               ))}
             </Stack>
@@ -371,7 +377,7 @@ function AuditRow({ row, icon, action, children }: { row: ChatWaterfallRow; icon
             {row.title}
           </Typography>
           {row.item.agentName && <Chip size="small" label={row.item.agentName} />}
-          {row.status && <Chip size="small" label={row.status} />}
+          <StatusChip status={row.status} />
           {action}
         </Stack>
         {children ?? (row.text ? <MarkdownMessage text={row.text} /> : null)}
@@ -399,7 +405,7 @@ function StatusRow({ row }: { row: ChatWaterfallRow }) {
           <Typography variant="caption" sx={{ fontWeight: 800 }}>
             {row.title}
           </Typography>
-          {row.status && <Chip size="small" label={row.status} />}
+          <StatusChip status={row.status} />
           {row.text && <Typography variant="caption">{row.text}</Typography>}
         </Stack>
       </Paper>
@@ -449,7 +455,7 @@ function ToolAuditSummary({ row }: { row: ChatWaterfallRow }) {
     <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
       {server && <Chip size="small" label={server} />}
       {tool && <Chip size="small" label={tool} />}
-      {status && <Chip size="small" label={status} />}
+      <StatusChip status={status} />
       {durationMs != null && <Chip size="small" label={`${durationMs}ms`} />}
     </Stack>
   );
@@ -523,6 +529,17 @@ function renderToolPayload(row: ChatWaterfallRow) {
 
 function sanitizeTestId(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]+/g, "-");
+}
+
+function StatusChip({ status }: { status?: string }) {
+  if (!status || isSilentStatus(status)) {
+    return null;
+  }
+  return <Chip size="small" label={status} />;
+}
+
+function isSilentStatus(status: string): boolean {
+  return ["completed", "complete", "done", "success", "shutdown"].includes(status.trim().toLowerCase());
 }
 
 function isRenderableImageUrl(url: string): boolean {

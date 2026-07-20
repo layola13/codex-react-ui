@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Box, Button, Chip } from "@mui/material";
+import { Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import KeyboardDoubleArrowDownIcon from "@mui/icons-material/KeyboardDoubleArrowDown";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
@@ -15,9 +15,18 @@ type Props = {
   rows: ChatWaterfallRow[];
   t: TranslateFn;
   before?: ReactNode;
+  workingStatus?: ChatWorkingStatus | null;
 };
 
-export function ChatWaterfall({ rows, t, before }: Props) {
+export type ChatWorkingStatus = {
+  active: boolean;
+  label: string;
+  detail?: string;
+  startedAt: number;
+  backgroundTerminalCount: number;
+};
+
+export function ChatWaterfall({ rows, t, before, workingStatus }: Props) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const previousRowCountRef = useRef(rows.length);
   const [nearBottom, setNearBottom] = useState(true);
@@ -77,6 +86,20 @@ export function ChatWaterfall({ rows, t, before }: Props) {
       .filter((entry): entry is ChatFloorEntry => Boolean(entry));
   }, [firstVisibleRowIndex, rows]);
   const searchResults = useMemo(() => buildChatSearchResults(rows, searchTerm, searchScope), [rows, searchScope, searchTerm]);
+  const latestActivityKey = useMemo(() => {
+    const latest = rows.at(-1);
+    if (!latest) {
+      return `${rows.length}:empty`;
+    }
+    return [
+      rows.length,
+      latest.key,
+      latest.status ?? "",
+      latest.text.length,
+      latest.reasoning?.length ?? 0,
+      latest.isLive ? "live" : "settled"
+    ].join(":");
+  }, [rows]);
 
   const updateNearBottom = useCallback(() => {
     const element = parentRef.current;
@@ -153,6 +176,15 @@ export function ChatWaterfall({ rows, t, before }: Props) {
     scrollToBottom();
     setNewRowsCount(0);
   }, [nearBottom, rows.length, virtualCount, virtualizer]);
+
+  useLayoutEffect(() => {
+    if (!workingStatus?.active || rows.length === 0 || searchOpen || promptMapOpen) {
+      return;
+    }
+    scrollToBottom();
+    setNearBottom(true);
+    setNewRowsCount(0);
+  }, [latestActivityKey, promptMapOpen, rows.length, searchOpen, workingStatus?.active]);
 
   function jumpToLatest() {
     if (rows.length === 0) {
@@ -359,7 +391,7 @@ export function ChatWaterfall({ rows, t, before }: Props) {
           })}
         </Box>
       </Box>
-      {!nearBottom && rows.length > 0 && (
+      {((workingStatus?.active ?? false) || (!nearBottom && rows.length > 0)) && (
         <Box
           sx={{
             position: "sticky",
@@ -370,20 +402,157 @@ export function ChatWaterfall({ rows, t, before }: Props) {
             zIndex: 2
           }}
         >
-          <Button
-            size="small"
-            variant="contained"
-            startIcon={<KeyboardDoubleArrowDownIcon />}
-            onClick={jumpToLatest}
-            sx={{ borderRadius: 999, pointerEvents: "auto", boxShadow: (theme) => theme.customShadows?.z8 }}
-          >
-            Jump to latest
-            {newRowsCount > 0 && <Chip size="small" label={newRowsCount} sx={{ ml: 1, height: 20, bgcolor: "primary.contrastText" }} />}
-          </Button>
+          <Stack spacing={0.75} alignItems="center" sx={{ pointerEvents: "auto" }}>
+            {workingStatus?.active && <ChatWorkingIndicator status={workingStatus} t={t} />}
+            {!nearBottom && rows.length > 0 && (
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<KeyboardDoubleArrowDownIcon />}
+                onClick={jumpToLatest}
+                sx={{ borderRadius: 999, boxShadow: (theme) => theme.customShadows?.z8 }}
+              >
+                Jump to latest
+                {newRowsCount > 0 && <Chip size="small" label={newRowsCount} sx={{ ml: 1, height: 20, bgcolor: "primary.contrastText" }} />}
+              </Button>
+            )}
+          </Stack>
         </Box>
       )}
     </Box>
   );
+}
+
+function ChatWorkingIndicator({ status, t }: { status: ChatWorkingStatus; t: TranslateFn }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const elapsed = formatElapsed(now - status.startedAt);
+  const headline = t("chat.working.headline", { elapsed });
+  const terminalSegment =
+    status.backgroundTerminalCount > 0
+      ? t("chat.working.backgroundTerminals", { count: status.backgroundTerminalCount })
+      : t("chat.working.noBackgroundTerminals");
+  const marqueeText = `${headline} · ${terminalSegment} · ${t("chat.working.psHint")} · ${t("chat.working.stopHint")}`;
+
+  return (
+    <Stack
+      data-testid="chat-working-indicator"
+      role="status"
+      aria-live="polite"
+      aria-label={marqueeText}
+      direction="row"
+      spacing={1}
+      alignItems="center"
+      sx={{
+        maxWidth: { xs: "calc(100vw - 32px)", sm: 720 },
+        width: { xs: "calc(100vw - 32px)", sm: "min(720px, calc(100vw - 96px))" },
+        px: 1.25,
+        py: 0.75,
+        borderRadius: 999,
+        border: "1px solid",
+        borderColor: "divider",
+        bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.9 : 0.96),
+        boxShadow: (theme) => theme.customShadows?.z8,
+        backdropFilter: "blur(16px)"
+      }}
+    >
+      <Box
+        aria-hidden
+        sx={{
+          width: 9,
+          height: 9,
+          borderRadius: "50%",
+          bgcolor: "primary.main",
+          boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0.36)}`,
+          animation: "chatWorkingPulse 1400ms ease-in-out infinite",
+          "@keyframes chatWorkingPulse": {
+            "0%": { transform: "scale(0.86)", opacity: 0.72, boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0.32)}` },
+            "55%": { transform: "scale(1)", opacity: 1, boxShadow: (theme) => `0 0 0 7px ${alpha(theme.palette.primary.main, 0)}` },
+            "100%": { transform: "scale(0.86)", opacity: 0.72, boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}` }
+          }
+        }}
+      />
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Box
+          sx={{
+            position: "relative",
+            overflow: "hidden",
+            minWidth: 0,
+            WebkitMaskImage: "linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)",
+            maskImage: "linear-gradient(90deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%)"
+          }}
+        >
+          <Typography
+            component="span"
+            variant="body2"
+            aria-hidden
+            sx={{
+              display: "inline-block",
+              minWidth: "max-content",
+              fontWeight: 850,
+              lineHeight: 1.15,
+              color: "primary.main",
+              backgroundImage: (theme) =>
+                `linear-gradient(90deg, ${theme.palette.primary.main} 0%, ${theme.palette.text.primary} 42%, ${theme.palette.primary.main} 84%)`,
+              backgroundSize: "220% 100%",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              animation: "chatWorkingMarquee 18s linear infinite, chatWorkingTextSweep 1800ms linear infinite",
+              "@keyframes chatWorkingMarquee": {
+                "0%": { transform: "translateX(0)" },
+                "100%": { transform: "translateX(-50%)" }
+              },
+              "@keyframes chatWorkingTextSweep": {
+                "0%": { backgroundPosition: "180% 0" },
+                "100%": { backgroundPosition: "-40% 0" }
+              }
+            }}
+          >
+            <Box component="span" sx={{ pr: 4 }}>
+              {marqueeText}
+            </Box>
+            <Box component="span" sx={{ pr: 4 }}>
+              {marqueeText}
+            </Box>
+          </Typography>
+        </Box>
+        {status.detail && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              display: "block",
+              maxWidth: { xs: 260, sm: 420 },
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              lineHeight: 1.2
+            }}
+          >
+            {status.detail}
+          </Typography>
+        )}
+      </Box>
+    </Stack>
+  );
+}
+
+function formatElapsed(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
 }
 
 function sanitizeTestId(value: string): string {

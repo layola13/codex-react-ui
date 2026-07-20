@@ -313,7 +313,7 @@ export function SideChatPanel({
                 <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
                   Side chat
                 </Typography>
-                <Chip size="small" label={turn.status} />
+                <VisibleStatusChip status={turn.status} />
               </Stack>
               <Stack spacing={1}>
                 {turn.items.map((item) => (
@@ -487,4 +487,15 @@ function LauncherRow({
       )}
     </ButtonBase>
   );
+}
+
+function VisibleStatusChip({ status }: { status?: string }) {
+  if (!status || isSilentStatus(status)) {
+    return null;
+  }
+  return <Chip size="small" label={status} />;
+}
+
+function isSilentStatus(status: string): boolean {
+  return ["completed", "complete", "done", "success", "shutdown"].includes(status.trim().toLowerCase());
 }

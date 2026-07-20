@@ -365,6 +365,7 @@ test.beforeEach(async ({ page }) => {
           const itemId = `item-${turnIndex}`;
           const inputText = params?.input?.find((entry) => entry.type === "text")?.text ?? "";
           const parallelAgentsPrompt = inputText.toLowerCase().includes("parallel agents");
+          const workingStatusPrompt = inputText.toLowerCase().includes("working status probe");
           setTimeout(() => {
             this.emit({ type: "rpc.result", id: message.id, result });
             this.emit({
@@ -377,6 +378,52 @@ test.beforeEach(async ({ page }) => {
                 }
               }
             });
+            if (workingStatusPrompt) {
+              setTimeout(() => {
+                this.emit({
+                  type: "codex.notification",
+                  message: {
+                    method: "item/started",
+                    params: {
+                      threadId,
+                      turnId,
+                      item: {
+                        type: "reasoning",
+                        id: `${itemId}-reasoning`,
+                        text: "Inspecting current workspace state",
+                        status: "inProgress"
+                      }
+                    }
+                  }
+                });
+              }, 350);
+              setTimeout(() => {
+                this.emit({
+                  type: "codex.notification",
+                  message: {
+                    method: "item/agentMessage/delta",
+                    params: {
+                      turnId,
+                      itemId,
+                      delta: "Accepted working status probe"
+                    }
+                  }
+                });
+              }, 700);
+              setTimeout(() => {
+                this.emit({
+                  type: "codex.notification",
+                  message: {
+                    method: "turn/completed",
+                    params: {
+                      threadId,
+                      turn: { id: turnId, threadId, status: "completed" }
+                    }
+                  }
+                });
+              }, 1100);
+              return;
+            }
             if (parallelAgentsPrompt) {
               const reviewThreadId = "agent-review-thread";
               const testsThreadId = "agent-tests-thread";
@@ -1190,6 +1237,28 @@ test("renders the workbench and tooling panels", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Mock Plugin" })).toBeVisible();
 });
 
+test("shows working status while a turn is pending or thinking", async ({ page }) => {
+  await page.goto("/");
+  await confirmWorkspace(page);
+
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("working status probe");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const indicator = page.getByTestId("chat-working-indicator");
+  await expect(indicator).toContainText("Working");
+  await expect(indicator).toContainText(/Working \(\d+s • esc to interrupt\)/);
+  await expect(indicator).toContainText(/background terminals running/);
+  await expect(indicator).toContainText("/ps to view");
+  await expect(indicator).toContainText("/stop to interrupt");
+  await expect(indicator).toContainText("Waiting for Codex to respond");
+  await expect(indicator).toContainText("Working");
+  await expect(indicator).toContainText("Inspecting current workspace state");
+  await expect(indicator).toContainText("Working");
+  await expect(page.getByTestId("workbench-item-agentMessage").getByText("Accepted working status probe")).toBeVisible();
+  await expect(page.getByText("completed", { exact: true })).toHaveCount(0);
+  await expect(indicator).toHaveCount(0);
+});
+
 test("creates a Full Auto chat through the New Chat danger dialog", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
@@ -1606,6 +1675,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   const reasoningRow = page.getByTestId("conversation-item-long-agent-310");
   await expect(reasoningRow.getByText("Long assistant answer 310")).toBeVisible();
+  await expect(reasoningRow.getByTestId("assistant-message-header")).toHaveCount(0);
   await expect(reasoningRow.getByTestId("completed-thinking-panel")).toHaveCount(0);
   await reasoningRow.getByRole("button", { name: "Expand thinking" }).click();
   await expect(reasoningRow.getByTestId("completed-thinking-panel")).toContainText("Completed reasoning detail 310");

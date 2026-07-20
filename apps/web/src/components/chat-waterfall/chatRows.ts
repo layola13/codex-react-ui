@@ -54,7 +54,7 @@ export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter 
     }
   });
 
-  return rows;
+  return applyAssistantHeaderGrouping(rows);
 }
 
 function normalizeTurnItemsForDisplay(items: WorkbenchItem[]): WorkbenchItem[] {
@@ -94,6 +94,23 @@ function itemToRow(
     width: rowWidth(kind, text),
     isLive: turn.status !== "completed"
   };
+}
+
+function applyAssistantHeaderGrouping(rows: ChatWaterfallRow[]): ChatWaterfallRow[] {
+  const seenAssistantKeys = new Set<string>();
+  return rows.map((row) => {
+    if (row.kind !== "assistantMessage") {
+      return row;
+    }
+    const key = assistantHeaderKey(row);
+    const hideHeader = seenAssistantKeys.has(key);
+    seenAssistantKeys.add(key);
+    return hideHeader ? { ...row, hideHeader: true } : row;
+  });
+}
+
+function assistantHeaderKey(row: ChatWaterfallRow): string {
+  return [row.role, row.item.agentId, row.item.agentThreadId, row.item.agentName, row.title].filter(Boolean).join(":");
 }
 
 function itemKind(item: WorkbenchItem, activeThinking?: boolean): ChatRowKind {

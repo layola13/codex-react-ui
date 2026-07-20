@@ -2,6 +2,22 @@
 
 ## 2026-07-20
 
+- Chat waterfall Working status slice:
+  - Used the local `code-index` Rust engine to index `/root/projects/codex` and inspect the TUI status implementation.
+  - Matched the Codex TUI pattern: an unfinished turn keeps a visible `Working` status indicator while the model is waiting, thinking, streaming, running tools, or running commands.
+  - Added a sticky bottom Working marquee to the virtualized waterfall so users can tell a turn is still active even when the latest row has not produced visible output.
+  - Updated the marquee to the Codex-style format: `Working (<elapsed> • esc to interrupt) · <n> background terminals running · /ps to view · /stop to interrupt`.
+  - Added a masked marquee animation and automatic follow-to-bottom behavior while an unfinished turn is still producing output.
+  - Kept the primary status label as `Working`; reasoning/tool/command/answer text is shown only as detail, not as a misleading terminal state.
+  - Suppressed user-visible `completed` status chips across chat rows, agent headers/tooltips, request monitor, sidechat turns, history rows, tool payload chips, and terminal status chips.
+  - Added Playwright coverage for a pending -> thinking -> answer -> turn-completed flow, including a no-visible-`completed` assertion.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status|shows parallel agents rail|virtualizes long main chat"`
+
 - Chat waterfall file audit details slice:
   - Added a dedicated `FileChangeRow` instead of rendering file changes through the generic audit row.
   - File changes now show compact path/status/change-count summaries by default.

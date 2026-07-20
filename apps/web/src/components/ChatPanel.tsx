@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Avatar, Badge, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
@@ -18,8 +18,10 @@ import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
+import type { TerminalSession } from "../state/codexClient";
 import { themeVisualTuning, type ThemePlugin } from "../theme";
 import { ChatWaterfall } from "./chat-waterfall/ChatWaterfall";
+import type { ChatWorkingStatus } from "./chat-waterfall/ChatWaterfall";
 import { buildChatRows } from "./chat-waterfall/chatRows";
 import type { ChatWaterfallRow } from "./chat-waterfall/types";
 import type { TranslateFn } from "../i18n";
@@ -110,6 +112,7 @@ type Props = {
   slashNotice?: SlashCommandNoticeState | null;
   stats?: WorkbenchStatsState | null;
   requestMonitor?: RequestMonitorEntry[];
+  terminalSessions?: TerminalSession[];
   statsOpen?: boolean;
   modes?: WorkbenchModeState;
   activeThemePlugin?: ThemePlugin | null;
@@ -167,6 +170,7 @@ export function ChatPanel({
   slashNotice,
   stats,
   requestMonitor = [],
+  terminalSessions = [],
   statsOpen = false,
   modes = { fast: false, plan: false, goalActive: false },
   activeThemePlugin,
@@ -205,6 +209,26 @@ export function ChatPanel({
   const chatRows = selectedAgent
     ? agentConversationRows(turns, activeThreadId, selectedAgent)
     : mainConversationRows(turns, activeThreadId);
+  const workingStartedAtRef = useRef<{ key: string | null; startedAt: number }>({ key: null, startedAt: Date.now() });
+  const runningTurns = visibleTurnsForWorkingStatus(turns, activeThreadId, selectedAgent).filter((turn) => isRunningTurnStatus(turn.status));
+  const workingIdentity =
+    selectedAgent && isRunningAgentStatus(selectedAgent.status)
+      ? `agent:${selectedAgent.id}:${selectedAgent.status ?? ""}:${runningTurns.map((turn) => turn.id).join("|")}`
+      : runningTurns.length > 0
+        ? `main:${activeThreadId ?? "none"}:${runningTurns.map((turn) => `${turn.id}:${turn.status}`).join("|")}`
+        : null;
+  if (workingStartedAtRef.current.key !== workingIdentity) {
+    workingStartedAtRef.current = { key: workingIdentity, startedAt: Date.now() };
+  }
+  const workingStatus = buildWorkingStatus({
+    rows: chatRows,
+    turns,
+    activeThreadId,
+    selectedAgent,
+    startedAt: workingStartedAtRef.current.startedAt,
+    backgroundTerminalCount: terminalSessions.filter((session) => session.status === "running").length,
+    t
+  });
   const hasAnyVisibleThreadActivity = hasThreadActivity(turns, activeThreadId);
   const showEmptyConversation = chatRows.length === 0 && !welcomeDismissed && (selectedAgent || !hasAnyVisibleThreadActivity);
   const hasParallelAgents = visibleAgents.length > 0;
@@ -273,6 +297,7 @@ export function ChatPanel({
         <ChatWaterfall
           rows={chatRows}
           t={t}
+          workingStatus={workingStatus}
           before={
             <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
               {errors.map((error, index) => (error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null))}
@@ -600,7 +625,7 @@ function ParallelAgentsRail({
         const testId = sanitizeTestId(agent.id);
         return (
           <Box key={agent.id} data-testid={`parallel-agent-slot-${testId}`} sx={{ position: "relative", width: "100%", display: "grid", placeItems: "center" }}>
-            <Tooltip title={`${agent.name}${agent.status ? ` - ${agent.status}` : ""}`} placement="right">
+            <Tooltip title={agentTooltipTitle(agent)} placement="right">
               <IconButton
                 size="small"
                 aria-label={`Open agent ${agent.name}`}
@@ -694,7 +719,7 @@ function AgentConversationHeader({ agent, onClose }: { agent: AgentSession; onCl
             </Typography>
           )}
         </Box>
-        {agent.status && <Chip size="small" label={agent.status} color={agent.status === "failed" ? "error" : "default"} />}
+        <VisibleStatusChip status={agent.status} />
         {done && (
           <Tooltip title={`Close ${agent.name}`}>
             <IconButton size="small" aria-label={`Close agent ${agent.name}`} onClick={onClose}>
@@ -969,7 +994,7 @@ function RequestMonitorTable({ entries, t }: { entries: RequestMonitorEntry[]; t
                     <Chip size="small" label={entry.source} variant="outlined" />
                   </td>
                   <td>
-                    <Chip size="small" label={entry.status} color={entry.status === "failed" ? "error" : entry.status === "inProgress" ? "warning" : "default"} />
+                    <VisibleStatusChip status={entry.status} color={entry.status === "failed" ? "error" : entry.status === "inProgress" ? "warning" : "default"} />
                   </td>
                   <td>
                     <Typography variant="body2" sx={{ maxWidth: 170, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -996,6 +1021,23 @@ function formatUsageCell(usage: TokenUsageBreakdown | undefined, t: TranslateFn)
     return t("chat.waiting");
   }
   return `${formatNumber(usage.totalTokens)} total / ${formatNumber(usage.outputTokens)} out`;
+}
+
+function VisibleStatusChip({
+  status,
+  color = "default"
+}: {
+  status?: string;
+  color?: "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning";
+}) {
+  if (!status || isSilentStatus(status)) {
+    return null;
+  }
+  return <Chip size="small" label={status} color={color} />;
+}
+
+function agentTooltipTitle(agent: AgentSession): string {
+  return agent.status && !isSilentStatus(agent.status) ? `${agent.name} - ${agent.status}` : agent.name;
 }
 
 function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], activeThreadId: string | null): AgentSession[] {
@@ -1131,6 +1173,136 @@ function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | 
   return buildChatRows(visibleTurns);
 }
 
+function buildWorkingStatus({
+  rows,
+  turns,
+  activeThreadId,
+  selectedAgent,
+  startedAt,
+  backgroundTerminalCount,
+  t
+}: {
+  rows: ChatWaterfallRow[];
+  turns: WorkbenchTurn[];
+  activeThreadId: string | null;
+  selectedAgent: AgentSession | null;
+  startedAt: number;
+  backgroundTerminalCount: number;
+  t: TranslateFn;
+}): ChatWorkingStatus | null {
+  const running =
+    selectedAgent && isRunningAgentStatus(selectedAgent.status)
+      ? true
+      : visibleTurnsForWorkingStatus(turns, activeThreadId, selectedAgent).some((turn) => isRunningTurnStatus(turn.status));
+  if (!running) {
+    return null;
+  }
+
+  const liveRows = rows.filter((row) => row.isLive);
+  const liveAssistant = [...liveRows].reverse().find((row) => row.kind === "assistantMessage" && row.text.trim());
+  if (liveAssistant) {
+    return {
+      active: true,
+      label: t("chat.working.working"),
+      startedAt,
+      backgroundTerminalCount,
+      detail: shortStatusDetail(liveAssistant.text) ?? t("chat.working.streamingDetail")
+    };
+  }
+
+  const liveReasoning = [...liveRows].reverse().find((row) => row.kind === "reasoningPreview");
+  if (liveReasoning) {
+    return {
+      active: true,
+      label: t("chat.working.working"),
+      startedAt,
+      backgroundTerminalCount,
+      detail: shortStatusDetail(liveReasoning.text || liveReasoning.reasoning) ?? t("chat.working.thinkingDetail")
+    };
+  }
+
+  const latestLiveRow = liveRows.at(-1);
+  if (!latestLiveRow) {
+    return {
+      active: true,
+      label: t("chat.working.working"),
+      startedAt,
+      backgroundTerminalCount,
+      detail: t("chat.working.waitingForResponse")
+    };
+  }
+
+  switch (latestLiveRow.kind) {
+    case "assistantMessage":
+      return {
+        active: true,
+        label: t("chat.working.working"),
+        startedAt,
+        backgroundTerminalCount,
+        detail: shortStatusDetail(latestLiveRow.text) ?? t("chat.working.streamingDetail")
+      };
+    case "commandExecution":
+      return {
+        active: true,
+        label: t("chat.working.working"),
+        startedAt,
+        backgroundTerminalCount,
+        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.commandDetail")
+      };
+    case "toolCall":
+    case "toolResult":
+      return {
+        active: true,
+        label: t("chat.working.working"),
+        startedAt,
+        backgroundTerminalCount,
+        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.toolDetail")
+      };
+    case "fileChange":
+      return {
+        active: true,
+        label: t("chat.working.working"),
+        startedAt,
+        backgroundTerminalCount,
+        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.filesDetail")
+      };
+    default:
+      return {
+        active: true,
+        label: t("chat.working.working"),
+        startedAt,
+        backgroundTerminalCount,
+        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.waitingForResponse")
+      };
+  }
+}
+
+function visibleTurnsForWorkingStatus(turns: WorkbenchTurn[], activeThreadId: string | null, selectedAgent: AgentSession | null): WorkbenchTurn[] {
+  if (selectedAgent?.threadId) {
+    return turns.filter((turn) => turn.threadId === selectedAgent.threadId);
+  }
+  if (!activeThreadId) {
+    return [];
+  }
+  return turns.filter((turn) => turn.threadId === activeThreadId);
+}
+
+function isRunningTurnStatus(status?: string): boolean {
+  return status === "inProgress" || status === "pending" || status === "pendingInit" || status === "started";
+}
+
+function isRunningAgentStatus(status?: string): boolean {
+  return Boolean(status && ["running", "inProgress", "pendingInit", "started", "interacted"].includes(status));
+}
+
+function shortStatusDetail(value?: string): string | undefined {
+  const normalized = value?.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.length > 120 ? `${normalized.slice(0, 119)}...` : normalized;
+}
+
 function hasThreadActivity(turns: WorkbenchTurn[], activeThreadId: string | null): boolean {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
   return visibleTurns.some((turn) => turn.items.length > 0);
@@ -1180,6 +1352,10 @@ function agentStatusRank(status: string): number {
 
 function isTerminalAgentStatus(status?: string): boolean {
   return Boolean(status && ["completed", "shutdown", "done", "success", "failed", "errored", "notFound"].includes(status));
+}
+
+function isSilentStatus(status: string): boolean {
+  return ["completed", "complete", "done", "success", "shutdown"].includes(status.trim().toLowerCase());
 }
 
 function railButtonSx(active: boolean) {
@@ -1234,7 +1410,7 @@ function renderMcpToolCall(item: { payload?: unknown }) {
       <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 0.75 }}>
         {server && <Chip size="small" label={server} />}
         {tool && <Chip size="small" label={tool} />}
-        {stringValue(payload.status) && <Chip size="small" label={stringValue(payload.status)} />}
+        <VisibleStatusChip status={stringValue(payload.status)} />
         {typeof payload.durationMs === "number" && <Chip size="small" label={`${payload.durationMs}ms`} />}
       </Stack>
       {args != null && (

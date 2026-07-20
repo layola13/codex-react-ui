@@ -28,6 +28,7 @@
 - [x] Add dedicated compact file-change audit rows with path/status summaries, hidden diff details, and virtualized expansion persistence.
 - [x] Render completed reasoning as an inline Thinking panel with expansion state preserved across virtualized unmount/remount.
 - [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
+- [x] Add a Codex-style Working marquee/status indicator for any unfinished chat turn, including elapsed time, terminal count, `/ps` and `/stop` hints, masked marquee motion, auto-follow-to-bottom, and suppressed user-visible `completed` status labels.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
 - [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.
 - [ ] Verify the above with a real browser screenshot after New Chat, workspace confirmation, typing, relay display, settings location, install affordance, sticky goal, and thinking preview.

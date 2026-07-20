@@ -36,4 +36,5 @@ export type ChatWaterfallRow = {
   };
   width: ChatRowWidth;
   isLive: boolean;
+  hideHeader?: boolean;
 };

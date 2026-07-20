@@ -798,7 +798,7 @@ function McpPanel({
       const parsedArgs = parseToolArguments(rawArgs);
       const result = await onCallMcpTool(serverName, toolName, parsedArgs);
       setToolResults((current) => ({ ...current, [key]: prettyJson(result) }));
-      setToolStatuses((current) => ({ ...current, [key]: "Tool call completed." }));
+      setToolStatuses((current) => ({ ...current, [key]: "Tool call finished." }));
     } catch (error) {
       setToolErrors((current) => ({ ...current, [key]: error instanceof Error ? error.message : String(error) }));
       setToolStatuses((current) => ({ ...current, [key]: "Tool call failed." }));
@@ -1562,7 +1562,7 @@ function FilesTab({
                         <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
                           {session.command}
                         </Typography>
-                        <Chip size="small" label={session.exitCode == null ? session.status : `${session.status} ${session.exitCode}`} color={terminalStatusColor(session.status)} />
+                        <Chip size="small" label={terminalStatusLabel(session)} color={terminalStatusColor(session.status)} />
                       </Stack>
                       <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
                         {session.cwd} / {session.cols}x{session.rows}
@@ -1684,6 +1684,13 @@ function terminalStatusColor(status: TerminalSession["status"]): "default" | "su
     default:
       return "default";
   }
+}
+
+function terminalStatusLabel(session: TerminalSession): string {
+  if (session.status === "completed") {
+    return session.exitCode == null ? "exit" : `exit ${session.exitCode}`;
+  }
+  return session.exitCode == null ? session.status : `${session.status} ${session.exitCode}`;
 }
 
 function prettyJson(value: unknown): string {
