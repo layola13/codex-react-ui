@@ -267,6 +267,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [slashNotice, setSlashNotice] = useState<SlashCommandNotice | null>(null);
   const [threadGoals, setThreadGoals] = useState<Record<string, GoalBannerState>>({});
   const [threadTokenUsage, setThreadTokenUsage] = useState<Record<string, ThreadTokenUsageState>>({});
+  const [historySearchTerm, setHistorySearchTerm] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("codex");
   const [settingsPluginTab, setSettingsPluginTab] = useState<CodexPluginSettingsTab>("marketplace");
@@ -316,6 +318,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [auditEvents, setAuditEvents] = useState<DangerousPermissionAuditEvent[]>([]);
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
+  const allHistoryThreadsRef = useRef<ClientState["threads"]>([]);
   const clientRef = useRef<CodexSocketClient | null>(null);
   const desktopLayout = useMediaQuery("(min-width:900px)");
   const { locale, setLocale, t } = useI18n();
@@ -464,6 +467,30 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return entries;
   }, [activeProviderId, state.models, state.providers]);
 
+  const loadHistory = useCallback(
+    async (searchTerm = historySearchTerm) => {
+      setHistoryLoading(true);
+      try {
+        const trimmedSearch = searchTerm.trim();
+        const cachedThreads = allHistoryThreadsRef.current;
+        const [allThreads, searchedThreads] = await Promise.all([
+          cachedThreads.length > 0 && trimmedSearch ? Promise.resolve(cachedThreads) : loadAllThreads(client),
+          trimmedSearch ? loadAllThreads(client, { searchTerm: trimmedSearch }) : Promise.resolve<ClientState["threads"]>([])
+        ]);
+        if (!trimmedSearch) {
+          allHistoryThreadsRef.current = allThreads;
+          dispatch({ type: "threads", threads: allThreads });
+          return;
+        }
+        allHistoryThreadsRef.current = allThreads;
+        dispatch({ type: "threads", threads: mergeThreadLists(searchedThreads, filterHistoryThreads(allThreads, trimmedSearch)) });
+      } finally {
+        setHistoryLoading(false);
+      }
+    },
+    [client, historySearchTerm]
+  );
+
   const loadBasics = useCallback(async () => {
     const [account, modelResult, threadResult] = await Promise.all([
       client.rpc("account/read", { refreshToken: false }),
@@ -473,8 +500,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     dispatch({ type: "account", account });
     const models = asRecord(modelResult).data ?? asRecord(modelResult).models;
     dispatch({ type: "models", models: Array.isArray(models) ? (models as ClientState["models"]) : [] });
-    dispatch({ type: "threads", threads: threadResult });
-  }, [client]);
+    allHistoryThreadsRef.current = threadResult;
+    dispatch({ type: "threads", threads: historySearchTerm.trim() ? filterHistoryThreads(threadResult, historySearchTerm) : threadResult });
+  }, [client, historySearchTerm]);
+
+  useEffect(() => {
+    if (!state.connected || !state.token) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void loadHistory(historySearchTerm);
+    }, 240);
+    return () => window.clearTimeout(timeout);
+  }, [historySearchTerm, loadHistory, state.connected, state.token]);
 
   const loadCodexConfig = useCallback(async () => {
     setCodexConfigLoading(true);
@@ -864,6 +902,30 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [client]
   );
 
+  const openExistingThread = useCallback(
+    async (threadId: string) => {
+      try {
+        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const permissionOverrides = permissionToTurnOverrides(permission, cwd);
+        const resumeParams: Record<string, JsonValue> = {
+          threadId,
+          cwd,
+          approvalPolicy: permissionOverrides.approvalPolicy,
+          sandbox: permissionOverrides.sandbox
+        };
+        if (effectiveModel) {
+          resumeParams.model = effectiveModel;
+        }
+        await client.rpc("thread/resume", resumeParams);
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Resume thread", error) });
+      } finally {
+        await loadThread(threadId);
+      }
+    },
+    [activeProviderId, client, cwd, loadThread, permission, selectedModel, state.providers]
+  );
+
   useEffect(() => {
     if (!state.connected || !state.token) {
       return;
@@ -901,9 +963,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         return;
       }
       setWorkspaceSelectionPending(false);
-      void loadThread(threadId);
+      void openExistingThread(threadId);
     },
-    [loadThread]
+    [openExistingThread]
   );
 
   const beginNewSession = useCallback((nextPermission: PermissionPresetId) => {
@@ -2495,7 +2557,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 }}
               >
                 <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {thread.preview || thread.id}
+                  {displayThreadTitle(thread)}
                 </Box>
               </Button>
             );
@@ -2524,9 +2586,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       threads={mainThreads}
                       activeThreadId={state.activeThreadId}
                       providerLabel={activeProviderLabel}
+                      searchTerm={historySearchTerm}
+                      loading={historyLoading}
                       installAvailable={Boolean(installPromptEvent) && !appInstalled}
                       backgroundImage={historyBackgroundImage}
                       t={t}
+                      onSearchChange={setHistorySearchTerm}
+                      onRefresh={() => void loadHistory(historySearchTerm)}
                       onSelect={(threadId) => selectTaskTab(threadId)}
                       onInstallApp={() => void handleInstallApp()}
                       onOpenSettings={() => openSettings("codex")}
@@ -2560,9 +2626,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 threads={mainThreads}
                 activeThreadId={state.activeThreadId}
                 providerLabel={activeProviderLabel}
+                searchTerm={historySearchTerm}
+                loading={historyLoading}
                 installAvailable={Boolean(installPromptEvent) && !appInstalled}
                 backgroundImage={historyBackgroundImage}
                 t={t}
+                onSearchChange={setHistorySearchTerm}
+                onRefresh={() => void loadHistory(historySearchTerm)}
                 onSelect={(threadId) => selectTaskTab(threadId)}
                 onInstallApp={() => void handleInstallApp()}
                 onOpenSettings={() => openSettings("codex")}
@@ -3139,9 +3209,19 @@ function renameThreadEntry(threads: ClientState["threads"], threadId: string, na
   const updatedAt = Math.floor(Date.now() / 1000);
   const found = threads.some((thread) => thread.id === threadId);
   if (!found) {
-    return [{ id: threadId, preview: name, updatedAt, status: "idle" }, ...threads];
+    return [{ id: threadId, title: name, name, preview: name, updatedAt, status: "idle" }, ...threads];
   }
-  return threads.map((thread) => (thread.id === threadId ? { ...thread, preview: name, updatedAt } : thread));
+  return threads.map((thread) => (thread.id === threadId ? { ...thread, title: name, name, preview: name, updatedAt } : thread));
+}
+
+function displayThreadTitle(thread: ClientState["threads"][number]): string {
+  const title = thread.title || thread.name || thread.preview;
+  if (title?.trim()) {
+    return title.trim();
+  }
+  const stamp = thread.recencyAt ?? thread.updatedAt ?? thread.createdAt;
+  const date = stamp ? new Date(stamp * 1000).toISOString().slice(0, 10) : "Stored thread";
+  return `${date} ${thread.id.slice(0, 8)}`;
 }
 
 function readStoredBoolean(key: string, fallback: boolean): boolean {
@@ -3327,19 +3407,40 @@ function fastReasoningEffort(options: ReasoningOption[], current: string): strin
 function normalizeThreads(value: unknown[]): ClientState["threads"] {
   return value
     .map((entry) => asRecord(entry))
-    .map((entry) => ({
-      id: String(entry.id ?? ""),
-      preview: typeof entry.preview === "string" ? entry.preview : undefined,
-      model: typeof entry.model === "string" ? entry.model : undefined,
-      modelProvider: typeof entry.modelProvider === "string" ? entry.modelProvider : undefined,
-      parentThreadId: typeof entry.parentThreadId === "string" ? entry.parentThreadId : undefined,
-      agentNickname: typeof entry.agentNickname === "string" ? entry.agentNickname : undefined,
-      agentRole: typeof entry.agentRole === "string" ? entry.agentRole : undefined,
-      createdAt: typeof entry.createdAt === "number" ? entry.createdAt : undefined,
-      updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : undefined,
-      status: typeof entry.status === "string" ? entry.status : undefined
-    }))
+    .map((entry) => {
+      const name = stringValue(entry.name) ?? stringValue(entry.threadName);
+      const title = name ?? stringValue(entry.title);
+      return {
+        id: String(entry.id ?? ""),
+        sessionId: stringValue(entry.sessionId),
+        title,
+        name,
+        preview: stringValue(entry.preview),
+        model: stringValue(entry.model),
+        modelProvider: stringValue(entry.modelProvider),
+        parentThreadId: stringValue(entry.parentThreadId),
+        forkedFromId: stringValue(entry.forkedFromId),
+        agentNickname: stringValue(entry.agentNickname),
+        agentRole: stringValue(entry.agentRole),
+        createdAt: numberValue(entry.createdAt),
+        updatedAt: numberValue(entry.updatedAt),
+        recencyAt: numberValue(entry.recencyAt),
+        status: stringValue(entry.status),
+        cwd: stringValue(entry.cwd),
+        source: normalizeThreadSource(entry.source),
+        threadSource: normalizeThreadSource(entry.threadSource),
+        path: stringValue(entry.path)
+      };
+    })
     .filter((entry) => entry.id);
+}
+
+function normalizeThreadSource(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  const record = asRecord(value);
+  return stringValue(record.type) ?? stringValue(record.kind) ?? stringValue(record.source);
 }
 
 function upsertThread(threads: ClientState["threads"], thread: ClientState["threads"][number]): ClientState["threads"] {
@@ -3512,18 +3613,25 @@ function encodeBase64Text(value: string): string {
   return window.btoa(binary);
 }
 
-async function loadAllThreads(client: CodexSocketClient): Promise<ClientState["threads"]> {
+async function loadAllThreads(client: CodexSocketClient, options: { searchTerm?: string } = {}): Promise<ClientState["threads"]> {
   const threads: ClientState["threads"] = [];
+  const searchTerm = options.searchTerm?.trim();
   for (const archived of [false, true]) {
     let cursor: string | null = null;
     for (let guard = 0; guard < 32; guard += 1) {
-      const response = await client.rpc("thread/list", {
+      const params: Record<string, JsonValue> = {
         cursor,
         limit: 200,
         archived,
         sourceKinds: ["cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown"],
-        useStateDbOnly: true
-      });
+        useStateDbOnly: false,
+        sortKey: "recency_at",
+        sortDirection: "desc"
+      };
+      if (searchTerm) {
+        params.searchTerm = searchTerm;
+      }
+      const response = await client.rpc("thread/list", params);
       const record = asRecord(response);
       const batch = Array.isArray(record.data)
         ? normalizeThreads(record.data)
@@ -3542,7 +3650,38 @@ async function loadAllThreads(client: CodexSocketClient): Promise<ClientState["t
       cursor = nextCursor;
     }
   }
-  return threads.sort((a, b) => (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0));
+  return threads.sort((a, b) => (b.recencyAt ?? b.updatedAt ?? b.createdAt ?? 0) - (a.recencyAt ?? a.updatedAt ?? a.createdAt ?? 0));
+}
+
+function filterHistoryThreads(threads: ClientState["threads"], searchTerm: string): ClientState["threads"] {
+  const needle = searchTerm.trim().toLowerCase();
+  if (!needle) {
+    return threads;
+  }
+  return threads.filter((thread) =>
+    [
+      displayThreadTitle(thread),
+      thread.preview,
+      thread.cwd,
+      thread.modelProvider,
+      thread.source,
+      thread.threadSource,
+      thread.model,
+      thread.id
+    ]
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .some((value) => value.toLowerCase().includes(needle))
+  );
+}
+
+function mergeThreadLists(...lists: ClientState["threads"][]): ClientState["threads"] {
+  const byId = new Map<string, ClientState["threads"][number]>();
+  for (const list of lists) {
+    for (const thread of list) {
+      byId.set(thread.id, { ...byId.get(thread.id), ...thread });
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => (b.recencyAt ?? b.updatedAt ?? b.createdAt ?? 0) - (a.recencyAt ?? a.updatedAt ?? a.createdAt ?? 0));
 }
 
 function buildRequestMonitorEntries(
@@ -3557,7 +3696,7 @@ function buildRequestMonitorEntries(
     return {
       id: turn.id,
       threadId: turn.threadId,
-      title: thread?.preview || thread?.id || turn.id,
+      title: thread ? displayThreadTitle(thread) : turn.id,
       source: threadSourceLabel(thread),
       status: turn.status,
       provider: thread?.modelProvider ?? "default",

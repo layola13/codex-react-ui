@@ -6,6 +6,23 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented Codex history management around app-server thread semantics.
+
+1. History listing:
+   - The history rail uses `thread/list` with active and archived pagination, all source kinds, recency sorting, and JSONL scan/repair enabled.
+   - It no longer derives row identity from opaque rollout filenames.
+2. Title and metadata handling:
+   - Thread normalization preserves app-server metadata including `name`, `title`, `sessionId`, `cwd`, `source`, `threadSource`, `path`, `recencyAt`, and parent/fork fields.
+   - Display titles prefer app-server `name`/title metadata, then rollout `preview`, then timestamp plus a short thread id.
+3. Search and open:
+   - History search sends app-server `searchTerm` and locally matches loaded rows by title, preview, cwd, provider, source, model, and id.
+   - Selecting a history row or task tab calls `thread/resume` before `thread/read`.
+4. Verification:
+   - Playwright covers history metadata search, title precedence, and resume on selection.
+   - Latest verification passed focused history, slash-command regressions, full `workbench.spec.ts` e2e (25/25), `bun run typecheck`, and `bun run build`.
+
+## Previous Completed Slice
+
 Implemented ZIP-based user theme portability while preserving existing JSON theme import/export compatibility.
 
 1. Theme ZIP export:

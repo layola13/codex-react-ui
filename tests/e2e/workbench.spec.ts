@@ -775,12 +775,49 @@ test.beforeEach(async ({ page }) => {
             ]
           };
         case "thread/list":
+          {
+            const searchTerm = typeof (params as { searchTerm?: unknown } | undefined)?.searchTerm === "string" ? String((params as { searchTerm?: string }).searchTerm).toLowerCase() : "";
+            const rows: Array<Record<string, string | number>> = [
+              { id: "thread-1", name: "Mock thread", preview: "Mock thread preview", status: "idle", cwd: "/root/projects", source: "cli", updatedAt: 1710000030, recencyAt: 1710000030 },
+              { id: "thread-2", preview: "Second task", status: "idle", cwd: "/root/projects/codex-react-ui", source: "appServer", updatedAt: 1710000010, recencyAt: 1710000010 },
+              {
+                id: "019c2d47-4935-7423-a190-05691f566092",
+                name: "Session Index Title",
+                preview: "rollout preview fallback",
+                status: "idle",
+                cwd: "/root/projects/indexed",
+                source: "vscode",
+                modelProvider: "openai",
+                createdAt: 1709900000,
+                updatedAt: 1710000020,
+                recencyAt: 1710000020
+              }
+            ];
+            const filtered = searchTerm
+              ? rows.filter((row) =>
+                  [row.name, row.preview, row.cwd, row.source, row.modelProvider, row.id]
+                    .filter((value): value is string => typeof value === "string")
+                    .some((value) => value.toLowerCase().includes(searchTerm))
+                )
+              : rows;
+            return { data: filtered };
+          }
+        case "thread/read": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
           return {
-            data: [
-              { id: "thread-1", preview: "Mock thread", status: "idle" },
-              { id: "thread-2", preview: "Second task", status: "idle" }
-            ]
+            thread: {
+              id: threadId,
+              name: threadId === "019c2d47-4935-7423-a190-05691f566092" ? "Session Index Title" : threadId === "thread-1" ? "Mock thread" : undefined,
+              preview: threadId === "thread-2" ? "Second task" : threadId === "019c2d47-4935-7423-a190-05691f566092" ? "rollout preview fallback" : "Mock thread preview",
+              status: "idle",
+              cwd: threadId === "019c2d47-4935-7423-a190-05691f566092" ? "/root/projects/indexed" : "/root/projects",
+              source: "cli",
+              updatedAt: 1710000020,
+              recencyAt: 1710000020,
+              turns: []
+            }
           };
+        }
         case "thread/start": {
           const id = `thread-new-${++threadStartCount}`;
           return { thread: { id, preview: `New mock thread ${threadStartCount}`, status: "idle" } };
@@ -804,7 +841,14 @@ test.beforeEach(async ({ page }) => {
         case "thread/resume": {
           const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
           return {
-            thread: { id: threadId, preview: threadId === "thread-2" ? "Second task" : "Mock thread", status: "idle" },
+            thread: {
+              id: threadId,
+              name: threadId === "019c2d47-4935-7423-a190-05691f566092" ? "Session Index Title" : undefined,
+              preview: threadId === "thread-2" ? "Second task" : threadId === "019c2d47-4935-7423-a190-05691f566092" ? "rollout preview fallback" : "Mock thread",
+              status: "idle",
+              cwd: "/root/projects",
+              source: "cli"
+            },
             model: "gpt-5.6-sol",
             modelProvider: "openai",
             serviceTier: null,
@@ -1269,6 +1313,28 @@ test("reconnects websocket after a disconnect and refreshes basics", async ({ pa
   });
 });
 
+test("searches Codex history by app-server metadata and resumes selected rows", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: /Session Index Title/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Session Index Title/ })).not.toContainText("rollout preview fallback");
+  await page.getByLabel("Search history").fill("indexed");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { searchTerm?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/list" && message.params?.searchTerm === "indexed");
+  });
+  await expect(page.getByRole("button", { name: /Session Index Title/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Mock thread/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /Session Index Title/ }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/resume" && message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092");
+  });
+  await expect(page.getByRole("tab", { name: "Session Index Title" })).toHaveAttribute("aria-selected", "true");
+});
+
 test("applies user theme media plugins to the default workbench", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   const heroImage =
@@ -1494,7 +1560,7 @@ test("supports drag and drop image attachments in the composer", async ({ page }
   await composer.dispatchEvent("dragover", { dataTransfer });
   await composer.dispatchEvent("drop", { dataTransfer });
   await expect(page.getByText("drop.png")).toBeVisible();
-  await expect(page.getByText(/1 image/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove drop.png" })).toBeVisible();
 
   await composer.fill("Describe the dropped image");
   await page.getByRole("button", { name: "Send" }).click();
@@ -1629,8 +1695,9 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
   const send = page.getByRole("button", { name: "Send" });
   await expect(page.getByText("mock-codex")).toBeVisible();
   await expect(composer).toBeEnabled();
-  await expect(page.getByTestId("composer-slash-shortcuts")).toContainText("/fast");
-  await page.getByRole("button", { name: "/status" }).click();
+  await page.getByRole("button", { name: "Attach images to this turn. Drag and drop is also supported." }).click();
+  await expect(page.getByRole("menuitem").filter({ hasText: "/fast" })).toBeVisible();
+  await page.getByRole("menuitem").filter({ hasText: "/status" }).click();
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Session Status");
 
   await page.evaluate(() => {
@@ -2049,7 +2116,7 @@ test("loads live Codex config in Settings and persists edits via config/batchWri
 
   await page.getByLabel("Search all Codex config").fill("runtime_only_config");
   await expect(page.getByRole("heading", { name: "runtime" })).toBeVisible();
-  await expect(page.getByLabel("Runtime Only Config", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("runtime Only Config", { exact: true })).toBeVisible();
 
   // Visual proof: Settings page with live engine config fields (material-kit-style section cards).
   await page.screenshot({
@@ -2349,7 +2416,7 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
   await page.getByRole("tab", { name: "Marketplace 2" }).click();
   await expect(page.getByRole("heading", { name: "Auth Plugin" })).toBeVisible();
   await page.getByRole("button", { name: "Details" }).first().click();
-  await expect(page.getByText("auth ON_USE")).toBeVisible();
+  await expect(page.getByText("auth on use")).toBeVisible();
   await expect(page.getByText("Mock Calendar").first()).toBeVisible();
   await expect(page.getByText("Calendar Template")).toBeVisible();
 

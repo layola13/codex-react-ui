@@ -217,15 +217,24 @@ export type ModelEntry = {
 
 export type ThreadEntry = {
   id: string;
+  sessionId?: string;
+  title?: string;
+  name?: string;
   preview?: string;
   model?: string;
   modelProvider?: string;
   parentThreadId?: string;
+  forkedFromId?: string;
   agentNickname?: string;
   agentRole?: string;
   createdAt?: number;
   updatedAt?: number;
+  recencyAt?: number;
   status?: string;
+  cwd?: string;
+  source?: string;
+  threadSource?: string;
+  path?: string;
 };
 
 export type WorkbenchItem = {
@@ -580,13 +589,24 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
     }
     const entry: ThreadEntry = {
       id,
+      sessionId: stringValue(thread.sessionId),
+      title: stringValue(thread.name) ?? stringValue(thread.title) ?? stringValue(thread.threadName),
+      name: stringValue(thread.name) ?? stringValue(thread.threadName),
       preview: stringValue(thread.preview),
       model: stringValue(thread.model),
       modelProvider: stringValue(thread.modelProvider),
       parentThreadId: stringValue(thread.parentThreadId),
+      forkedFromId: stringValue(thread.forkedFromId),
       agentNickname: stringValue(thread.agentNickname),
       agentRole: stringValue(thread.agentRole),
-      status: stringValue(thread.status)
+      createdAt: numberValue(thread.createdAt),
+      updatedAt: numberValue(thread.updatedAt),
+      recencyAt: numberValue(thread.recencyAt),
+      status: stringValue(thread.status),
+      cwd: stringValue(thread.cwd),
+      source: sourceLabel(thread.source),
+      threadSource: sourceLabel(thread.threadSource),
+      path: stringValue(thread.path)
     };
     return {
       ...state,
@@ -602,7 +622,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
     }
     return {
       ...state,
-      threads: state.threads.map((thread) => (thread.id === threadId ? { ...thread, preview: name } : thread))
+      threads: state.threads.map((thread) => (thread.id === threadId ? { ...thread, title: name, name, preview: name } : thread))
     };
   }
   if (method === "turn/started") {
@@ -1117,6 +1137,9 @@ function appTemplateToEntry(template: Record<string, unknown>): PluginAppTemplat
 }
 
 function sourceLabel(value: unknown): string {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
   const source = asRecord(value);
   const type = stringValue(source.type);
   switch (type) {
@@ -1138,17 +1161,27 @@ function joinPath(parentPath: string, name: string): string {
 }
 
 function threadToEntry(thread: Record<string, unknown>): ThreadEntry {
+  const name = stringValue(thread.name) ?? stringValue(thread.threadName);
   return {
     id: String(thread.id ?? ""),
-    preview: stringValue(thread.preview) ?? stringValue(thread.name),
+    sessionId: stringValue(thread.sessionId),
+    title: name ?? stringValue(thread.title),
+    name,
+    preview: stringValue(thread.preview) ?? name,
     model: stringValue(thread.model),
     modelProvider: stringValue(thread.modelProvider),
     parentThreadId: stringValue(thread.parentThreadId),
+    forkedFromId: stringValue(thread.forkedFromId),
     agentNickname: stringValue(thread.agentNickname),
     agentRole: stringValue(thread.agentRole),
     createdAt: numberValue(thread.createdAt),
     updatedAt: numberValue(thread.updatedAt),
-    status: stringValue(thread.status)
+    recencyAt: numberValue(thread.recencyAt),
+    status: stringValue(thread.status),
+    cwd: stringValue(thread.cwd),
+    source: sourceLabel(thread.source),
+    threadSource: sourceLabel(thread.threadSource),
+    path: stringValue(thread.path)
   };
 }
 

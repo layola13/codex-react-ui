@@ -2,6 +2,22 @@
 
 ## 2026-07-20
 
+- Codex history management slice:
+  - Reworked the history rail around Codex `thread/list` semantics instead of filename-derived labels, including non-state-only scan/repair, archived and active pagination, all source kinds, recency sorting, and app-server `searchTerm` where available.
+  - Extended `ThreadEntry` parsing for app-server thread metadata: `name`, `title`, `sessionId`, `cwd`, `source`, `threadSource`, `path`, `recencyAt`, `forkedFromId`, and agent fields.
+  - History titles now prefer app-server `name`/title metadata, then rollout `preview`, then timestamp plus short thread id.
+  - Added a History search box that combines app-server title search with local matching over title, preview, cwd, provider, source, model, and id.
+  - Opening a history row or task tab now calls `thread/resume` before `thread/read`, using the current model and permission context.
+  - Updated thread start/read/name notification parsing so renamed or resumed threads keep title metadata synchronized.
+  - Expanded Playwright coverage for history search, metadata title precedence, and `thread/resume` on selection.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "searches Codex history"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "routes main slash commands|routes /new danger through the danger confirmation flow"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (25/25 Chromium tests)
+    - `bun run typecheck`
+    - `bun run build`
+
 - Theme portability ZIP slice:
   - Added Settings -> Appearance theme ZIP export alongside the existing JSON export. ZIP packages contain root `theme.json` plus extracted local media files under `assets/`.
   - Added theme ZIP import that reads `theme.json`, resolves relative image/video asset paths back into safe data URLs, preserves remote URLs as-is, and keeps existing `.theme.json` import compatibility.
