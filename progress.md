@@ -2,6 +2,20 @@
 
 ## 2026-07-20
 
+- Chat waterfall data-driven search slice:
+  - Added `ChatSearchOverlay` for transcript search on top of the virtualized waterfall.
+  - Search operates over normalized `ChatWaterfallRow.searchText`, so it can find rows outside the mounted DOM window.
+  - Added keyboard access via Cmd/Ctrl+Shift+F, result count, previous/next navigation, and scope filters for All, User, Assistant, Tools, Files, and Commands.
+  - Search result jumps use the virtualizer and reuse row flash highlighting for a clear landing target.
+  - Extended the long transcript Playwright test to search for an unmounted final assistant row, verify command-scope search, and verify User scope excludes command output.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall floor navigation slice:
   - Added `ChatFloorRail` for desktop prompt-floor navigation on top of the virtualized waterfall.
   - Reused `ChatWaterfallRow.floor` metadata so user prompts become clickable floor markers without DOM scanning.

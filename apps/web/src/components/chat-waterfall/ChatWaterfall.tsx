@@ -6,6 +6,7 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/rea
 import type { TranslateFn } from "../../i18n";
 import { ChatRow } from "./ChatRow";
 import { ChatFloorRail, type ChatFloorEntry } from "./ChatFloorRail";
+import { ChatSearchOverlay, buildChatSearchResults, type ChatSearchScope } from "./ChatSearchOverlay";
 import { estimateChatRowSize } from "./chatRowEstimates";
 import type { ChatWaterfallRow } from "./types";
 
@@ -21,6 +22,10 @@ export function ChatWaterfall({ rows, t, before }: Props) {
   const [nearBottom, setNearBottom] = useState(true);
   const [newRowsCount, setNewRowsCount] = useState(0);
   const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchScope, setSearchScope] = useState<ChatSearchScope>("all");
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
   const beforeOffset = before ? 1 : 0;
   const virtualCount = rows.length + beforeOffset;
   const liveIndexes = useMemo(
@@ -68,6 +73,7 @@ export function ChatWaterfall({ rows, t, before }: Props) {
       )
       .filter((entry): entry is ChatFloorEntry => Boolean(entry));
   }, [firstVisibleRowIndex, rows]);
+  const searchResults = useMemo(() => buildChatSearchResults(rows, searchTerm, searchScope), [rows, searchScope, searchTerm]);
 
   const updateNearBottom = useCallback(() => {
     const element = parentRef.current;
@@ -100,6 +106,32 @@ export function ChatWaterfall({ rows, t, before }: Props) {
     previousRowCountRef.current = rows.length;
   }, [nearBottom, rows.length]);
 
+  useEffect(() => {
+    setSelectedSearchIndex(0);
+  }, [searchScope, searchTerm]);
+
+  useEffect(() => {
+    if (!searchOpen || searchResults.length === 0) {
+      return;
+    }
+    const safeIndex = Math.min(selectedSearchIndex, searchResults.length - 1);
+    const result = searchResults[safeIndex];
+    if (result) {
+      jumpToRow(result.rowIndex);
+    }
+  }, [searchOpen, searchResults, selectedSearchIndex]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   useLayoutEffect(() => {
     if (!nearBottom || rows.length === 0) {
       return;
@@ -126,6 +158,14 @@ export function ChatWaterfall({ rows, t, before }: Props) {
     setNearBottom(false);
     setFlashRowKey(row.key);
     window.setTimeout(() => setFlashRowKey((current) => (current === row.key ? null : current)), 1400);
+  }
+
+  function selectSearchIndex(index: number) {
+    if (searchResults.length === 0) {
+      setSelectedSearchIndex(0);
+      return;
+    }
+    setSelectedSearchIndex((index + searchResults.length) % searchResults.length);
   }
 
   function scrollToBottom() {
@@ -171,6 +211,33 @@ export function ChatWaterfall({ rows, t, before }: Props) {
           </Box>
         </Box>
       )}
+      <Box
+        sx={{
+          position: "sticky",
+          top: 12,
+          zIndex: 5,
+          height: 0,
+          display: "flex",
+          justifyContent: "center",
+          pointerEvents: "none"
+        }}
+      >
+        <Box sx={{ pointerEvents: "auto" }}>
+          <ChatSearchOverlay
+            open={searchOpen}
+            rows={rows}
+            term={searchTerm}
+            scope={searchScope}
+            selectedIndex={Math.min(selectedSearchIndex, Math.max(0, searchResults.length - 1))}
+            results={searchResults}
+            onOpen={() => setSearchOpen(true)}
+            onClose={() => setSearchOpen(false)}
+            onTermChange={setSearchTerm}
+            onScopeChange={setSearchScope}
+            onSelectIndex={selectSearchIndex}
+          />
+        </Box>
+      </Box>
       <Box sx={{ maxWidth: "min(100%, 1600px)", mx: "auto" }}>
         <Box
           data-testid="conversation-waterfall"

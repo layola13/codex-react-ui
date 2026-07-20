@@ -1475,6 +1475,20 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("button", { name: /Jump to prompt 150: Long user prompt 149/ }).click();
   await expect(page.getByTestId("conversation-item-long-user-149").getByText("Long user prompt 149")).toBeVisible();
 
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
+  await expect(page.getByTestId("chat-search-overlay")).toBeVisible();
+  await page.getByLabel("Search transcript").fill("Long assistant answer 319");
+  await expect(page.getByText("1/1 results in 653 rows")).toBeVisible();
+  await expect(page.getByTestId("conversation-item-long-agent-319").getByText("Long assistant answer 319")).toBeVisible();
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Commands" }).click();
+  await page.getByLabel("Search transcript").fill("stdout line 300");
+  await expect(page.getByText("1/1 results in 653 rows")).toBeVisible();
+  await expect(page.getByTestId("conversation-item-long-command-300").getByText("stdout line 300")).toBeVisible();
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "User" }).click();
+  await expect(page.getByText("No transcript rows match this search.")).toBeVisible();
+
   const scroll = page.getByTestId("chat-waterfall-scroll");
   await scroll.evaluate((element) => {
     element.scrollTop = 0;

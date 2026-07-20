@@ -6,6 +6,22 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented data-driven transcript search for the virtualized chat waterfall.
+
+1. Search overlay:
+   - Added `ChatSearchOverlay` with transcript input, result counts, Previous/Next controls, and scope filters.
+   - Cmd/Ctrl+Shift+F opens the overlay without relying on browser DOM search.
+   - Scopes include All, User, Assistant, Tools, Files, and Commands.
+2. Data model:
+   - Search is driven by normalized `ChatWaterfallRow.searchText`, so unmounted virtual rows are searchable.
+   - Results retain their source row index and jump through the virtualizer.
+   - Result jumps reuse the existing row flash highlight.
+3. Verification:
+   - Playwright injects 653 logical chat rows, searches for an unmounted final assistant row, checks command-scope search, and verifies User scope excludes command output.
+   - Latest verification passed web/full typecheck, build, focused waterfall search e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented desktop floor navigation for the virtualized chat waterfall.
 
 1. Floor rail:
