@@ -721,7 +721,7 @@
   "settings.launch.planned": "Soon",
   "settings.launch.engineActiveNote": "Active engine: {engine}. Chat uses Codex Responses (via code-launch when the relay is Chat Completions only).",
   "settings.launch.enginePlannedNote": "{engine} is planned ({protocol} protocol, {launch}). UI chat integration comes later — you can already download the launcher from the catalog below.",
-  "settings.launch.engineRoadmap": "Roadmap: keep Codex as default → add Chat Completions engines (agy, auggie, claude, crush, grok, gemini) behind the same relay + membership model.",
+  "settings.launch.engineRoadmap": "Roadmap: keep Codex as default → multi-engine chat (agy, auggie, claude, crush, grok, gemini) → optional Arena mode (parallel compare). Same relay + membership model.",
   "settings.launch.downloadSection": "Download *-launch from GitHub",
   "settings.launch.downloadSectionHint": "Each adapter: https://github.com/layola13/xxxxx-launch — clone, ./install.sh, then configure .env."
 }

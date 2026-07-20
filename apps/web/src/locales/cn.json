@@ -721,7 +721,7 @@
   "settings.launch.planned": "规划中",
   "settings.launch.engineActiveNote": "当前引擎：{engine}。聊天走 Codex Responses（若中转仅 Chat Completions 需配合 code-launch）。",
   "settings.launch.enginePlannedNote": "{engine} 为规划中（协议 {protocol}，适配器 {launch}）。界面聊天接入稍后实现——下方可先下载对应启动器。",
-  "settings.launch.engineRoadmap": "路线图：默认 Codex → 同一套中转/会员模型下接入 Chat Completions 引擎（agy、auggie、claude、crush、grok、gemini）。",
+  "settings.launch.engineRoadmap": "路线图：默认 Codex → 多引擎聊天（agy、auggie、claude、crush、grok、gemini）→ 可选竞技场模式（并行对比）。同一套中转与会员模型。",
   "settings.launch.downloadSection": "从 GitHub 下载 *-launch",
   "settings.launch.downloadSectionHint": "统一地址模式：https://github.com/layola13/xxxxx-launch — clone 后 ./install.sh，再配置 .env。"
 }
