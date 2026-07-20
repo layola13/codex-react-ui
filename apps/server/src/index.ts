@@ -30,6 +30,13 @@ import {
   type InstallLaunchRequest,
   type LaunchEnvValues
 } from "./launchInstall.js";
+import {
+  ENGINE_CATALOG,
+  getEngineTranscript,
+  isEngineId,
+  listEngineHistory,
+  type EngineId
+} from "./engineHistory.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -596,6 +603,23 @@ async function handleApiRequest(
         }
       }, 200, headers);
     }
+    case "GET /api/engine-history": {
+      const engineParam = url.searchParams.get("engine") || "all";
+      const q = url.searchParams.get("q") || undefined;
+      const limitRaw = url.searchParams.get("limit");
+      const limit = limitRaw ? Number(limitRaw) : undefined;
+      if (engineParam !== "all" && !isEngineId(engineParam)) {
+        return jsonResponse({ error: `Unknown engine: ${engineParam}` }, 400, headers);
+      }
+      const data = listEngineHistory(engineParam as EngineId | "all", {
+        q,
+        limit: Number.isFinite(limit) ? limit : undefined
+      });
+      return jsonResponse(data, 200, headers);
+    }
+    case "GET /api/engine-history/engines": {
+      return jsonResponse({ engines: ENGINE_CATALOG }, 200, headers);
+    }
     case "GET /api/launch-adapters": {
       // Host-local install detection; any authenticated session (or token mode) may read.
       return jsonResponse(detectAll(), 200, headers);
@@ -655,6 +679,23 @@ async function handleApiRequest(
       }
     }
     default: {
+      // GET /api/engine-history/:engine/:id — read-only transcript
+      const engineHistMatch = url.pathname.match(/^\/api\/engine-history\/([^/]+)\/([^/]+)$/);
+      if (engineHistMatch && request.method === "GET") {
+        const engine = decodeURIComponent(engineHistMatch[1] ?? "");
+        const id = decodeURIComponent(engineHistMatch[2] ?? "");
+        if (!isEngineId(engine)) {
+          return jsonResponse({ error: `Unknown engine: ${engine}` }, 400, headers);
+        }
+        if (!id) {
+          return jsonResponse({ error: "Missing history id" }, 400, headers);
+        }
+        const transcript = getEngineTranscript(engine, id);
+        if (!transcript) {
+          return jsonResponse({ error: "Transcript not found" }, 404, headers);
+        }
+        return jsonResponse(transcript, 200, headers);
+      }
       // POST /api/members/:id/balance  admin allocate credit
       const balanceMatch = url.pathname.match(/^\/api\/members\/([^/]+)\/balance$/);
       if (balanceMatch && request.method === "POST" && authStore) {

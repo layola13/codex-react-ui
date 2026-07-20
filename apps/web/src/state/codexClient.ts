@@ -1903,3 +1903,84 @@ export async function writeLaunchAdapterEnvs(
     adapters: body.adapters ?? []
   };
 }
+
+export type EngineId =
+  | "codex"
+  | "claude"
+  | "agy"
+  | "gemini"
+  | "crush"
+  | "auggie"
+  | "grok"
+  | "freebuff"
+  | "coderabbit";
+
+export type EngineMeta = {
+  id: EngineId;
+  label: string;
+  launchId: string;
+  mark: string;
+  color: string;
+};
+
+export type EngineHistoryItem = {
+  engine: EngineId;
+  id: string;
+  title: string;
+  preview?: string;
+  cwd?: string;
+  model?: string;
+  updatedAt?: number;
+  createdAt?: number;
+  sourcePath?: string;
+  canResume: boolean;
+  messageCount?: number;
+};
+
+export type EngineMessage = {
+  role: "user" | "assistant" | "system" | "tool" | "other";
+  text: string;
+  timestamp?: number;
+};
+
+export type EngineTranscript = {
+  engine: EngineId;
+  id: string;
+  title: string;
+  messages: EngineMessage[];
+  sourcePath?: string;
+};
+
+export async function fetchEngineHistory(
+  token: string,
+  opts: { engine?: EngineId | "all"; q?: string; limit?: number } = {}
+): Promise<{ engines: EngineMeta[]; items: EngineHistoryItem[] }> {
+  const params = new URLSearchParams();
+  if (opts.engine) params.set("engine", opts.engine);
+  if (opts.q) params.set("q", opts.q);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const response = await fetch(`/api/engine-history${qs ? `?${qs}` : ""}`, {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `engine-history failed: ${response.status}`);
+  }
+  return (await response.json()) as { engines: EngineMeta[]; items: EngineHistoryItem[] };
+}
+
+export async function fetchEngineTranscript(
+  token: string,
+  engine: EngineId,
+  id: string
+): Promise<EngineTranscript> {
+  const response = await fetch(`/api/engine-history/${encodeURIComponent(engine)}/${encodeURIComponent(id)}`, {
+    headers: { "x-codex-ui-token": token }
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `transcript failed: ${response.status}`);
+  }
+  return (await response.json()) as EngineTranscript;
+}

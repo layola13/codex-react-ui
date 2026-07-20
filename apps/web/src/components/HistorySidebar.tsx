@@ -1,5 +1,25 @@
-import { useState } from "react";
-import { Avatar, Box, Button, Chip, Divider, IconButton, List, ListItemButton, ListItemText, Stack, TextField, Tooltip, Typography } from "@mui/material";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography
+} from "@mui/material";
 import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
 import CheckIcon from "@mui/icons-material/Check";
 import CloseIcon from "@mui/icons-material/Close";
@@ -8,8 +28,17 @@ import DownloadIcon from "@mui/icons-material/Download";
 import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
+import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { alpha } from "@mui/material/styles";
 import type { ThreadEntry } from "../state/codexClient";
+import {
+  fetchEngineHistory,
+  fetchEngineTranscript,
+  type EngineHistoryItem,
+  type EngineId,
+  type EngineMeta,
+  type EngineTranscript
+} from "../state/codexClient";
 import type { TranslateFn } from "../i18n";
 
 export type HistoryThreadUsageSummary = {
@@ -30,6 +59,8 @@ type Props = {
   loading?: boolean;
   installAvailable?: boolean;
   backgroundImage?: string;
+  /** Session token for host multi-engine history scanners */
+  sessionToken?: string | null;
   t: TranslateFn;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
@@ -41,6 +72,8 @@ type Props = {
   onOpenSettings: () => void;
 };
 
+type EngineTab = "all" | EngineId;
+
 export function HistorySidebar({
   threads,
   activeThreadId,
@@ -50,6 +83,7 @@ export function HistorySidebar({
   loading = false,
   installAvailable = false,
   backgroundImage,
+  sessionToken = null,
   t,
   onSearchChange,
   onRefresh,
@@ -63,6 +97,86 @@ export function HistorySidebar({
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
+  const [engineTab, setEngineTab] = useState<EngineTab>("all");
+  const [engines, setEngines] = useState<EngineMeta[]>([]);
+  const [engineItems, setEngineItems] = useState<EngineHistoryItem[]>([]);
+  const [engineLoading, setEngineLoading] = useState(false);
+  const [engineError, setEngineError] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<EngineTranscript | null>(null);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
+
+  const loadEngineHistory = useCallback(async () => {
+    if (!sessionToken) {
+      setEngineItems([]);
+      return;
+    }
+    setEngineLoading(true);
+    setEngineError(null);
+    try {
+      const engine = engineTab === "all" || engineTab === "codex" ? "all" : engineTab;
+      const data = await fetchEngineHistory(sessionToken, {
+        engine,
+        q: searchTerm.trim() || undefined,
+        limit: 250
+      });
+      setEngines(data.engines);
+      setEngineItems(data.items);
+    } catch (err) {
+      setEngineError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEngineLoading(false);
+    }
+  }, [sessionToken, engineTab, searchTerm]);
+
+  useEffect(() => {
+    void loadEngineHistory();
+  }, [loadEngineHistory]);
+
+  const engineMetaById = useMemo(() => {
+    const map = new Map<string, EngineMeta>();
+    for (const e of engines) map.set(e.id, e);
+    return map;
+  }, [engines]);
+
+  const filteredEngineItems = useMemo(() => {
+    if (engineTab === "codex") return [] as EngineHistoryItem[];
+    if (engineTab === "all") return engineItems.filter((i) => i.engine !== "codex");
+    return engineItems.filter((i) => i.engine === engineTab);
+  }, [engineItems, engineTab]);
+
+  const showCodexThreads = engineTab === "all" || engineTab === "codex";
+
+  const openEngineItem = async (item: EngineHistoryItem) => {
+    if (!sessionToken) return;
+    if (item.engine === "codex" && item.canResume) {
+      onSelect(item.id);
+      return;
+    }
+    setTranscriptLoading(true);
+    setTranscriptError(null);
+    setTranscript(null);
+    try {
+      const data = await fetchEngineTranscript(sessionToken, item.engine, item.id);
+      setTranscript(data);
+    } catch (err) {
+      setTranscriptError(err instanceof Error ? err.message : String(err));
+      setTranscript({
+        engine: item.engine,
+        id: item.id,
+        title: item.title,
+        messages: item.preview ? [{ role: "other", text: item.preview }] : [],
+        sourcePath: item.sourcePath
+      });
+    } finally {
+      setTranscriptLoading(false);
+    }
+  };
+
+  const handleRefreshAll = () => {
+    onRefresh();
+    void loadEngineHistory();
+  };
 
   const beginRename = (thread: ThreadEntry) => {
     setEditingThreadId(thread.id);
@@ -138,11 +252,67 @@ export function HistorySidebar({
         <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 800 }}>
           {t("history.conversations")}
         </Typography>
-        <Button size="small" onClick={onRefresh} disabled={loading}>
-          {loading ? t("history.loading") : t("history.refresh")}
+        <Button size="small" onClick={handleRefreshAll} disabled={loading || engineLoading}>
+          {loading || engineLoading ? t("history.loading") : t("history.refresh")}
         </Button>
       </Stack>
       <Divider />
+      <Box sx={{ px: 0.5, pt: 0.5 }}>
+        <Tabs
+          value={engineTab}
+          onChange={(_, v) => setEngineTab(v as EngineTab)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            minHeight: 36,
+            "& .MuiTab-root": { minHeight: 36, minWidth: 52, px: 1, py: 0.5, fontSize: 11, fontWeight: 800, textTransform: "none" }
+          }}
+        >
+          <Tab value="all" label={t("history.engineTabAll")} id="history-tab-all" />
+          {(engines.length
+            ? engines
+            : ([
+                { id: "codex", label: "Codex", mark: "Cx", color: "#14b8a6", launchId: "code-launch" },
+                { id: "claude", label: "Claude", mark: "Cl", color: "#f59e0b", launchId: "claude-launch" },
+                { id: "agy", label: "AGY", mark: "Ag", color: "#8b5cf6", launchId: "agy-launch" },
+                { id: "gemini", label: "Gemini", mark: "Gm", color: "#3b82f6", launchId: "gemini-launch" },
+                { id: "crush", label: "Crush", mark: "Cr", color: "#ec4899", launchId: "crush-launch" },
+                { id: "auggie", label: "Auggie", mark: "Au", color: "#06b6d4", launchId: "auggie-launch" },
+                { id: "grok", label: "Grok", mark: "X", color: "#64748b", launchId: "grok-launch" },
+                { id: "freebuff", label: "Freebuff", mark: "Fb", color: "#22c55e", launchId: "freebuff-launch" },
+                { id: "coderabbit", label: "CodeRabbit", mark: "Rb", color: "#f97316", launchId: "coderabbit-launch" }
+              ] as EngineMeta[])
+          ).map((eng) => (
+            <Tab
+              key={eng.id}
+              value={eng.id}
+              id={`history-tab-${eng.id}`}
+              label={
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Box
+                    sx={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 0.75,
+                      bgcolor: eng.color,
+                      color: "#fff",
+                      fontSize: 8,
+                      fontWeight: 900,
+                      display: "grid",
+                      placeItems: "center",
+                      lineHeight: 1
+                    }}
+                  >
+                    {eng.mark}
+                  </Box>
+                  <span>{eng.label}</span>
+                </Stack>
+              }
+            />
+          ))}
+        </Tabs>
+      </Box>
       <Box sx={{ px: 1.25, py: 1 }}>
         <TextField
           size="small"
@@ -155,17 +325,35 @@ export function HistorySidebar({
             startAdornment: <SearchIcon fontSize="small" color="disabled" sx={{ mr: 0.75 }} />
           }}
         />
+        {engineError ? (
+          <Typography variant="caption" color="error" sx={{ display: "block", mt: 0.5 }}>
+            {engineError}
+          </Typography>
+        ) : null}
+        {!sessionToken ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
+            {t("history.engineNeedToken")}
+          </Typography>
+        ) : null}
       </Box>
       <List dense sx={{ overflow: "auto", flex: "1 1 0", minHeight: 0, p: 1.25 }}>
-        {threads.length === 0 && (
+        {showCodexThreads && threads.length === 0 && filteredEngineItems.length === 0 && (
           <Box sx={{ p: 1.25, color: "text.secondary" }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {loading ? t("history.loading") : t("history.empty")}
+              {loading || engineLoading ? t("history.loading") : t("history.empty")}
             </Typography>
             <Typography variant="caption">{searchTerm ? t("history.emptySearch") : t("history.emptyDescription")}</Typography>
           </Box>
         )}
-        {threads.map((thread) => {
+        {!showCodexThreads && filteredEngineItems.length === 0 && (
+          <Box sx={{ p: 1.25, color: "text.secondary" }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>
+              {engineLoading ? t("history.loading") : t("history.engineEmpty")}
+            </Typography>
+            <Typography variant="caption">{t("history.engineEmptyDescription")}</Typography>
+          </Box>
+        )}
+        {showCodexThreads && threads.map((thread) => {
           const title = threadTitle(thread);
           const usage = threadUsage[thread.id];
           const isEditing = editingThreadId === thread.id;
@@ -287,7 +475,146 @@ export function HistorySidebar({
             </ListItemButton>
           );
         })}
+        {filteredEngineItems.map((item) => {
+          const meta = engineMetaById.get(item.engine);
+          const color = meta?.color ?? "#64748b";
+          const mark = meta?.mark ?? item.engine.slice(0, 2).toUpperCase();
+          const key = `${item.engine}:${item.id}`;
+          return (
+            <ListItemButton
+              key={key}
+              onClick={() => void openEngineItem(item)}
+              aria-label={t("history.engineOpenAria", { engine: meta?.label ?? item.engine, title: item.title })}
+              sx={{
+                border: "1px solid",
+                borderColor: "divider",
+                bgcolor: "background.paper",
+                alignItems: "flex-start",
+                gap: 0.75,
+                "& + &": { mt: 1 }
+              }}
+            >
+              <Box
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 1,
+                  bgcolor: color,
+                  color: "#fff",
+                  fontSize: 10,
+                  fontWeight: 900,
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                  mt: 0.25
+                }}
+              >
+                {mark}
+              </Box>
+              <ListItemText
+                primary={item.title}
+                secondary={
+                  <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                    <Chip size="small" label={meta?.label ?? item.engine} sx={{ bgcolor: alpha(color, 0.15), color, borderColor: alpha(color, 0.35) }} variant="outlined" />
+                    <Chip size="small" label={t("history.readOnly")} variant="outlined" />
+                    {item.messageCount != null ? (
+                      <Chip size="small" label={t("history.messageCount", { count: String(item.messageCount) })} variant="outlined" />
+                    ) : null}
+                    {item.model ? <Chip size="small" label={item.model} variant="outlined" /> : null}
+                    {item.cwd ? (
+                      <Typography variant="caption" title={item.cwd}>
+                        {shortCwd(item.cwd)}
+                      </Typography>
+                    ) : null}
+                    {item.updatedAt ? (
+                      <Typography variant="caption" color="text.secondary">
+                        {formatRelativeTime(item.updatedAt)}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                }
+                primaryTypographyProps={{ noWrap: true, fontWeight: 600 }}
+                sx={{ minWidth: 0, flex: 1 }}
+              />
+              <Tooltip title={t("history.viewTranscript")}>
+                <IconButton size="small" onClick={(e) => { e.stopPropagation(); void openEngineItem(item); }}>
+                  <VisibilityOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </ListItemButton>
+          );
+        })}
       </List>
+      <Dialog
+        open={Boolean(transcript) || transcriptLoading}
+        onClose={() => {
+          setTranscript(null);
+          setTranscriptError(null);
+        }}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 900 }} noWrap>
+              {transcript?.title || t("history.transcriptTitle")}
+            </Typography>
+            {transcript ? (
+              <Typography variant="caption" color="text.secondary">
+                {transcript.engine} · {transcript.id}
+                {transcript.sourcePath ? ` · ${transcript.sourcePath}` : ""}
+              </Typography>
+            ) : null}
+          </Box>
+          <IconButton
+            aria-label={t("history.closeTranscript")}
+            onClick={() => {
+              setTranscript(null);
+              setTranscriptError(null);
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {transcriptLoading ? (
+            <Stack alignItems="center" py={4}>
+              <CircularProgress size={28} />
+            </Stack>
+          ) : null}
+          {transcriptError ? (
+            <Typography color="error" variant="body2" sx={{ mb: 1 }}>
+              {transcriptError}
+            </Typography>
+          ) : null}
+          {transcript && transcript.messages.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {t("history.transcriptEmpty")}
+            </Typography>
+          ) : null}
+          <Stack spacing={1.25}>
+            {(transcript?.messages ?? []).map((msg, idx) => (
+              <Box
+                key={`${idx}-${msg.role}`}
+                sx={{
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: msg.role === "user" ? "action.hover" : "background.paper"
+                }}
+              >
+                <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary" }}>
+                  {msg.role}
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", mt: 0.5 }}>
+                  {msg.text}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </DialogContent>
+      </Dialog>
       <Divider />
       <Box data-testid="left-bottom-account-area" sx={{ p: 1.25, flex: "0 0 auto" }}>
         <Stack
@@ -379,6 +706,19 @@ function threadTitle(thread: ThreadEntry): string {
   const stamp = thread.recencyAt ?? thread.updatedAt ?? thread.createdAt;
   const date = stamp ? new Date(stamp * 1000).toISOString().slice(0, 10) : "Stored thread";
   return `${date} ${thread.id.slice(0, 8)}`;
+}
+
+function formatRelativeTime(ms: number): string {
+  const delta = Date.now() - ms;
+  if (!Number.isFinite(delta)) return "";
+  const sec = Math.round(delta / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.round(min / 60);
+  if (hr < 48) return `${hr}h`;
+  const day = Math.round(hr / 24);
+  return `${day}d`;
 }
 
 function shortCwd(cwd: string): string {

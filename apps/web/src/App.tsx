@@ -2988,6 +2988,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       loading={historyLoading}
                       installAvailable={Boolean(installPromptEvent) && !appInstalled}
                       backgroundImage={historyBackgroundImage}
+                      sessionToken={state.token}
                       t={t}
                       onSearchChange={setHistorySearchTerm}
                       onRefresh={() => void loadHistory(historySearchTerm)}
@@ -3032,6 +3033,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 loading={historyLoading}
                 installAvailable={Boolean(installPromptEvent) && !appInstalled}
                 backgroundImage={historyBackgroundImage}
+                sessionToken={state.token}
                 t={t}
                 onSearchChange={setHistorySearchTerm}
                 onRefresh={() => void loadHistory(historySearchTerm)}

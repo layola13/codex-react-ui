@@ -752,5 +752,16 @@
   "settings.launch.statusNeedEnv": "Need .env",
   "settings.launch.statusMissing": "Not installed",
   "settings.launch.statusNoRepo": "No public repo",
-  "settings.launch.noPublicRepo": "GitHub repo not published under layola13 — cannot one-click clone. Install from a local path or publish the repo first."
+  "settings.launch.noPublicRepo": "GitHub repo not published under layola13 — cannot one-click clone. Install from a local path or publish the repo first.",
+  "history.engineTabAll": "All",
+  "history.engineNeedToken": "Sign in to load other CLI histories on this host.",
+  "history.engineEmpty": "No sessions for this CLI",
+  "history.engineEmptyDescription": "Run that CLI (or its *-launch wrapper) once, then refresh.",
+  "history.readOnly": "read-only",
+  "history.messageCount": "{count} msgs",
+  "history.viewTranscript": "View transcript",
+  "history.transcriptTitle": "CLI transcript",
+  "history.closeTranscript": "Close",
+  "history.transcriptEmpty": "No messages parsed from this session store.",
+  "history.engineOpenAria": "Open {engine} history: {title}"
 }
