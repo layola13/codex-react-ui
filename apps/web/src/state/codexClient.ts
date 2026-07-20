@@ -1921,6 +1921,10 @@ export type EngineMeta = {
   launchId: string;
   mark: string;
   color: string;
+  /** True when UI can resume this engine session (Codex only today) */
+  canResume?: boolean;
+  /** True when multi-agent chat runtime will support this engine */
+  canChat?: boolean;
 };
 
 export type EngineHistoryItem = {

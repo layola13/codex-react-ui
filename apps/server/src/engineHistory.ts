@@ -2,43 +2,38 @@
  * Host-local chat history scanners for every *-launch product CLI.
  * Phase 0: list + read-only transcript. Resume remains Codex-only via app-server.
  */
+import {
+  AGENT_ENGINE_CATALOG,
+  type AgentEngineId
+} from "@codex-ui/shared";
 import { Database } from "bun:sqlite";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
-export type EngineId =
-  | "codex"
-  | "claude"
-  | "agy"
-  | "gemini"
-  | "crush"
-  | "auggie"
-  | "grok"
-  | "freebuff"
-  | "coderabbit";
+/** Alias of shared AgentEngineId — keep API stable for clients. */
+export type EngineId = AgentEngineId;
 
 export type EngineMeta = {
   id: EngineId;
   label: string;
   launchId: string;
-  /** Short mark for avatar chip */
   mark: string;
-  /** MUI-ish hue token */
   color: string;
+  /** Capability flags for future multi-agent runtime */
+  canResume: boolean;
+  canChat: boolean;
 };
 
-export const ENGINE_CATALOG: EngineMeta[] = [
-  { id: "codex", label: "Codex", launchId: "code-launch", mark: "Cx", color: "#14b8a6" },
-  { id: "claude", label: "Claude", launchId: "claude-launch", mark: "Cl", color: "#f59e0b" },
-  { id: "agy", label: "AGY", launchId: "agy-launch", mark: "Ag", color: "#8b5cf6" },
-  { id: "gemini", label: "Gemini", launchId: "gemini-launch", mark: "Gm", color: "#3b82f6" },
-  { id: "crush", label: "Crush", launchId: "crush-launch", mark: "Cr", color: "#ec4899" },
-  { id: "auggie", label: "Auggie", launchId: "auggie-launch", mark: "Au", color: "#06b6d4" },
-  { id: "grok", label: "Grok", launchId: "grok-launch", mark: "X", color: "#64748b" },
-  { id: "freebuff", label: "Freebuff", launchId: "freebuff-launch", mark: "Fb", color: "#22c55e" },
-  { id: "coderabbit", label: "CodeRabbit", launchId: "coderabbit-launch", mark: "Rb", color: "#f97316" }
-];
+export const ENGINE_CATALOG: EngineMeta[] = AGENT_ENGINE_CATALOG.map((e) => ({
+  id: e.id,
+  label: e.label,
+  launchId: e.launchId ?? e.id,
+  mark: e.mark,
+  color: e.color,
+  canResume: e.capabilities.resumeInUi,
+  canChat: e.capabilities.chatRuntime
+}));
 
 export type EngineHistoryItem = {
   engine: EngineId;
@@ -997,5 +992,11 @@ export function getEngineTranscript(engine: EngineId, id: string): EngineTranscr
 }
 
 export function isEngineId(value: string): value is EngineId {
-  return ENGINE_CATALOG.some((e) => e.id === value);
+  return AGENT_ENGINE_CATALOG.some((e) => e.id === value);
 }
+
+/** Future multi-agent: engines with chatRuntime capability. */
+export function enginesReadyForChatRuntime(): EngineMeta[] {
+  return ENGINE_CATALOG.filter((e) => e.canChat);
+}
+

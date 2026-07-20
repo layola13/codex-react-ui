@@ -46,7 +46,10 @@ import {
   type InstallLaunchResultItem
 } from "../state/codexClient";
 
-/** Chat engines planned for multi-engine UI (only codex is live today). */
+/** Chat engines planned for multi-engine UI (only codex is live today).
+ *  History tabs already list all *-launch CLIs (read-only); chatRuntime is next.
+ *  Canonical catalog: @codex-ui/shared AGENT_ENGINE_CATALOG.
+ */
 export type ChatEngineId =
   | "codex"
   | "agy"

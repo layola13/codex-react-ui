@@ -378,3 +378,17 @@ export type UsageSummary = {
   byOperation: Array<{ operation: string; count: number; total: number }>;
   topUsers?: Array<{ userId: string; email: string; debit: number; turns: number }>;
 };
+
+export {
+  AGENT_ENGINE_CATALOG,
+  AGENT_RUNTIME_BRIDGE_PLAN,
+  agentEngineByLaunchId,
+  getAgentEngine,
+  isAgentEngineId,
+  plannedChatEngines,
+  type AgentEngineCapabilities,
+  type AgentEngineDefinition,
+  type AgentEngineId,
+  type AgentProtocol,
+  type AgentRuntimeBridgePlan
+} from "./agentEngines.js";

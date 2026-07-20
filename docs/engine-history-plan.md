@@ -2,131 +2,125 @@
 
 ## Goal
 
-Surface **chat history from every `*-launch` product CLI** inside Codex React UI’s left history rail:
+Prepare Codex React UI for **multiple agent CLIs** (every `*-launch` product).
 
-- Distinct **icon per CLI**
-- Prefer **tabs** (All / Codex / Claude / AGY / …)
-- Phase 1: **list + open read-only transcript** for non-Codex engines
-- Codex tab: keep existing `thread/list` + resume/rename/archive/delete
+**P0 (shipped):** host-local **history list + read-only transcript**, with **icons + tabs**.  
+This is **not** the final multi-agent chat product — it is the **data + catalog foundation** so later `chatRuntime` / `resumeInUi` can plug in without reworking the rail.
+
+**Codex:** keep existing live `thread/list` + resume/rename/archive/delete.  
+**Other engines:** read-only today; capability flags mark the upgrade path.
+
+## Intent (explicit)
+
+| Mode | Status | Purpose |
+| --- | --- | --- |
+| History list + icons + tabs | **Done (P0)** | See every CLI’s past sessions in one UI |
+| Read-only transcript | **Done (P0)** | Inspect messages without spawning that CLI |
+| Multi-agent **chat runtime** | P1+ | Send prompts / resume via `*-launch` bridges |
+| Arena | After multi-engine chat | Side-by-side agents |
+
+> Read-only is **intentional staging**, not the end state.
 
 ## Ground-truth storage (researched on this host)
 
-| Launch adapter | Product CLI | History source (verified) | List quality | Open transcript | Resume in UI |
+| Launch adapter | Product CLI | History source (verified) | List | Transcript | Resume in UI |
 | --- | --- | --- | --- | --- | --- |
-| **code-launch** | Codex | Already via app-server `thread/list` + `~/.codex/sessions/**/rollout-*.jsonl` + `session_index.jsonl` | Excellent | Existing chat | **Yes** (current) |
-| **claude-launch** | Claude Code | `~/.claude/history.jsonl` (display, project, sessionId, ts) + transcripts `~/.claude/projects/<slug>/<sessionId>.jsonl` | Good | Parse jsonl user/assistant | No (read-only v1) |
-| **agy-launch** | agy / Antigravity | `~/.gemini/antigravity-cli/cache/conversation_metadata.json` (+ `brain/<id>/`, `conversations/<id>.db`) | Excellent | Preview + brain artifacts | No (read-only v1) |
-| **gemini-launch** | Gemini CLI | `~/.gemini/tmp/**/chats/session-*.jsonl` (sessionId, startTime, messages) | Good | Parse jsonl | No |
-| **crush-launch** | Crush | Per-project `.crush/crush.db` (indexed by `~/.local/share/crush/projects.json`) | Medium–Good | SQL messages if schema allows | No |
-| **auggie-launch** | auggie | `~/.augment/sessions/<uuid>.json` + `prompt-history.jsonl` | Good | JSON conversation | No |
-| **grok-launch** / **agent-launch** | grok / agent | `~/.grok/sessions/<urlencoded-cwd>/<sessionId>/summary.json` + `chat_history.jsonl` | Good | summary + chat_history | No |
-| **freebuff-launch** | freebuff | `~/.config/manicode/projects/**/chats/<ts>/chat-meta.json` + `chat-messages.json` | Good | messages JSON | No |
-| **coderabbit-launch** | coderabbit | `~/.coderabbit/logs/*.log` only — **no real chat sessions** | List runs as “logs” | Log tail only | N/A |
+| **code-launch** | Codex | `thread/list` + `~/.codex/sessions/**/rollout-*.jsonl` + `session_index.jsonl` | Excellent | Live + disk | **Yes** |
+| **claude-launch** | Claude Code | `~/.claude/history.jsonl` + `~/.claude/projects/<slug>/<sessionId>.jsonl` | Good | jsonl user/assistant | P1 |
+| **agy-launch** | agy / Antigravity | `~/.gemini/antigravity-cli/cache/conversation_metadata.json` (+ brain / conversations.db) | Excellent | history + preview | P1 |
+| **gemini-launch** | Gemini CLI | `~/.gemini/tmp/**/chats/session-*.jsonl` | Good | jsonl | P1 |
+| **crush-launch** | Crush | `.crush/crush.db` via `~/.local/share/crush/projects.json` | Good | SQL messages | P1 |
+| **auggie-launch** | auggie | `~/.augment/sessions/<uuid>.json` (`chatHistory[].exchange`) | Good | request/response | P1 |
+| **grok-launch** / **agent-launch** | grok / agent | `~/.grok/sessions/**/summary.json` + `chat_history.jsonl` | Good | chat_history | P1 |
+| **freebuff-launch** | freebuff | `~/.config/manicode/projects/**/chats/*/chat-meta.json` + `chat-messages.json` | Good | messages JSON | P1 |
+| **coderabbit-launch** | coderabbit | `~/.coderabbit/logs/*.log` only | Logs | Log tail | N/A |
 
 ## Architecture
 
 ```
-HistorySidebar
-  Tabs: All | Codex | Claude | AGY | Gemini | Crush | Auggie | Grok | Freebuff | CodeRabbit
-  List rows: [icon] title · preview · cwd · relative time
-       │
-       ├─ engine=codex  → existing client.rpc("thread/list") + mutations
-       └─ engine=other  → GET /api/engine-history?engine=…
-                              GET /api/engine-history/:engine/:id  (transcript)
+@codex-ui/shared  AGENT_ENGINE_CATALOG + capabilities + AGENT_RUNTIME_BRIDGE_PLAN
+        │
+        ▼
+apps/server engineHistory.ts  scanners (list + transcript)
+        │
+        ▼
+GET /api/engine-history[?engine=&q=&limit=]
+GET /api/engine-history/:engine/:id
+        │
+        ▼
+HistorySidebar  Tabs + brand chips + Codex threads + engine rows
+                  └─ non-codex → read-only transcript dialog (P0)
+                  └─ later → AgentRuntimeBridge (P1)
 ```
+
+### Shared foundation (`packages/shared/src/agentEngines.ts`)
+
+- Stable `AgentEngineId` for all launch-backed CLIs
+- `AgentEngineCapabilities`: `listHistory`, `readTranscript`, `resumeInUi`, `chatRuntime`, `mutateSessions`
+- `AGENT_RUNTIME_BRIDGE_PLAN`: binary candidates + launch env prefix + start mode  
+  (Codex = `app_server_stdio`; others = `cli_subprocess` until implemented)
 
 ### Server (`apps/server/src/engineHistory.ts`)
 
-- `ENGINE_CATALOG[]`: id, label, launchId, iconKey, color, roots, scanner
-- `listEngineHistory(engine | "all", { q?, limit? }) → EngineHistoryItem[]`
-- `getEngineTranscript(engine, id) → { messages: EngineMessage[] }`
-- Best-effort scanners; missing dirs → empty list (no throw)
-- Never log secrets; redact `sk-` patterns in previews
+- Catalog derived from shared `AGENT_ENGINE_CATALOG`
+- Scanners best-effort; missing dirs → empty
+- Redact `sk-` / Bearer in previews
 
-### API
+### Client
 
-- `GET /api/engine-history?engine=all|codex|claude|…&q=&limit=`
-- `GET /api/engine-history/:engine/:id` — transcript for read-only panel
-- Auth: same as other host-local reads (session token / membership user)
-
-### Client types
-
-```ts
-type EngineId = "codex" | "claude" | "agy" | "gemini" | "crush" | "auggie" | "grok" | "freebuff" | "coderabbit";
-
-type EngineHistoryItem = {
-  engine: EngineId;
-  id: string;           // stable within engine
-  title: string;
-  preview?: string;
-  cwd?: string;
-  updatedAt?: number;   // ms
-  createdAt?: number;
-  sourcePath?: string;  // host path for debug
-  canResume: boolean;   // true only for codex today
-};
-```
-
-### UI (`HistorySidebar.tsx`)
-
-- Top **scrollable Tabs** with small brand chips (color + letter/icon)
-- Merge: when tab=All, show combined list sorted by `updatedAt` with engine badge
-- Codex rows: existing select/rename/archive/delete
-- Other engines: select → open **read-only transcript drawer/panel** (new lightweight `EngineTranscriptPanel`)
-- i18n en/cn for tab labels + empty states
-
-### Icons
-
-Use MUI-friendly simple marks (no trademark assets required):
-
-| Engine | Chip color | Mark |
-| --- | --- | --- |
-| Codex | teal | `C` / Terminal |
-| Claude | amber | `Cl` |
-| AGY | violet | `A` |
-| Gemini | blue | `G` |
-| Crush | pink | `Cr` |
-| Auggie | cyan | `Au` |
-| Grok | slate | `X` |
-| Freebuff | green | `Fb` |
-| CodeRabbit | orange | `Rb` |
+- `fetchEngineHistory` / `fetchEngineTranscript`
+- History rail tabs: All | each engine
+- Codex mutations unchanged
 
 ## Implementation phases
 
-### P0 — this delivery (must ship)
+### P0 — shipped
 
-1. Plan doc + commit
-2. `engineHistory.ts` scanners for: **codex (optional mirror), claude, agy, gemini, auggie, grok, freebuff**; crush if SQLite readable; coderabbit as log index
-3. Wire API routes
-4. Client fetch helpers
-5. HistorySidebar tabs + badges + read-only open
-6. Smoke: list counts > 0 for engines with local data
+1. Plan doc
+2. Shared agent catalog + capability matrix
+3. Host scanners for all engines above
+4. API routes
+5. HistorySidebar tabs + icons + read-only transcript
+6. Smoke on host data
 7. Commit + push
 
-### P1 — follow-up
+### P1 — multi-agent chat runtime (next)
 
-- Resume non-Codex by spawning corresponding `*-launch` subprocess (multi-engine chat runtime)
-- Crush rich message parse
-- Live watch / file mtime refresh
+1. `AgentRuntime` server module: spawn `claude-launch` / `agy-launch` / … or raw CLI with launch env
+2. Session map: `engine + foreignSessionId → ui tab`
+3. Wire History row: if `capabilities.resumeInUi` → start/resume instead of dialog
+4. Settings engine switcher: flip `chatRuntime` engines to `active` as bridges land
+5. Optional: delete/archive foreign sessions only where CLI supports it
+
+### P2
+
+- Live mtime refresh / file watch
 - Arena cross-engine compare
+- Crush/Auggie richer tool-call rendering
 
 ## Non-goals (P0)
 
-- Full multi-engine **chat runtime** (sending prompts to Claude/AGY from this UI)
-- Mutating remote CLI session stores (delete Claude sessions, etc.)
-- Inventing history paths without evidence (coderabbit stays logs-only)
+- Sending prompts to non-Codex engines (deferred to P1, **prepared** via bridge plan)
+- Mutating Claude/AGY session files from UI
+- Inventing history paths without host evidence
 
-## Risks
+## Success criteria (P0)
 
-- Large jsonl scans → cap files read (mtime sort, limit 200)
-- SQLite locks → open read-only + ignore busy
-- Path privacy → admin-only optional later; for now same as launch-adapters detect
+- [x] Tabs for all launch-backed engines
+- [x] Real sessions listed when present (Claude / AGY / Gemini / Auggie / Grok / Freebuff / Crush / …)
+- [x] Icons/colors distinguish engines
+- [x] Codex tab behavior unchanged
+- [x] Read-only transcript opens
+- [x] Shared capability matrix for future `chatRuntime`
+- [x] Pushed to origin
 
-## Success criteria
+## Related code
 
-- [ ] Tabs visible for all launch-backed engines
-- [ ] Claude / AGY / Gemini / Auggie / Grok / Freebuff show real local sessions when present
-- [ ] Icons/colors distinguish engines in All tab
-- [ ] Codex tab behavior unchanged
-- [ ] Read-only transcript opens without crashing
-- [ ] Pushed to origin
+| Path | Role |
+| --- | --- |
+| `packages/shared/src/agentEngines.ts` | Canonical engine ids + capabilities + bridge plan |
+| `apps/server/src/engineHistory.ts` | Host scanners |
+| `apps/server/src/index.ts` | `/api/engine-history` |
+| `apps/web/src/components/HistorySidebar.tsx` | Tabs + list + dialog |
+| `apps/web/src/state/codexClient.ts` | Client types + fetch |
+| `apps/web/src/components/LaunchAdaptersPanel.tsx` | Settings install + planned engines |
