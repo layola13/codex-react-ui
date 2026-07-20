@@ -6,6 +6,22 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented persistent command audit expansion for the virtualized chat waterfall.
+
+1. Command audit rendering:
+   - Long command execution output collapses by default to a terminal preview.
+   - Command audit rows expose `Show full` and `Collapse` controls for long output.
+   - Copy output continues to copy the full command output, not just the preview.
+2. Virtualized expansion state:
+   - Expanded row state is owned by `ChatWaterfall` instead of individual row components.
+   - Expansion state is keyed by stable row key and pruned when rows disappear.
+   - Expanding/collapsing remeasures the virtualizer and realigns the row to reduce large-row scroll drift.
+3. Verification:
+   - Playwright injects an 80-line command output, verifies it starts collapsed, expands/collapses it, jumps away, returns through command-scope search, and confirms expanded state persisted after virtual unmount/remount.
+   - Latest verification passed web/full typecheck, build, focused waterfall e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented a searchable prompt map for the virtualized chat waterfall.
 
 1. Prompt map:

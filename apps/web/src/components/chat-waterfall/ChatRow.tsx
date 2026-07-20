@@ -15,9 +15,11 @@ import type { ChatWaterfallRow } from "./types";
 type Props = {
   row: ChatWaterfallRow;
   t: TranslateFn;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 };
 
-export function ChatRow({ row, t }: Props) {
+export function ChatRow({ row, t, expanded, onToggleExpanded }: Props) {
   switch (row.kind) {
     case "userMessage":
       return <UserMessageRow row={row} />;
@@ -26,7 +28,7 @@ export function ChatRow({ row, t }: Props) {
     case "reasoningPreview":
       return <ReasoningPreviewRow row={row} t={t} />;
     case "commandExecution":
-      return <CommandExecutionRow row={row} />;
+      return <CommandExecutionRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "fileChange":
       return <AuditRow row={row} icon={<InsertDriveFileIcon fontSize="small" />} />;
     case "toolCall":
@@ -179,8 +181,9 @@ function ReasoningPreviewRow({ row, t }: { row: ChatWaterfallRow; t: TranslateFn
   );
 }
 
-function CommandExecutionRow({ row }: { row: ChatWaterfallRow }) {
+function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
   const [copied, setCopied] = useState(false);
+  const commandOutput = commandOutputPreview(row.text, expanded);
   async function copyOutput() {
     await navigator.clipboard.writeText(row.text.trimEnd());
     setCopied(true);
@@ -191,30 +194,43 @@ function CommandExecutionRow({ row }: { row: ChatWaterfallRow }) {
       row={row}
       icon={<TerminalIcon fontSize="small" />}
       action={
-        row.text ? (
-          <Tooltip title={copied ? "Copied" : "Copy output"}>
-            <IconButton size="small" aria-label="Copy command output" onClick={() => void copyOutput()}>
-              <ContentCopyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        ) : null
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          {commandOutput.collapsible && (
+            <Button size="small" variant="text" onClick={onToggleExpanded} sx={{ borderRadius: 1 }}>
+              {expanded ? "Collapse" : `Show full (${commandOutput.totalLines} lines)`}
+            </Button>
+          )}
+          {row.text ? (
+            <Tooltip title={copied ? "Copied" : "Copy output"}>
+              <IconButton size="small" aria-label="Copy command output" onClick={() => void copyOutput()}>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : null}
+        </Stack>
       }
     >
       {row.text && (
-        <Typography
-          component="pre"
-          sx={{
-            mt: 1,
-            whiteSpace: "pre-wrap",
-            overflowWrap: "anywhere",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fontSize: 12,
-            m: 0,
-            pt: 1
-          }}
-        >
-          {row.text}
-        </Typography>
+        <Box sx={{ position: "relative", mt: 1, pt: 1 }}>
+          <Typography
+            component="pre"
+            data-testid="command-output"
+            sx={{
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: 12,
+              m: 0
+            }}
+          >
+            {commandOutput.text}
+          </Typography>
+          {commandOutput.collapsible && !expanded && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+              {commandOutput.omittedLines} lines hidden. Expand to inspect the full terminal output.
+            </Typography>
+          )}
+        </Box>
       )}
     </AuditRow>
   );
@@ -418,4 +434,26 @@ function formatErrorText(error: unknown): string {
     return prettyJson(error);
   }
   return String(error);
+}
+
+function commandOutputPreview(text: string, expanded: boolean): { text: string; collapsible: boolean; totalLines: number; omittedLines: number } {
+  const normalized = text.trimEnd();
+  const lines = normalized ? normalized.split(/\r?\n/) : [];
+  const previewLineCount = 14;
+  const collapsible = lines.length > previewLineCount + 4 || normalized.length > 1800;
+  if (!collapsible || expanded) {
+    return {
+      text: normalized,
+      collapsible,
+      totalLines: Math.max(1, lines.length),
+      omittedLines: 0
+    };
+  }
+  const previewLines = lines.slice(0, previewLineCount);
+  return {
+    text: previewLines.join("\n"),
+    collapsible,
+    totalLines: lines.length,
+    omittedLines: Math.max(0, lines.length - previewLines.length)
+  };
 }

@@ -23,6 +23,7 @@ export function ChatWaterfall({ rows, t, before }: Props) {
   const [nearBottom, setNearBottom] = useState(true);
   const [newRowsCount, setNewRowsCount] = useState(0);
   const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
+  const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(() => new Set());
   const [promptMapOpen, setPromptMapOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -109,6 +110,14 @@ export function ChatWaterfall({ rows, t, before }: Props) {
   }, [nearBottom, rows.length]);
 
   useEffect(() => {
+    const rowKeys = new Set(rows.map((row) => row.key));
+    setExpandedRowKeys((current) => {
+      const next = new Set([...current].filter((key) => rowKeys.has(key)));
+      return next.size === current.size && [...current].every((key) => next.has(key)) ? current : next;
+    });
+  }, [rows]);
+
+  useEffect(() => {
     setSelectedSearchIndex(0);
   }, [searchScope, searchTerm]);
 
@@ -171,6 +180,22 @@ export function ChatWaterfall({ rows, t, before }: Props) {
       return;
     }
     setSelectedSearchIndex((index + searchResults.length) % searchResults.length);
+  }
+
+  function toggleRowExpanded(rowKey: string, rowIndex: number) {
+    setExpandedRowKeys((current) => {
+      const next = new Set(current);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+      } else {
+        next.add(rowKey);
+      }
+      return next;
+    });
+    requestAnimationFrame(() => {
+      virtualizer.measure();
+      virtualizer.scrollToIndex(rowIndex + beforeOffset, { align: "start" });
+    });
   }
 
   function scrollToBottom() {
@@ -323,7 +348,12 @@ export function ChatWaterfall({ rows, t, before }: Props) {
                   }
                 }}
               >
-                <ChatRow row={row} t={t} />
+                <ChatRow
+                  row={row}
+                  t={t}
+                  expanded={expandedRowKeys.has(row.key)}
+                  onToggleExpanded={() => toggleRowExpanded(row.key, virtualRow.index - beforeOffset)}
+                />
               </Box>
             );
           })}

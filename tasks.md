@@ -23,6 +23,7 @@
 - [x] Add desktop prompt-floor navigation for long virtualized chat transcripts.
 - [x] Add a searchable prompt map for virtualized chat transcripts with prompt filtering and jump-to-row behavior.
 - [x] Add data-driven transcript search over virtualized chat rows with scope filters and result jumps.
+- [x] Collapse long command audit output by default while preserving expanded row state across virtualized unmount/remount.
 - [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
 - [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.

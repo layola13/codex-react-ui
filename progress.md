@@ -2,6 +2,20 @@
 
 ## 2026-07-20
 
+- Chat waterfall command audit expansion slice:
+  - Long command execution output now collapses by default to a concise terminal preview.
+  - Full command output can be expanded/collapsed from the audit row header while copy still targets the complete output.
+  - Expanded row state is owned by `ChatWaterfall`, so it survives virtualized row unmount/remount.
+  - Expansion toggles remeasure the virtualizer and realign the target row to avoid large-row scroll drift.
+  - Extended the long transcript Playwright test with an 80-line command output, default collapsed-state checks, expansion/collapse checks, and persistence after jumping away and returning through search.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall prompt map slice:
   - Added a searchable prompt map on top of the virtualized waterfall using existing prompt floor metadata.
   - Cmd/Ctrl+Shift+P opens the prompt map; filtering matches prompt text and prompt number.

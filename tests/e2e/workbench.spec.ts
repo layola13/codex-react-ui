@@ -1442,6 +1442,14 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
         }
       });
       if (index % 25 === 0) {
+        const commandText =
+          index === 300
+            ? [
+                "stdout line 300",
+                ...Array.from({ length: 78 }, (_, lineIndex) => `long command line ${String(lineIndex + 1).padStart(2, "0")}`),
+                "long command tail marker 300"
+              ].join("\n")
+            : `stdout line ${index}\ncompleted`;
         emit({
           type: "codex.notification",
           message: {
@@ -1449,7 +1457,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
             params: {
               threadId: "thread-1",
               turnId,
-              item: { type: "commandExecution", id: `long-command-${index}`, command: "bun test", text: `stdout line ${index}\ncompleted`, status: "completed" }
+              item: { type: "commandExecution", id: `long-command-${index}`, command: "bun test", text: commandText, status: "completed" }
             }
           }
         });
@@ -1490,7 +1498,14 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("option", { name: "Commands" }).click();
   await page.getByLabel("Search transcript").fill("stdout line 300");
   await expect(page.getByText("1/1 results in 653 rows")).toBeVisible();
-  await expect(page.getByTestId("conversation-item-long-command-300").getByText("stdout line 300")).toBeVisible();
+  const longCommandRow = page.getByTestId("conversation-item-long-command-300");
+  await expect(longCommandRow.getByText("stdout line 300")).toBeVisible();
+  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
+  await page.getByRole("button", { name: "Show full (80 lines)" }).click();
+  await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
+  await page.getByRole("button", { name: "Collapse" }).click();
+  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
+  await page.getByRole("button", { name: "Show full (80 lines)" }).click();
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "User" }).click();
   await expect(page.getByText("No transcript rows match this search.")).toBeVisible();
@@ -1503,6 +1518,9 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByRole("button", { name: /Jump to latest/ })).toBeVisible();
   await page.getByRole("button", { name: /Jump to latest/ }).click();
   await expect(page.getByText("Long assistant answer 319")).toBeVisible();
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Commands" }).click();
+  await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
 });
 
 test("applies user theme media plugins to the default workbench", async ({ page }) => {
