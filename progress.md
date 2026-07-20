@@ -2,6 +2,19 @@
 
 ## 2026-07-20
 
+- Chat waterfall prompt map slice:
+  - Added a searchable prompt map on top of the virtualized waterfall using existing prompt floor metadata.
+  - Cmd/Ctrl+Shift+P opens the prompt map; filtering matches prompt text and prompt number.
+  - Prompt map jumps reuse the virtualizer and row flash behavior, so filtered prompts outside the mounted DOM window can be reached directly.
+  - Extended the long transcript Playwright test to filter for prompt 220 and verify the target virtual row becomes visible.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall data-driven search slice:
   - Added `ChatSearchOverlay` for transcript search on top of the virtualized waterfall.
   - Search operates over normalized `ChatWaterfallRow.searchText`, so it can find rows outside the mounted DOM window.

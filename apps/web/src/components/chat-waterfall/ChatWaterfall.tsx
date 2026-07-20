@@ -6,6 +6,7 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/rea
 import type { TranslateFn } from "../../i18n";
 import { ChatRow } from "./ChatRow";
 import { ChatFloorRail, type ChatFloorEntry } from "./ChatFloorRail";
+import { ChatPromptMap } from "./ChatPromptMap";
 import { ChatSearchOverlay, buildChatSearchResults, type ChatSearchScope } from "./ChatSearchOverlay";
 import { estimateChatRowSize } from "./chatRowEstimates";
 import type { ChatWaterfallRow } from "./types";
@@ -22,6 +23,7 @@ export function ChatWaterfall({ rows, t, before }: Props) {
   const [nearBottom, setNearBottom] = useState(true);
   const [newRowsCount, setNewRowsCount] = useState(0);
   const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
+  const [promptMapOpen, setPromptMapOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchScope, setSearchScope] = useState<ChatSearchScope>("all");
@@ -126,6 +128,9 @@ export function ChatWaterfall({ rows, t, before }: Props) {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         setSearchOpen(true);
+      } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        setPromptMapOpen(true);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -193,6 +198,29 @@ export function ChatWaterfall({ rows, t, before }: Props) {
         p: { xs: 1.5, sm: 2.5, lg: 3 }
       }}
     >
+      {floors.length > 1 && (
+        <Box
+          sx={{
+            position: "sticky",
+            top: 12,
+            zIndex: 5,
+            height: 0,
+            display: "flex",
+            justifyContent: "flex-start",
+            pointerEvents: "none"
+          }}
+        >
+          <Box sx={{ pointerEvents: "auto" }}>
+            <ChatPromptMap
+              open={promptMapOpen}
+              floors={floors}
+              onOpen={() => setPromptMapOpen(true)}
+              onClose={() => setPromptMapOpen(false)}
+              onJump={jumpToRow}
+            />
+          </Box>
+        </Box>
+      )}
       {floors.length > 1 && (
         <Box
           sx={{

@@ -1474,6 +1474,12 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByTestId("chat-floor-rail")).toBeVisible();
   await page.getByRole("button", { name: /Jump to prompt 150: Long user prompt 149/ }).click();
   await expect(page.getByTestId("conversation-item-long-user-149").getByText("Long user prompt 149")).toBeVisible();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+P" : "Control+Shift+P");
+  await expect(page.getByTestId("chat-prompt-map")).toBeVisible();
+  await page.getByLabel("Filter prompts").fill("Long user prompt 219");
+  await expect(page.getByText("1/320 prompts")).toBeVisible();
+  await page.getByTestId("chat-prompt-map").getByRole("button", { name: /Jump to prompt 220: Long user prompt 219/ }).click();
+  await expect(page.getByTestId("conversation-item-long-user-219").getByText("Long user prompt 219")).toBeVisible();
 
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
   await expect(page.getByTestId("chat-search-overlay")).toBeVisible();

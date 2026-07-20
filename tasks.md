@@ -21,6 +21,7 @@
 - [x] Rework the chat panel into a true chat waterfall: only `/goal` stays pinned at the top; normal messages, request/status surfaces, and history content scroll together.
 - [x] Virtualize the main chat waterfall so long transcripts mount only visible rows and keep Jump to latest usable.
 - [x] Add desktop prompt-floor navigation for long virtualized chat transcripts.
+- [x] Add a searchable prompt map for virtualized chat transcripts with prompt filtering and jump-to-row behavior.
 - [x] Add data-driven transcript search over virtualized chat rows with scope filters and result jumps.
 - [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.

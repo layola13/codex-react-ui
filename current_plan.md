@@ -6,6 +6,21 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented a searchable prompt map for the virtualized chat waterfall.
+
+1. Prompt map:
+   - Added `ChatPromptMap` as a sticky prompt navigation overlay driven by existing prompt floor metadata.
+   - Cmd/Ctrl+Shift+P opens the prompt map.
+   - Prompt filtering matches both prompt text and prompt number.
+2. Virtualized navigation:
+   - Prompt map jumps call through the existing virtualizer row jump path.
+   - Target prompt rows flash after landing, including prompts that were previously outside the mounted DOM window.
+3. Verification:
+   - Playwright injects 653 logical chat rows, filters the prompt map to prompt 220, jumps to that row, and verifies the virtualized target row is visible.
+   - Latest verification passed web/full typecheck, build, focused waterfall e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented data-driven transcript search for the virtualized chat waterfall.
 
 1. Search overlay:
