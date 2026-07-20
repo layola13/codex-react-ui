@@ -122,6 +122,11 @@ const UI_STORAGE_KEYS = {
 } as const;
 
 const DEFAULT_NEW_CHAT_CWD = "~/";
+const DEFAULT_MODEL_RATES: NonNullable<ProviderConfig["modelRates"]> = [
+  { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 },
+  { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1 },
+  { model: "gpt-5.6-sol", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 }
+];
 
 type AppProps = {
   themeMode: ThemeMode;
@@ -267,6 +272,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [slashNotice, setSlashNotice] = useState<SlashCommandNotice | null>(null);
   const [threadGoals, setThreadGoals] = useState<Record<string, GoalBannerState>>({});
   const [threadTokenUsage, setThreadTokenUsage] = useState<Record<string, ThreadTokenUsageState>>({});
+  const [turnTokenUsage, setTurnTokenUsage] = useState<Record<string, TokenUsageBreakdown>>({});
   const [historySearchTerm, setHistorySearchTerm] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -737,9 +743,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (message.message.method === "thread/tokenUsage/updated") {
           const params = asRecord(message.message.params);
           const threadId = stringValue(params.threadId);
+          const turnId = stringValue(params.turnId);
           const usage = parseThreadTokenUsage(params.tokenUsage);
-          if (threadId && usage) {
-            setThreadTokenUsage((current) => ({ ...current, [threadId]: usage }));
+          const currentProvider = state.providers.find((provider) => provider.id === activeProviderId);
+          const currentModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+          const pricedUsage = usage ? applyTokenUsagePricing(usage, currentProvider, currentModel) : null;
+          if (threadId && pricedUsage) {
+            setThreadTokenUsage((current) => ({ ...current, [threadId]: pricedUsage }));
+          }
+          if (turnId && pricedUsage) {
+            setTurnTokenUsage((current) => ({ ...current, [turnId]: pricedUsage.last }));
           }
         }
         if (message.message.method === "thread/goal/updated") {
@@ -795,7 +808,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       client.removeEventListener("connected", onConnected);
       client.removeEventListener("server-message", onMessage);
     };
-  }, [activeProviderId, appendTerminalOutput, client, loadTooling, state.providers]);
+  }, [activeProviderId, appendTerminalOutput, client, loadTooling, selectedModel, state.providers]);
 
   useEffect(() => {
     let mounted = true;
@@ -2202,6 +2215,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         )}
         <ChatPanel
           turns={allTurns}
+          turnTokenUsage={turnTokenUsage}
           threads={historyThreads}
           activeThreadId={state.activeThreadId}
           errors={state.errors}
@@ -3475,6 +3489,47 @@ function parseTokenBreakdown(value: unknown): TokenUsageBreakdown | null {
     outputTokens: numberValue(record.outputTokens) ?? 0,
     reasoningOutputTokens: numberValue(record.reasoningOutputTokens) ?? 0
   };
+}
+
+function applyTokenUsagePricing(usage: ThreadTokenUsageState, provider: ProviderConfig | undefined, model: string): ThreadTokenUsageState {
+  return {
+    ...usage,
+    total: priceTokenBreakdown(usage.total, provider, model),
+    last: priceTokenBreakdown(usage.last, provider, model)
+  };
+}
+
+function priceTokenBreakdown(usage: TokenUsageBreakdown, provider: ProviderConfig | undefined, model: string): TokenUsageBreakdown {
+  const rate = resolveModelRate(provider, model);
+  if (!rate) {
+    return usage;
+  }
+  const cachedTokens = Math.max(0, usage.cachedInputTokens);
+  const cacheWriteTokens = Math.max(0, usage.cacheWriteInputTokens);
+  const standardInputTokens = Math.max(0, usage.inputTokens - cachedTokens - cacheWriteTokens);
+  const cachedRate = rate.cachedInputUsdPerMillion ?? rate.inputUsdPerMillion;
+  const cacheWriteRate = rate.cacheWriteUsdPerMillion ?? rate.inputUsdPerMillion;
+  const multiplier = rate.multiplier || 1;
+  const estimatedCostUsd =
+    ((standardInputTokens * rate.inputUsdPerMillion) + (cachedTokens * cachedRate) + (cacheWriteTokens * cacheWriteRate) + usage.outputTokens * rate.outputUsdPerMillion) /
+    1_000_000 *
+    multiplier;
+  return {
+    ...usage,
+    estimatedCostUsd,
+    costBreakdownUsd: {
+      input: (standardInputTokens * rate.inputUsdPerMillion) / 1_000_000 * multiplier,
+      cachedInput: (cachedTokens * cachedRate) / 1_000_000 * multiplier,
+      cacheWrite: (cacheWriteTokens * cacheWriteRate) / 1_000_000 * multiplier,
+      output: (usage.outputTokens * rate.outputUsdPerMillion) / 1_000_000 * multiplier
+    }
+  };
+}
+
+function resolveModelRate(provider: ProviderConfig | undefined, model: string): NonNullable<ProviderConfig["modelRates"]>[number] | undefined {
+  const resolvedModel = model.trim();
+  const providerRate = provider?.modelRates?.find((rate) => rate.model === resolvedModel);
+  return providerRate ?? DEFAULT_MODEL_RATES.find((rate) => rate.model === resolvedModel);
 }
 
 function sumTokenBreakdowns(values: TokenUsageBreakdown[]): TokenUsageBreakdown | undefined {

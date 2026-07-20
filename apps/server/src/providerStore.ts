@@ -261,6 +261,7 @@ function normalizeProfileProvider(value: unknown, existing?: ProviderConfig): Pr
     defaultModel: stringValue(record.defaultModel),
     nativeModels: stringArray(record.nativeModels),
     modelAliases: aliasArray(record.modelAliases),
+    modelRates: modelRateArray(record.modelRates),
     createdAt: numberValue(record.createdAt) ?? existing?.createdAt ?? now,
     updatedAt: now
   };
@@ -294,6 +295,26 @@ function aliasArray(value: unknown): ProviderConfig["modelAliases"] {
       return alias && model ? { alias, model } : null;
     })
     .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
+}
+
+function modelRateArray(value: unknown): ProviderConfig["modelRates"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const rates: NonNullable<ProviderConfig["modelRates"]> = [];
+  for (const entry of value) {
+      const record = asRecord(entry);
+      const model = stringValue(record.model);
+      const inputUsdPerMillion = numberValue(record.inputUsdPerMillion);
+      const cachedInputUsdPerMillion = numberValue(record.cachedInputUsdPerMillion);
+      const cacheWriteUsdPerMillion = numberValue(record.cacheWriteUsdPerMillion);
+      const outputUsdPerMillion = numberValue(record.outputUsdPerMillion);
+      const multiplier = numberValue(record.multiplier) ?? 1;
+      if (model && inputUsdPerMillion != null && outputUsdPerMillion != null) {
+        rates.push({ model, inputUsdPerMillion, cachedInputUsdPerMillion, cacheWriteUsdPerMillion, outputUsdPerMillion, multiplier });
+      }
+  }
+  return rates.length > 0 ? rates : undefined;
 }
 
 function envKeyRefValue(value: unknown): string | undefined {

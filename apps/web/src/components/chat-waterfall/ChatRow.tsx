@@ -79,12 +79,24 @@ function AssistantMessageRow({
   onToggleExpanded: () => void;
 }) {
   const reasoningContent = row.reasoning?.trim() ?? "";
+  const tinted = row.assistantTone === "tinted";
+  const startedAtLabel = formatStartedAt(row.startedAt);
+  const firstTokenLabel = formatFirstToken(row.startedAt, row.firstTokenAt);
+  const usageLabel = formatAssistantUsageSummary(row);
   return (
     <Box
       data-testid={`workbench-item-${sanitizeTestId(row.item.type)}`}
+      data-assistant-tone={row.assistantTone ?? "plain"}
       sx={{
         display: "flex",
-        justifyContent: "flex-start"
+        justifyContent: "flex-start",
+        mx: { xs: -0.75, sm: -1 },
+        px: { xs: 0.75, sm: 1 },
+        py: 0.75,
+        borderRadius: 1,
+        bgcolor: tinted
+          ? (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.07 : 0.045)
+          : (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.18 : 0.58)
       }}
     >
       <Box
@@ -94,17 +106,47 @@ function AssistantMessageRow({
           minWidth: 0
         }}
       >
-        {(!row.hideHeader || reasoningContent) && (
+        {(!row.hideHeader || reasoningContent || startedAtLabel || firstTokenLabel || usageLabel) && (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: row.hideHeader ? 0.15 : 0.4, color: "text.secondary" }}>
             {!row.hideHeader && (
               <>
-                <SmartToyIcon data-testid="assistant-message-header" sx={{ fontSize: 17 }} />
+                <SmartToyIcon
+                  data-testid="assistant-message-header"
+                  data-live={row.isLive ? "true" : "false"}
+                  sx={{
+                    fontSize: 17,
+                    color: row.isLive ? "primary.main" : "inherit",
+                    transformOrigin: "50% 55%",
+                    animation: row.isLive ? "assistantAvatarHeartbeat 1300ms ease-in-out infinite" : "none",
+                    "@keyframes assistantAvatarHeartbeat": {
+                      "0%": { transform: "scale(1)", opacity: 0.72, filter: "drop-shadow(0 0 0 rgba(0, 0, 0, 0))" },
+                      "35%": { transform: "scale(1.16)", opacity: 1, filter: (theme) => `drop-shadow(0 0 5px ${alpha(theme.palette.primary.main, 0.42)})` },
+                      "62%": { transform: "scale(0.96)", opacity: 0.86, filter: "drop-shadow(0 0 0 rgba(0, 0, 0, 0))" },
+                      "100%": { transform: "scale(1)", opacity: 0.72, filter: "drop-shadow(0 0 0 rgba(0, 0, 0, 0))" }
+                    }
+                  }}
+                />
                 <Typography variant="caption" sx={{ fontWeight: 850 }}>
                   {row.title}
                 </Typography>
                 {row.item.agentName && <Chip size="small" label={row.item.agentName} />}
                 <StatusChip status={row.status} />
               </>
+            )}
+            {startedAtLabel && (
+              <Typography variant="caption" data-testid="assistant-message-started-at" sx={{ fontWeight: 750, color: "text.secondary" }}>
+                {startedAtLabel}
+              </Typography>
+            )}
+            {firstTokenLabel && (
+              <Typography variant="caption" data-testid="assistant-first-token" sx={{ fontWeight: 750, color: "text.secondary" }}>
+                {firstTokenLabel}
+              </Typography>
+            )}
+            {usageLabel && (
+              <Typography variant="caption" data-testid="assistant-token-usage" sx={{ fontWeight: 750, color: "text.secondary" }}>
+                {usageLabel}
+              </Typography>
             )}
             {reasoningContent && (
               <Button
@@ -154,9 +196,36 @@ function AssistantMessageRow({
         >
           {row.text && <MarkdownMessage text={row.text} />}
           <ImageAttachments row={row} />
+          <AssistantUsageDetails row={row} />
         </Box>
       </Box>
     </Box>
+  );
+}
+
+function AssistantUsageDetails({ row }: { row: ChatWaterfallRow }) {
+  const details = assistantUsageDetails(row);
+  if (!details) {
+    return null;
+  }
+  return (
+    <Stack
+      data-testid="assistant-usage-details"
+      direction="row"
+      spacing={0.75}
+      flexWrap="wrap"
+      useFlexGap
+      sx={{
+        mt: 1,
+        pt: 0.75,
+        borderTop: "1px solid",
+        borderColor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.12 : 0.1)
+      }}
+    >
+      {details.map((detail) => (
+        <Chip key={detail} size="small" variant="outlined" label={detail} sx={{ height: 22, borderRadius: 1, bgcolor: "background.paper" }} />
+      ))}
+    </Stack>
   );
 }
 
@@ -244,7 +313,9 @@ function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWat
             component="pre"
             data-testid="command-output"
             sx={{
-              whiteSpace: "pre-wrap",
+              whiteSpace: expanded ? "pre-wrap" : "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
               overflowWrap: "anywhere",
               fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
               fontSize: 12,
@@ -590,8 +661,8 @@ function formatErrorText(error: unknown): string {
 function commandOutputPreview(text: string, expanded: boolean): { text: string; collapsible: boolean; totalLines: number; omittedLines: number } {
   const normalized = text.trimEnd();
   const lines = normalized ? normalized.split(/\r?\n/) : [];
-  const previewLineCount = 14;
-  const collapsible = lines.length > previewLineCount + 4 || normalized.length > 1800;
+  const previewLineCount = 1;
+  const collapsible = lines.length > previewLineCount || normalized.length > 240;
   if (!collapsible || expanded) {
     return {
       text: normalized,
@@ -607,4 +678,95 @@ function commandOutputPreview(text: string, expanded: boolean): { text: string; 
     totalLines: lines.length,
     omittedLines: Math.max(0, lines.length - previewLines.length)
   };
+}
+
+function formatStartedAt(startedAt?: number): string | null {
+  if (!startedAt) {
+    return null;
+  }
+  const milliseconds = startedAt > 1_000_000_000_000 ? startedAt : startedAt * 1000;
+  const date = new Date(milliseconds);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function formatFirstToken(startedAt?: number, firstTokenAt?: number): string | null {
+  if (!startedAt || !firstTokenAt) {
+    return null;
+  }
+  const seconds = Math.max(0, firstTokenAt - startedAt);
+  return `first ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds).toString()}s`;
+}
+
+function formatAssistantUsageSummary(row: ChatWaterfallRow): string | null {
+  const usage = row.tokenUsage;
+  if (!usage) {
+    return null;
+  }
+  const cacheHitRate = usage.inputTokens > 0 ? usage.cachedInputTokens / usage.inputTokens : 0;
+  const parts = [`in ${formatCompactNumber(usage.inputTokens)}`, `out ${formatCompactNumber(usage.outputTokens)}`, `hit ${(cacheHitRate * 100).toFixed(1)}%`];
+  const startedAt = row.startedAt;
+  if (startedAt && usage.outputTokens > 0) {
+    const nowSeconds = Date.now() / 1000;
+    const completedAt = row.completedAt ?? nowSeconds;
+    const durationSeconds = Math.max(1, completedAt - startedAt);
+    const tokensPerSecond = usage.outputTokens / durationSeconds;
+    parts.push(`${tokensPerSecond.toFixed(tokensPerSecond >= 10 ? 1 : 2)} tok/s`);
+  }
+  if (usage.estimatedCostUsd != null) {
+    parts.push(`cost ${formatUsd(usage.estimatedCostUsd)}`);
+  }
+  return parts.join(" · ");
+}
+
+function assistantUsageDetails(row: ChatWaterfallRow): string[] | null {
+  const usage = row.tokenUsage;
+  if (!usage) {
+    return null;
+  }
+  const inputBillable = Math.max(0, usage.inputTokens - usage.cachedInputTokens - usage.cacheWriteInputTokens);
+  const cacheHitRate = usage.inputTokens > 0 ? usage.cachedInputTokens / usage.inputTokens : 0;
+  const details = [
+    `input ${formatCompactNumber(usage.inputTokens)}`,
+    `output ${formatCompactNumber(usage.outputTokens)}`,
+    `cached ${formatCompactNumber(usage.cachedInputTokens)}`,
+    `cache write ${formatCompactNumber(usage.cacheWriteInputTokens)}`,
+    `cache hit ${(cacheHitRate * 100).toFixed(1)}%`,
+    `billable input ${formatCompactNumber(inputBillable)}`,
+    speedDetail(row)
+  ].filter((detail): detail is string => Boolean(detail));
+  if (usage.estimatedCostUsd != null) {
+    if (usage.costBreakdownUsd) {
+      details.push(`input cost ${formatUsd(usage.costBreakdownUsd.input)}`);
+      details.push(`cached cost ${formatUsd(usage.costBreakdownUsd.cachedInput)}`);
+      details.push(`write cost ${formatUsd(usage.costBreakdownUsd.cacheWrite)}`);
+      details.push(`output cost ${formatUsd(usage.costBreakdownUsd.output)}`);
+    }
+    details.push(`total ${formatUsd(usage.estimatedCostUsd)}`);
+  }
+  return details;
+}
+
+function speedDetail(row: ChatWaterfallRow): string | null {
+  const usage = row.tokenUsage;
+  if (!usage || !row.startedAt || usage.outputTokens <= 0) {
+    return null;
+  }
+  const completedAt = row.completedAt ?? Date.now() / 1000;
+  const durationSeconds = Math.max(1, completedAt - row.startedAt);
+  const tokensPerSecond = usage.outputTokens / durationSeconds;
+  return `speed ${tokensPerSecond.toFixed(tokensPerSecond >= 10 ? 1 : 2)} tok/s`;
+}
+
+function formatCompactNumber(value: number): string {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatUsd(value: number): string {
+  if (value <= 0) {
+    return "$0.0000";
+  }
+  return `$${value.toFixed(value < 0.01 ? 6 : 4)}`;
 }

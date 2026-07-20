@@ -411,6 +411,38 @@ test.beforeEach(async ({ page }) => {
                 });
               }, 700);
               setTimeout(() => {
+                tokenTotal += 1234;
+                this.emit({
+                  type: "codex.notification",
+                  message: {
+                    method: "thread/tokenUsage/updated",
+                    params: {
+                      threadId,
+                      turnId,
+                      tokenUsage: {
+                        total: {
+                          totalTokens: tokenTotal,
+                          inputTokens: Math.round(tokenTotal * 0.5),
+                          cachedInputTokens: 100,
+                          cacheWriteInputTokens: 20,
+                          outputTokens: Math.round(tokenTotal * 0.35),
+                          reasoningOutputTokens: Math.round(tokenTotal * 0.15)
+                        },
+                        last: {
+                          totalTokens: 1234,
+                          inputTokens: 617,
+                          cachedInputTokens: 100,
+                          cacheWriteInputTokens: 20,
+                          outputTokens: 432,
+                          reasoningOutputTokens: 185
+                        },
+                        modelContextWindow: 128000
+                      }
+                    }
+                  }
+                });
+              }, 820);
+              setTimeout(() => {
                 this.emit({
                   type: "codex.notification",
                   message: {
@@ -1255,8 +1287,23 @@ test("shows working status while a turn is pending or thinking", async ({ page }
   await expect(indicator).toContainText("Inspecting current workspace state");
   await expect(indicator).toContainText("Working");
   await expect(page.getByTestId("workbench-item-agentMessage").getByText("Accepted working status probe")).toBeVisible();
+  await expect(page.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
+  await expect(page.getByTestId("assistant-first-token")).toContainText(/first \d+(\.\d)?s/);
+  await expect(page.getByTestId("assistant-token-usage")).toContainText(/in 617 · out 432 · hit 16\.2% · \d+(\.\d+)? tok\/s · cost \$\d+\.\d+/);
+  const usageDetails = page.getByTestId("assistant-usage-details");
+  await expect(usageDetails).toContainText("input 617");
+  await expect(usageDetails).toContainText("output 432");
+  await expect(usageDetails).toContainText("cached 100");
+  await expect(usageDetails).toContainText("cache write 20");
+  await expect(usageDetails).toContainText("cache hit 16.2%");
+  await expect(usageDetails).toContainText(/speed \d+(\.\d+)? tok\/s/);
+  await expect(usageDetails).toContainText(/input cost \$\d+\.\d+/);
+  await expect(usageDetails).toContainText(/output cost \$\d+\.\d+/);
+  await expect(usageDetails).toContainText(/total \$\d+\.\d+/);
+  await expect(page.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "true");
   await expect(page.getByText("completed", { exact: true })).toHaveCount(0);
   await expect(indicator).toHaveCount(0);
+  await expect(page.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "false");
 });
 
 test("creates a Full Auto chat through the New Chat danger dialog", async ({ page }) => {
@@ -1652,10 +1699,13 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   const longCommandRow = page.getByTestId("conversation-item-long-command-300");
   await expect(longCommandRow.getByText("stdout line 300")).toBeVisible();
+  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command line 01");
   await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
   await page.getByRole("button", { name: "Show full (80 lines)" }).click();
+  await expect(longCommandRow.getByTestId("command-output")).toContainText("long command line 01");
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
   await page.getByRole("button", { name: "Collapse" }).click();
+  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command line 01");
   await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
   await page.getByRole("button", { name: "Show full (80 lines)" }).click();
   await page.getByRole("combobox", { name: "Search scope" }).click();
@@ -1697,6 +1747,8 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   const reasoningRow = page.getByTestId("conversation-item-long-agent-310");
   await expect(reasoningRow.getByText("Long assistant answer 310")).toBeVisible();
+  await expect(reasoningRow.getByTestId("workbench-item-agentMessage")).toHaveAttribute("data-assistant-tone", "plain");
+  await expect(reasoningRow.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
   await expect(reasoningRow.getByTestId("assistant-message-header")).toHaveCount(0);
   await expect(reasoningRow.getByTestId("completed-thinking-panel")).toHaveCount(0);
   await reasoningRow.getByRole("button", { name: "Expand thinking" }).click();
@@ -1704,7 +1756,10 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("button", { name: /Jump to latest/ }).click();
   await expect(page.getByText("Long assistant answer 319")).toBeVisible();
   await page.getByLabel("Search transcript").fill("Long assistant answer 311");
-  await expect(page.getByTestId("conversation-item-long-agent-311").getByText("Long assistant answer 311")).toBeVisible();
+  const tintedAssistantRow = page.getByTestId("conversation-item-long-agent-311");
+  await expect(tintedAssistantRow.getByText("Long assistant answer 311")).toBeVisible();
+  await expect(tintedAssistantRow.getByTestId("workbench-item-agentMessage")).toHaveAttribute("data-assistant-tone", "tinted");
+  await expect(tintedAssistantRow.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   await expect(reasoningRow.getByTestId("completed-thinking-panel")).toContainText("Completed reasoning detail 310");
   await page.getByRole("combobox", { name: "Search scope" }).click();

@@ -2,6 +2,24 @@
 
 ## 2026-07-20
 
+- Command audit one-line preview slice:
+  - Changed command execution rows so multiline command output defaults to a single-line preview.
+  - Hidden all remaining terminal output behind the existing `Show full` expansion control.
+  - Reduced command row virtualized height estimates so long command output no longer reserves oversized space while collapsed.
+  - Added Playwright coverage confirming long command output hides the second line and tail marker until expanded.
+  - Added assistant avatar heartbeat animation while an answer turn is live, with Playwright coverage that verifies the live marker stops after completion.
+  - Added alternating assistant answer row backgrounds so consecutive model replies use plain/tinted shallow backgrounds for visual separation.
+  - Added per-answer assistant start timestamps in `HH:mm` format, including repeated assistant rows where the avatar/header is hidden.
+  - Added per-answer token usage metadata when Codex emits usage for a turn: input tokens, output tokens, and output token/s.
+  - Added live first-token latency metadata measured from turn start to the first assistant message delta.
+  - Added relay/channel model rate settings with multiplier defaulting to `1`.
+  - Seeded OpenAI-style GPT-5.5 and GPT-5.4 input/cached/cache-write/output default rates for cost estimation.
+  - Added per-answer usage details after the answer body: input/output tokens, cached/read cache tokens, cache write tokens, cache hit rate, speed, cost line items, and total cost.
+  - Verification passed:
+    - `bun run typecheck`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status|virtualizes long main chat"`
+    - `bun run build`
+
 - Resumed-thread cwd follow-up fix:
   - Fixed history/resume and follow-up turn requests to prefer the active thread's stored `cwd` over the current/default workspace field.
   - `thread/read` now syncs the workspace field from `thread.cwd`, so refreshed or reloaded conversations do not keep using the new-chat default `~/`.

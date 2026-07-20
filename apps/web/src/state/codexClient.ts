@@ -244,6 +244,7 @@ export type WorkbenchItem = {
   text: string;
   images?: WorkbenchImage[];
   status?: string;
+  firstTokenAt?: number;
   agentId?: string;
   agentThreadId?: string;
   agentName?: string;
@@ -262,6 +263,8 @@ export type WorkbenchTurn = {
   id: string;
   threadId: string;
   status: string;
+  startedAt?: number;
+  completedAt?: number;
   items: WorkbenchItem[];
 };
 
@@ -654,6 +657,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
         id,
         threadId,
         status: "inProgress",
+        startedAt: numberValue(turn.startedAt) ?? Math.floor(Date.now() / 1000),
         items: []
       })
     };
@@ -672,6 +676,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       text: itemText(item),
       images: itemImages(item),
       status: stringValue(item.status) ?? (method === "item/completed" ? "completed" : undefined),
+      firstTokenAt: state.turns.find((turn) => turn.id === turnId)?.items.find((existing) => existing.id === itemId)?.firstTokenAt,
       ...agentItemMetadata(item, params, method === "item/completed"),
       payload: item as JsonValue
     };
@@ -705,7 +710,12 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
         };
         return {
           ...turn,
-          items: upsertById(turn.items, { ...item, ...mergeAgentItemMetadata(item, metadata), text: `${item.text}${delta}` })
+          items: upsertById(turn.items, {
+            ...item,
+            ...mergeAgentItemMetadata(item, metadata),
+            firstTokenAt: item.firstTokenAt ?? Date.now() / 1000,
+            text: `${item.text}${delta}`
+          })
         };
       })
     };
@@ -719,7 +729,9 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
     return {
       ...state,
       turns: state.turns.map((entry) =>
-        entry.id === id ? { ...entry, status: stringValue(turn.status) ?? "completed" } : entry
+        entry.id === id
+          ? { ...entry, status: stringValue(turn.status) ?? "completed", completedAt: numberValue(turn.completedAt) ?? Math.floor(Date.now() / 1000) }
+          : entry
       )
     };
   }
@@ -1212,6 +1224,8 @@ function turnToWorkbenchTurn(threadId: string, turn: Record<string, unknown>): W
     id,
     threadId,
     status: stringValue(turn.status) ?? "completed",
+    startedAt: numberValue(turn.startedAt),
+    completedAt: numberValue(turn.completedAt),
     items
   };
 }

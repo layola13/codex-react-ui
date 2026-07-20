@@ -761,6 +761,7 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
   baseUrl: string;
   nativeModels: string;
   modelAliases: string;
+  modelRates: string;
 }> = [
   {
     id: "openai",
@@ -770,7 +771,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://api.openai.com/v1",
     nativeModels: "gpt-5.6-sol,gpt-5.5",
-    modelAliases: "codex=gpt-5.6-sol"
+    modelAliases: "codex=gpt-5.6-sol",
+    modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.4=2.5/0.25/2.5/15/1\ngpt-5.6-sol=5/0.5/5/30/1"
   },
   {
     id: "deepseek",
@@ -780,7 +782,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://api.deepseek.com/v1",
     nativeModels: "deepseek-chat",
-    modelAliases: "codex=deepseek-chat"
+    modelAliases: "codex=deepseek-chat",
+    modelRates: ""
   },
   {
     id: "gemini",
@@ -790,7 +793,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     nativeModels: "gemini-2.5-pro",
-    modelAliases: "codex=gemini-2.5-pro"
+    modelAliases: "codex=gemini-2.5-pro",
+    modelRates: ""
   },
   {
     id: "anthropic",
@@ -800,7 +804,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://api.anthropic.com/v1",
     nativeModels: "claude-opus-4-6",
-    modelAliases: "codex=claude-opus-4-6"
+    modelAliases: "codex=claude-opus-4-6",
+    modelRates: ""
   },
   {
     id: "moonshot",
@@ -810,7 +815,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://api.moonshot.cn/v1",
     nativeModels: "kimi-k2",
-    modelAliases: "codex=kimi-k2"
+    modelAliases: "codex=kimi-k2",
+    modelRates: ""
   },
   {
     id: "zhipu",
@@ -820,7 +826,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     nativeModels: "glm-4.5",
-    modelAliases: "codex=glm-4.5"
+    modelAliases: "codex=glm-4.5",
+    modelRates: ""
   },
   {
     id: "minimax",
@@ -830,7 +837,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     apiFormat: "responsesRelay",
     baseUrl: "https://api.minimax.chat/v1",
     nativeModels: "minimax-m1",
-    modelAliases: "codex=minimax-m1"
+    modelAliases: "codex=minimax-m1",
+    modelRates: ""
   }
 ];
 
@@ -866,6 +874,7 @@ function RelaySettingsPanel({
   const [apiKey, setApiKey] = useState("");
   const [nativeModels, setNativeModels] = useState(template.nativeModels);
   const [modelAliases, setModelAliases] = useState(template.modelAliases);
+  const [modelRates, setModelRates] = useState(template.modelRates);
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -891,6 +900,7 @@ function RelaySettingsPanel({
     setBaseUrl(entry.baseUrl);
     setNativeModels(entry.nativeModels);
     setModelAliases(entry.modelAliases);
+    setModelRates(entry.modelRates);
     setApiKey("");
   };
 
@@ -908,6 +918,7 @@ function RelaySettingsPanel({
     setBaseUrl(provider.baseUrl ?? "");
     setNativeModels(provider.nativeModels.join(", "));
     setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
+    setModelRates(formatModelRates(provider.modelRates));
     setApiKey("");
     setEditingProviderId(provider.id);
     setRelayView("form");
@@ -934,6 +945,7 @@ function RelaySettingsPanel({
           defaultModel: nativeModelList[0] ?? editingProvider?.defaultModel ?? selectedModel,
           nativeModels: nativeModelList,
           modelAliases: parseAliases(modelAliases),
+          modelRates: parseModelRates(modelRates),
           createdAt: editingProvider?.createdAt ?? now,
           updatedAt: now
         },
@@ -1123,6 +1135,18 @@ function RelaySettingsPanel({
                   label="Model aliases, comma-separated alias=model"
                   value={modelAliases}
                   onChange={(event) => setModelAliases(event.target.value)}
+                />
+              </RelayFormRow>
+              <RelayFormRow label="Model Rates">
+                <TextField
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  label="Model rates: model=input/cached/cacheWrite/output/multiplier"
+                  value={modelRates}
+                  onChange={(event) => setModelRates(event.target.value)}
+                  helperText="USD per 1M tokens. Multiplier defaults to 1; cacheWrite defaults to input if omitted."
                 />
               </RelayFormRow>
               <Stack direction="row" spacing={1} justifyContent="space-between" sx={{ pt: 0.5 }}>
@@ -1356,7 +1380,7 @@ function RelaySettingsPanel({
                         </TableCell>
                         <TableCell align="center">
                           <Typography variant="body2" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
-                            {active ? "1.0000" : "0.5000"}
+                            {provider.modelRates?.[0]?.multiplier?.toFixed(4) ?? "1.0000"}
                           </Typography>
                         </TableCell>
                         <TableCell align="center">
@@ -1562,6 +1586,52 @@ function parseAliases(value: string): ProviderConfig["modelAliases"] {
       return alias && model ? { alias, model } : null;
     })
     .filter((entry): entry is { alias: string; model: string } => Boolean(entry));
+}
+
+function parseModelRates(value: string): ProviderConfig["modelRates"] {
+  const rates: NonNullable<ProviderConfig["modelRates"]> = [];
+  for (const entry of value.split(/\r?\n|,/)) {
+    const [model, rawRates] = entry.split("=").map((part) => part.trim());
+    if (!model || !rawRates) {
+      continue;
+    }
+    const parts = rawRates.split("/").map((part) => Number(part.trim()));
+    if (parts.some((part) => Number.isNaN(part))) {
+      continue;
+    }
+    if (parts.length >= 5 && parts[0] != null && parts[3] != null) {
+      rates.push({
+        model,
+        inputUsdPerMillion: parts[0],
+        cachedInputUsdPerMillion: parts[1],
+        cacheWriteUsdPerMillion: parts[2],
+        outputUsdPerMillion: parts[3],
+        multiplier: parts[4] || 1
+      });
+    } else if (parts.length >= 3 && parts[0] != null && parts[1] != null) {
+      rates.push({
+        model,
+        inputUsdPerMillion: parts[0],
+        cachedInputUsdPerMillion: parts[0],
+        cacheWriteUsdPerMillion: parts[0],
+        outputUsdPerMillion: parts[1],
+        multiplier: parts[2] || 1
+      });
+    }
+  }
+  return rates.length > 0 ? rates : undefined;
+}
+
+function formatModelRates(rates: ProviderConfig["modelRates"]): string {
+  return (rates ?? [])
+    .map((rate) =>
+      [
+        rate.model,
+        "=",
+        [rate.inputUsdPerMillion, rate.cachedInputUsdPerMillion ?? rate.inputUsdPerMillion, rate.cacheWriteUsdPerMillion ?? rate.inputUsdPerMillion, rate.outputUsdPerMillion, rate.multiplier ?? 1].join("/")
+      ].join("")
+    )
+    .join("\n");
 }
 
 type QuickCodexConfigField = (typeof CODEX_CONFIG_FIELD_META)[number];

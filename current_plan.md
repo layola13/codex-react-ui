@@ -6,6 +6,33 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Reduced command audit output to a one-line collapsed preview by default.
+
+1. Command rows:
+   - Multiline command output now collapses by default after the first line.
+   - Remaining terminal output stays hidden until the user expands the row with `Show full`.
+   - Collapsed output renders as a single visual line with overflow hidden.
+   - Assistant avatars heartbeat while a response turn is live, then stop once the turn completes.
+   - Assistant answer rows alternate plain and shallow gray/tinted backgrounds to separate consecutive replies.
+   - Assistant answer rows show a per-answer start timestamp, including rows where repeated avatar/header chrome is hidden.
+   - Assistant answer rows show per-turn usage when available: input tokens, output tokens, and output token/s.
+   - Live assistant rows show first-token latency measured from turn start to the first answer delta.
+   - Relay/channel settings now store model rates with input/cached/cache-write/output prices and multiplier defaulting to `1`.
+   - Assistant answer endings show token, cache, speed, cost line items, and total cost when token usage is available.
+2. Virtualization:
+   - Command row height estimates now assume compact collapsed output, so long terminal logs do not reserve large offscreen space.
+3. Verification:
+   - Playwright covers a long command row and verifies the second line and tail marker are hidden until expansion.
+   - Playwright covers assistant avatar live-state heartbeat markers during and after an active answer.
+   - Playwright verifies alternating assistant row tone markers in the long transcript.
+   - Playwright verifies assistant start timestamps on live and virtualized transcript rows.
+   - Playwright verifies live assistant token usage metadata after a token usage notification.
+   - Playwright verifies live assistant first-token latency metadata.
+   - Playwright verifies per-answer cache hit, speed, cost line items, and total cost details.
+   - Latest verification passed full typecheck, production build, and focused Working/virtualized transcript e2e.
+
+## Previous Completed Slice
+
 Fixed resumed/history thread follow-up turns using the wrong cwd after refresh.
 
 1. Cwd resolution:

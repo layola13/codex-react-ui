@@ -24,11 +24,18 @@
 - [x] Add a searchable prompt map for virtualized chat transcripts with prompt filtering and jump-to-row behavior.
 - [x] Add data-driven transcript search over virtualized chat rows with scope filters and result jumps.
 - [x] Collapse long command audit output by default while preserving expanded row state across virtualized unmount/remount.
+- [x] Reduce command audit rows to a one-line collapsed preview by default, with full terminal output hidden behind explicit expansion.
 - [x] Collapse tool audit payload details by default while preserving expanded state across virtualized unmount/remount.
 - [x] Add dedicated compact file-change audit rows with path/status summaries, hidden diff details, and virtualized expansion persistence.
 - [x] Render completed reasoning as an inline Thinking panel with expansion state preserved across virtualized unmount/remount.
 - [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
 - [x] Add a Codex-style Working marquee/status indicator for any unfinished chat turn, including elapsed time, terminal count, `/ps` and `/stop` hints, masked marquee motion, auto-follow-to-bottom, and suppressed user-visible `completed` status labels.
+- [x] Animate the assistant avatar with a heartbeat while an answer turn is still live, then stop the animation after completion.
+- [x] Alternate assistant answer backgrounds between white/plain and shallow gray/tinted rows so consecutive model replies are visually separated.
+- [x] Show a per-answer assistant start timestamp such as `18:00`, including rows whose repeated assistant avatar/header is hidden.
+- [x] Show per-answer token usage next to assistant metadata when usage arrives, including input tokens, output tokens, and output token/s.
+- [x] Show live first-token latency for assistant answers, measured from turn start to the first assistant delta.
+- [x] Add relay/channel model rate settings with default multiplier 1, seeded OpenAI-style GPT-5.5/GPT-5.4 rates, and per-answer cost/cache-hit/speed breakdowns after completion.
 - [x] Fix resumed/history thread follow-up turns after refresh so `thread/resume` and `turn/start` reuse the thread's original cwd instead of the default workspace cwd.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
 - [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.

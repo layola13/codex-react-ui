@@ -169,6 +169,14 @@ export interface ProviderConfig {
     alias: string;
     model: string;
   }>;
+  modelRates?: Array<{
+    model: string;
+    inputUsdPerMillion: number;
+    cachedInputUsdPerMillion?: number;
+    cacheWriteUsdPerMillion?: number;
+    outputUsdPerMillion: number;
+    multiplier: number;
+  }>;
   createdAt: number;
   updatedAt: number;
 }

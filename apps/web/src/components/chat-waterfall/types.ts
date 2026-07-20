@@ -1,5 +1,20 @@
 import type { WorkbenchItem } from "../../state/codexClient";
 
+export type ChatTokenUsage = {
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd?: number;
+  costBreakdownUsd?: {
+    input: number;
+    cachedInput: number;
+    cacheWrite: number;
+    output: number;
+  };
+};
+
 export type ChatRowKind =
   | "userMessage"
   | "assistantMessage"
@@ -37,4 +52,9 @@ export type ChatWaterfallRow = {
   width: ChatRowWidth;
   isLive: boolean;
   hideHeader?: boolean;
+  assistantTone?: "plain" | "tinted";
+  startedAt?: number;
+  completedAt?: number;
+  firstTokenAt?: number;
+  tokenUsage?: ChatTokenUsage;
 };

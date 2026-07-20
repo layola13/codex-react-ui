@@ -54,6 +54,13 @@ export type TokenUsageBreakdown = {
   cacheWriteInputTokens: number;
   outputTokens: number;
   reasoningOutputTokens: number;
+  estimatedCostUsd?: number;
+  costBreakdownUsd?: {
+    input: number;
+    cachedInput: number;
+    cacheWrite: number;
+    output: number;
+  };
 };
 
 export type ThreadTokenUsageState = {
@@ -105,6 +112,7 @@ export type SlashCommandNoticeState = {
 
 type Props = {
   turns: WorkbenchTurn[];
+  turnTokenUsage?: Record<string, TokenUsageBreakdown>;
   threads?: ThreadEntry[];
   activeThreadId: string | null;
   errors: string[];
@@ -163,6 +171,7 @@ function emptyPromptCards(t: TranslateFn) {
 
 export function ChatPanel({
   turns,
+  turnTokenUsage = {},
   threads = [],
   activeThreadId,
   errors,
@@ -207,8 +216,8 @@ export function ChatPanel({
   }, [selectedAgentId, visibleAgents]);
 
   const chatRows = selectedAgent
-    ? agentConversationRows(turns, activeThreadId, selectedAgent)
-    : mainConversationRows(turns, activeThreadId);
+    ? agentConversationRows(turns, activeThreadId, selectedAgent, turnTokenUsage)
+    : mainConversationRows(turns, activeThreadId, turnTokenUsage);
   const workingStartedAtRef = useRef<{ key: string | null; startedAt: number }>({ key: null, startedAt: Date.now() });
   const runningTurns = visibleTurnsForWorkingStatus(turns, activeThreadId, selectedAgent).filter((turn) => isRunningTurnStatus(turn.status));
   const workingIdentity =
@@ -1155,12 +1164,12 @@ function agentFallbackName(id: string, index: number): string {
   return readable.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function mainConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null): ChatWaterfallRow[] {
+function mainConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null, turnTokenUsage: Record<string, TokenUsageBreakdown>): ChatWaterfallRow[] {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
-  return buildChatRows(visibleTurns, (item) => !item.agentId && !item.agentThreadId);
+  return buildChatRows(visibleTurns, (item) => !item.agentId && !item.agentThreadId, turnTokenUsage);
 }
 
-function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession): ChatWaterfallRow[] {
+function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession, turnTokenUsage: Record<string, TokenUsageBreakdown>): ChatWaterfallRow[] {
   const visibleTurns = turns.map((turn) => {
     if (agent.threadId && turn.threadId === agent.threadId) {
       return turn;
@@ -1170,7 +1179,7 @@ function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | 
     }
     return { ...turn, items: turn.items.filter((item) => itemBelongsToAgent(item, agent)) };
   });
-  return buildChatRows(visibleTurns);
+  return buildChatRows(visibleTurns, undefined, turnTokenUsage);
 }
 
 function buildWorkingStatus({

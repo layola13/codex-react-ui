@@ -1,11 +1,12 @@
 import type { WorkbenchItem, WorkbenchTurn } from "../../state/codexClient";
-import type { ChatRowKind, ChatRowRole, ChatRowWidth, ChatWaterfallRow } from "./types";
+import type { ChatRowKind, ChatRowRole, ChatRowWidth, ChatTokenUsage, ChatWaterfallRow } from "./types";
 
 export type ChatRowFilter = (item: WorkbenchItem) => boolean;
 
-export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter = () => true): ChatWaterfallRow[] {
+export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter = () => true, tokenUsageByTurnId: Record<string, ChatTokenUsage> = {}): ChatWaterfallRow[] {
   const rows: ChatWaterfallRow[] = [];
   let promptIndex = 0;
+  let assistantMessageIndex = 0;
 
   turns.forEach((turn) => {
     const reasoningBuffer: string[] = [];
@@ -21,11 +22,13 @@ export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter 
       }
 
       if (item.type === "agentMessage") {
-        rows.push(
-          itemToRow(turn, item, index, {
-            reasoning: reasoningBuffer.join("\n\n").trim() || undefined
-          })
-        );
+        const row = itemToRow(turn, item, index, {
+          reasoning: reasoningBuffer.join("\n\n").trim() || undefined,
+          tokenUsage: tokenUsageByTurnId[turn.id]
+        });
+        row.assistantTone = assistantMessageIndex % 2 === 0 ? "plain" : "tinted";
+        assistantMessageIndex += 1;
+        rows.push(row);
         reasoningBuffer.length = 0;
         return;
       }
@@ -47,7 +50,8 @@ export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter 
         rows.push(
           itemToRow(turn, lastReasoning, visibleItems.indexOf(lastReasoning), {
             activeThinking: true,
-            reasoning: reasoningBuffer.join("\n\n").trim()
+            reasoning: reasoningBuffer.join("\n\n").trim(),
+            tokenUsage: tokenUsageByTurnId[turn.id]
           })
         );
       }
@@ -70,7 +74,7 @@ function itemToRow(
   turn: WorkbenchTurn,
   item: WorkbenchItem,
   index: number,
-  options: { reasoning?: string; activeThinking?: boolean }
+  options: { reasoning?: string; activeThinking?: boolean; tokenUsage?: ChatTokenUsage }
 ): ChatWaterfallRow {
   const kind = itemKind(item, options.activeThinking);
   const text = primaryText(item, options.reasoning);
@@ -92,7 +96,11 @@ function itemToRow(
     reasoning: options.reasoning,
     searchText: searchParts.join("\n").toLowerCase(),
     width: rowWidth(kind, text),
-    isLive: turn.status !== "completed"
+    isLive: turn.status !== "completed",
+    startedAt: turn.startedAt,
+    completedAt: turn.completedAt,
+    firstTokenAt: item.firstTokenAt,
+    tokenUsage: options.tokenUsage
   };
 }
 
