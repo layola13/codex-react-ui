@@ -537,3 +537,8 @@
 - Captcha SVG upgraded with SMIL animations (glow border, floating particles, gradient pulse).
 - Concurrency: admin set per member (1–100); `turn/start` refreshes limit from DB, rejects when in-flight ≥ limit; slots released on turn terminal notifications / WS close.
 
+### Member system + relay assignment UX
+- Settings nav **会员系统** (was 权限配置).
+- Create/edit member dialogs include relay multi-select (select all / clear, empty = no access).
+- `POST /api/members` accepts `allowedProviderIds` and persists via SecurityStore.
+

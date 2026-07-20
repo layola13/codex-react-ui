@@ -501,7 +501,14 @@ async function handleApiRequest(
           allowDangerBypass: typeof body.allowDangerBypass === "boolean" ? body.allowDangerBypass : undefined,
           notes: stringValue(body.notes)
         });
-        return jsonResponse({ data: created }, 201, headers);
+        let allowedProviderIds: string[] = [];
+        if (Array.isArray(body.allowedProviderIds)) {
+          allowedProviderIds = securityStore.setAllowedProviders(
+            created.id,
+            body.allowedProviderIds.filter((entry): entry is string => typeof entry === "string")
+          );
+        }
+        return jsonResponse({ data: { ...created, allowedProviderIds } }, 201, headers);
       } catch (error) {
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
       }

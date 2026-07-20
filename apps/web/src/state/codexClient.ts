@@ -722,6 +722,7 @@ export async function createMember(
     concurrency?: number;
     balance?: number;
     notes?: string;
+    allowedProviderIds?: string[];
   }
 ): Promise<AuthUser> {
   const response = await fetch("/api/members", {

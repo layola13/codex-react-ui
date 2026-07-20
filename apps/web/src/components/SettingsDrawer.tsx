@@ -218,6 +218,7 @@ type Props = {
     balance?: number;
     concurrency?: number;
     notes?: string;
+    allowedProviderIds?: string[];
   }) => Promise<void>;
   onUpdateMember: (id: string, input: Record<string, unknown>) => Promise<void>;
   onDeleteMember: (id: string) => Promise<void>;

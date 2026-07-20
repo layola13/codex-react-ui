@@ -191,4 +191,5 @@
 - [x] Enforce per-member concurrency on `turn/start` (in-flight turns, live limit from DB, 1–100).
 - [ ] Token-accurate billing (still flat 0.01 per `turn/start`).
 - [ ] Per-user Docker / host Linux isolation (Phase 2, not required for app-policy model).
+- [x] Member system UX: create/edit with relay whitelist picker; nav renamed from permissions to members.
 

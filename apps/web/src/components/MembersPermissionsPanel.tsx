@@ -53,6 +53,7 @@ export type CreateMemberInput = {
   balance?: number;
   concurrency?: number;
   notes?: string;
+  allowedProviderIds?: string[];
 };
 
 type Props = {
@@ -99,6 +100,7 @@ type CreateFormState = {
   balance: string;
   concurrency: string;
   notes: string;
+  allowedProviders: string[];
 };
 
 const emptyCreate: CreateFormState = {
@@ -112,7 +114,8 @@ const emptyCreate: CreateFormState = {
   allowDangerBypass: false,
   balance: "10",
   concurrency: "5",
-  notes: ""
+  notes: "",
+  allowedProviders: []
 };
 
 /**
@@ -213,7 +216,8 @@ export function MembersPermissionsPanel({
         allowDangerBypass: createForm.allowDangerBypass,
         balance: Number(createForm.balance) || 0,
         concurrency: Math.min(100, Math.max(1, Number(createForm.concurrency) || 1)),
-        notes: createForm.notes.trim() || undefined
+        notes: createForm.notes.trim() || undefined,
+        allowedProviderIds: createForm.role === "admin" ? undefined : createForm.allowedProviders
       });
       setCreateForm(emptyCreate);
       setCreateOpen(false);
@@ -634,7 +638,7 @@ export function MembersPermissionsPanel({
       </Stack>
 
       {/* Create dialog */}
-      <Dialog open={createOpen} onClose={() => !creating && setCreateOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={createOpen} onClose={() => !creating && setCreateOpen(false)} fullWidth maxWidth="md">
         <DialogTitle sx={{ fontWeight: 850 }}>{t("settings.permissions.createUser")}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.5} sx={{ pt: 0.5 }}>
@@ -673,6 +677,19 @@ export function MembersPermissionsPanel({
               <FormControlLabel control={<Checkbox checked={createForm.allowNetwork} onChange={(e) => setCreateForm((c) => ({ ...c, allowNetwork: e.target.checked }))} />} label={t("settings.permissions.network")} />
               <FormControlLabel control={<Checkbox checked={createForm.allowDangerBypass} onChange={(e) => setCreateForm((c) => ({ ...c, allowDangerBypass: e.target.checked }))} />} label={t("settings.permissions.danger")} />
             </Stack>
+            {createForm.role === "admin" ? (
+              <Alert severity="info" variant="outlined">
+                {t("settings.permissions.adminAllRelays")}
+              </Alert>
+            ) : (
+              <RelayAccessPicker
+                providers={providers}
+                selected={createForm.allowedProviders}
+                onChange={(ids) => setCreateForm((c) => ({ ...c, allowedProviders: ids }))}
+                t={t}
+                disabled={creating}
+              />
+            )}
             <TextField size="small" multiline minRows={2} label={t("settings.permissions.notes")} value={createForm.notes} onChange={(e) => setCreateForm((c) => ({ ...c, notes: e.target.value }))} />
             {formError ? <Alert severity="error">{formError}</Alert> : null}
           </Stack>
@@ -688,7 +705,7 @@ export function MembersPermissionsPanel({
       </Dialog>
 
       {/* Edit permissions dialog */}
-      <Dialog open={Boolean(editUser && editForm)} onClose={() => !saving && setEditUser(null)} fullWidth maxWidth="sm">
+      <Dialog open={Boolean(editUser && editForm)} onClose={() => !saving && setEditUser(null)} fullWidth maxWidth="md">
         <DialogTitle sx={{ fontWeight: 850 }}>{t("settings.permissions.editUser")}</DialogTitle>
         <DialogContent dividers>
           {editForm ? (
@@ -736,42 +753,19 @@ export function MembersPermissionsPanel({
                 <FormControlLabel control={<Checkbox checked={editForm.allowNetwork} onChange={(e) => setEditForm((c) => (c ? { ...c, allowNetwork: e.target.checked } : c))} />} label={t("settings.permissions.network")} />
                 <FormControlLabel control={<Checkbox checked={editForm.allowDangerBypass} onChange={(e) => setEditForm((c) => (c ? { ...c, allowDangerBypass: e.target.checked } : c))} />} label={t("settings.permissions.danger")} />
               </Stack>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                {t("settings.permissions.allowedRelays")}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {t("settings.permissions.allowedRelaysHint")}
-              </Typography>
-              <Stack spacing={0.5} sx={{ maxHeight: 180, overflow: "auto", border: "1px solid", borderColor: "divider", borderRadius: 1.5, p: 1 }}>
-                {providers.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">{t("settings.permissions.noProviders")}</Typography>
-                ) : (
-                  providers.map((provider) => {
-                    const checked = editForm.allowedProviders.includes(provider.id);
-                    return (
-                      <FormControlLabel
-                        key={provider.id}
-                        control={
-                          <Checkbox
-                            size="small"
-                            checked={checked}
-                            onChange={(e) =>
-                              setEditForm((c) => {
-                                if (!c) return c;
-                                const next = e.target.checked
-                                  ? [...c.allowedProviders, provider.id]
-                                  : c.allowedProviders.filter((id) => id !== provider.id);
-                                return { ...c, allowedProviders: next };
-                              })
-                            }
-                          />
-                        }
-                        label={`${provider.name || provider.id} (${provider.id})`}
-                      />
-                    );
-                  })
-                )}
-              </Stack>
+              {editForm.role === "admin" ? (
+                <Alert severity="info" variant="outlined">
+                  {t("settings.permissions.adminAllRelays")}
+                </Alert>
+              ) : (
+                <RelayAccessPicker
+                  providers={providers}
+                  selected={editForm.allowedProviders}
+                  onChange={(ids) => setEditForm((c) => (c ? { ...c, allowedProviders: ids } : c))}
+                  t={t}
+                  disabled={saving}
+                />
+              )}
               <TextField size="small" multiline minRows={2} label={t("settings.permissions.notes")} value={editForm.notes} onChange={(e) => setEditForm((c) => (c ? { ...c, notes: e.target.value } : c))} />
               {editUser ? (
                 <Alert severity="info" variant="outlined">
@@ -831,3 +825,132 @@ export function MembersPermissionsPanel({
 function presetLabel(id: PermissionPresetId): string {
   return permissionPresets.find((entry) => entry.id === id)?.label ?? id;
 }
+
+function RelayAccessPicker({
+  providers,
+  selected,
+  onChange,
+  t,
+  disabled
+}: {
+  providers: ProviderConfig[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  t: TranslateFn;
+  disabled?: boolean;
+}) {
+  const allIds = providers.map((p) => p.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selected.includes(id));
+  return (
+    <Stack spacing={1}>
+      <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" flexWrap="wrap" useFlexGap>
+        <Box>
+          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+            {t("settings.permissions.allowedRelays")}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {t("settings.permissions.allowedRelaysHint")}
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={0.75}>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={disabled || providers.length === 0}
+            onClick={() => onChange(allIds)}
+            sx={{ borderRadius: 999 }}
+          >
+            {t("settings.permissions.selectAllRelays")}
+          </Button>
+          <Button
+            size="small"
+            variant="text"
+            disabled={disabled || selected.length === 0}
+            onClick={() => onChange([])}
+            sx={{ borderRadius: 999 }}
+          >
+            {t("settings.permissions.clearRelays")}
+          </Button>
+        </Stack>
+      </Stack>
+      <Stack
+        spacing={0.75}
+        sx={{
+          maxHeight: 220,
+          overflow: "auto",
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 2,
+          p: 1.25,
+          bgcolor: (theme) => (theme.palette.mode === "dark" ? "rgba(15,23,42,0.45)" : "rgba(248,250,252,0.9)")
+        }}
+      >
+        {providers.length === 0 ? (
+          <Alert severity="warning" variant="outlined">
+            {t("settings.permissions.noProviders")}
+          </Alert>
+        ) : (
+          providers.map((provider) => {
+            const checked = selected.includes(provider.id);
+            return (
+              <Paper
+                key={provider.id}
+                variant="outlined"
+                sx={{
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1.5,
+                  borderColor: checked ? "primary.main" : "divider",
+                  bgcolor: checked ? "action.selected" : "transparent"
+                }}
+              >
+                <FormControlLabel
+                  sx={{ m: 0, width: "100%", alignItems: "flex-start" }}
+                  control={
+                    <Checkbox
+                      size="small"
+                      disabled={disabled}
+                      checked={checked}
+                      onChange={(e) => {
+                        onChange(
+                          e.target.checked
+                            ? [...selected, provider.id]
+                            : selected.filter((id) => id !== provider.id)
+                        );
+                      }}
+                    />
+                  }
+                  label={
+                    <Box sx={{ pt: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {provider.name || provider.id}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
+                        {provider.id}
+                        {provider.kind ? ` · ${provider.kind}` : ""}
+                        {provider.defaultModel ? ` · ${provider.defaultModel}` : ""}
+                      </Typography>
+                    </Box>
+                  }
+                />
+              </Paper>
+            );
+          })
+        )}
+      </Stack>
+      <Stack direction="row" spacing={1} alignItems="center">
+        <Chip
+          size="small"
+          color={selected.length ? "primary" : "default"}
+          variant="outlined"
+          label={t("settings.permissions.selectedRelays", { count: selected.length, total: providers.length })}
+        />
+        {allSelected ? <Chip size="small" color="success" label={t("settings.permissions.allRelaysSelected")} /> : null}
+        {providers.length > 0 && selected.length === 0 ? (
+          <Chip size="small" color="warning" variant="outlined" label={t("settings.permissions.noRelayAccess")} />
+        ) : null}
+      </Stack>
+    </Stack>
+  );
+}
+

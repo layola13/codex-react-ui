@@ -441,6 +441,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       balance?: number;
       concurrency?: number;
       notes?: string;
+      allowedProviderIds?: string[];
     }) => {
       if (!state.token) throw new Error("Not authenticated");
       await createMember(state.token, input);
