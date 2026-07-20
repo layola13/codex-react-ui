@@ -30,7 +30,7 @@ export function ChatRow({ row, t, expanded, onToggleExpanded }: Props) {
     case "commandExecution":
       return <CommandExecutionRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "fileChange":
-      return <AuditRow row={row} icon={<InsertDriveFileIcon fontSize="small" />} />;
+      return <FileChangeRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "toolCall":
       return <ToolCallRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     default:
@@ -283,6 +283,72 @@ function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRo
   );
 }
 
+function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const summary = fileChangeSummary(row);
+  const hasDetails = Boolean(row.text.trim()) || summary.changes.length > 0;
+
+  async function copyPath() {
+    if (!summary.primaryPath) {
+      return;
+    }
+    await navigator.clipboard.writeText(summary.primaryPath);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
+  return (
+    <AuditRow
+      row={row}
+      icon={<InsertDriveFileIcon fontSize="small" />}
+      action={
+        <Stack direction="row" spacing={0.5} alignItems="center">
+          {hasDetails && (
+            <Button size="small" variant="text" aria-label={expanded ? "Collapse file details" : "Expand file details"} onClick={onToggleExpanded} sx={{ borderRadius: 1 }}>
+              {expanded ? "Collapse" : "Details"}
+            </Button>
+          )}
+          {summary.primaryPath && (
+            <Tooltip title={copied ? "Copied" : "Copy file path"}>
+              <IconButton size="small" aria-label="Copy file path" onClick={() => void copyPath()}>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
+      }
+    >
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+        {summary.primaryPath && <Chip size="small" label={summary.primaryPath} />}
+        {summary.status && <Chip size="small" label={summary.status} />}
+        {summary.changes.length > 1 && <Chip size="small" label={`${summary.changes.length} files`} />}
+      </Stack>
+      {hasDetails && expanded && (
+        <Box data-testid="file-audit-details" sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
+          {summary.changes.length > 0 && (
+            <Stack spacing={0.5} sx={{ mb: row.text ? 1 : 0 }}>
+              {summary.changes.map((change, index) => (
+                <Stack key={`${change.path}-${index}`} direction="row" spacing={0.75} alignItems="center">
+                  <Typography variant="caption" sx={{ fontWeight: 850, overflowWrap: "anywhere" }}>
+                    {change.path}
+                  </Typography>
+                  {change.status && <Chip size="small" label={change.status} />}
+                </Stack>
+              ))}
+            </Stack>
+          )}
+          {row.text && <MarkdownMessage text={row.text} />}
+        </Box>
+      )}
+      {hasDetails && !expanded && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+          File details hidden. Expand to inspect changed paths and diff output.
+        </Typography>
+      )}
+    </AuditRow>
+  );
+}
+
 function AuditRow({ row, icon, action, children }: { row: ChatWaterfallRow; icon: ReactNode; action?: ReactNode; children?: ReactNode }) {
   return (
     <Box data-testid={`workbench-item-${sanitizeTestId(row.item.type)}`} sx={{ display: "flex", justifyContent: "stretch" }}>
@@ -387,6 +453,24 @@ function ToolAuditSummary({ row }: { row: ChatWaterfallRow }) {
       {durationMs != null && <Chip size="small" label={`${durationMs}ms`} />}
     </Stack>
   );
+}
+
+function fileChangeSummary(row: ChatWaterfallRow): { primaryPath?: string; status?: string; changes: Array<{ path: string; status?: string }> } {
+  const payload = isRecord(row.item.payload) ? row.item.payload : {};
+  const changes = Array.isArray(payload.changes)
+    ? payload.changes
+        .flatMap((entry) => {
+          const change = isRecord(entry) ? entry : {};
+          const path = stringValue(change.path) ?? stringValue(change.filePath) ?? stringValue(change.name);
+          return path ? [{ path, status: stringValue(change.status) ?? stringValue(change.kind) ?? stringValue(change.type) }] : [];
+        })
+    : [];
+  const primaryPath = stringValue(payload.path) ?? stringValue(payload.filePath) ?? stringValue(payload.name) ?? changes[0]?.path;
+  return {
+    primaryPath,
+    status: row.status ?? stringValue(payload.status) ?? changes[0]?.status,
+    changes
+  };
 }
 
 function renderToolPayload(row: ChatWaterfallRow) {

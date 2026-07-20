@@ -1046,7 +1046,7 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
           upsert({
             id: threadId,
             threadId,
-            name: thread ? agentThreadName(thread, index) : `Agent ${sessions.size + 1}`,
+            name: thread ? agentThreadName(thread, index) : agentFallbackName(threadId, sessions.size),
             role: thread?.agentRole ?? stringValue(payload.tool),
             status: normalizeAgentStatus(stringValue(state.status) ?? item.status),
             source: "collab",
@@ -1076,7 +1076,7 @@ function buildAgentSessions(turns: WorkbenchTurn[], threads: ThreadEntry[], acti
           upsert({
             id,
             threadId: item.agentThreadId,
-            name: item.agentName ?? item.agentRole ?? `Agent ${sessions.size + 1}`,
+            name: item.agentName ?? item.agentRole ?? agentFallbackName(id, sessions.size),
             role: item.agentRole,
             status: normalizeAgentStatus(item.agentStatus ?? item.status),
             source: "message",
@@ -1099,6 +1099,18 @@ function mergeAgentName(existing: string | undefined, next: string | undefined):
 
 function isGenericAgentName(value: string | undefined): boolean {
   return !value || /^Agent(?: \d+)?$/.test(value);
+}
+
+function agentFallbackName(id: string, index: number): string {
+  const readable = id
+    .replace(/^agent[-_]?/i, "")
+    .replace(/[-_]?thread$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+  if (!readable || readable === id) {
+    return `Agent ${index + 1}`;
+  }
+  return readable.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function mainConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null): ChatWaterfallRow[] {

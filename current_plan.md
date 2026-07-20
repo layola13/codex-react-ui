@@ -6,6 +6,22 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented dedicated compact file-change audit rows for the virtualized chat waterfall.
+
+1. File audit rendering:
+   - File changes now use `FileChangeRow` instead of the generic audit renderer.
+   - Rows show primary file path, status, and multi-file count summaries by default.
+   - Diff/details are hidden behind a `Details` toggle.
+   - A copy-path action is available when a primary path exists.
+2. Virtualized state:
+   - File detail expansion reuses `ChatWaterfall` row expansion state.
+   - Expanded file details persist after virtualized unmount/remount.
+3. Verification:
+   - Playwright injects a file-change payload into a long transcript, finds it through Files-scope search, verifies diff content is hidden by default, expands it, jumps away, returns, and confirms details remained expanded.
+   - Latest verification passed web/full typecheck, build, focused waterfall/parallel-agent e2e, screenshot e2e, and full `workbench.spec.ts` e2e (26/26).
+
+## Previous Completed Slice
+
 Implemented compact expandable tool audit details for the virtualized chat waterfall.
 
 1. Tool audit rendering:

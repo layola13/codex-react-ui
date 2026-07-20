@@ -25,6 +25,7 @@
 - [x] Add data-driven transcript search over virtualized chat rows with scope filters and result jumps.
 - [x] Collapse long command audit output by default while preserving expanded row state across virtualized unmount/remount.
 - [x] Collapse tool audit payload details by default while preserving expanded state across virtualized unmount/remount.
+- [x] Add dedicated compact file-change audit rows with path/status summaries, hidden diff details, and virtualized expansion persistence.
 - [x] Render completed reasoning as an inline Thinking panel with expansion state preserved across virtualized unmount/remount.
 - [x] Add thinking/reasoning rendering that previews the first 3 lines only while a response is thinking, then collapses behind a Thinking button after completion.
 - [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.

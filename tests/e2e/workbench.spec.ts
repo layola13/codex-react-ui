@@ -1455,6 +1455,26 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
           }
         }
       });
+      if (index === 260) {
+        emit({
+          type: "codex.notification",
+          message: {
+            method: "item/completed",
+            params: {
+              threadId: "thread-1",
+              turnId,
+              item: {
+                type: "fileChange",
+                id: "long-file-260",
+                status: "modified",
+                path: "apps/web/file-audit-260.ts",
+                changes: [{ path: "apps/web/file-audit-260.ts", status: "modified" }],
+                text: "```diff\n+ file audit diff marker 260\n- old file audit line\n```"
+              }
+            }
+          }
+        });
+      }
       if (index === 275) {
         emit({
           type: "codex.notification",
@@ -1514,7 +1534,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   });
 
   const waterfall = page.getByTestId("conversation-waterfall");
-  await expect(waterfall).toHaveAttribute("data-row-count", "654");
+  await expect(waterfall).toHaveAttribute("data-row-count", "655");
   await page.waitForTimeout(120);
   const mountedRows = await waterfall.locator('[data-testid^="conversation-item-"]').count();
   expect(mountedRows).toBeGreaterThan(0);
@@ -1533,12 +1553,12 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
   await expect(page.getByTestId("chat-search-overlay")).toBeVisible();
   await page.getByLabel("Search transcript").fill("Long assistant answer 319");
-  await expect(page.getByText("1/1 results in 654 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   await expect(page.getByTestId("conversation-item-long-agent-319").getByText("Long assistant answer 319")).toBeVisible();
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Commands" }).click();
   await page.getByLabel("Search transcript").fill("stdout line 300");
-  await expect(page.getByText("1/1 results in 654 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   const longCommandRow = page.getByTestId("conversation-item-long-command-300");
   await expect(longCommandRow.getByText("stdout line 300")).toBeVisible();
   await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
@@ -1565,12 +1585,22 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Tools" }).click();
   await page.getByLabel("Search transcript").fill("tool audit secret 275");
-  await expect(page.getByText("1/1 results in 654 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   const toolRow = page.getByTestId("conversation-item-long-tool-275");
   await expect(toolRow.getByRole("heading", { name: "MCP / filesystem / readFile" })).toBeVisible();
   await expect(toolRow).not.toContainText("tool audit secret 275");
   await toolRow.getByRole("button", { name: "Expand tool details" }).click();
   await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Files" }).click();
+  await page.getByLabel("Search transcript").fill("file audit diff marker 260");
+  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
+  const fileRow = page.getByTestId("conversation-item-long-file-260");
+  await expect(fileRow.getByRole("heading", { name: "File change" })).toBeVisible();
+  await expect(fileRow.getByText("apps/web/file-audit-260.ts").first()).toBeVisible();
+  await expect(fileRow).not.toContainText("file audit diff marker 260");
+  await fileRow.getByRole("button", { name: "Expand file details" }).click();
+  await expect(fileRow.getByTestId("file-audit-details")).toContainText("file audit diff marker 260");
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Assistant" }).click();
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
@@ -1589,6 +1619,10 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await page.getByRole("option", { name: "Tools" }).click();
   await page.getByLabel("Search transcript").fill("tool audit secret 275");
   await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
+  await page.getByRole("combobox", { name: "Search scope" }).click();
+  await page.getByRole("option", { name: "Files" }).click();
+  await page.getByLabel("Search transcript").fill("file audit diff marker 260");
+  await expect(fileRow.getByTestId("file-audit-details")).toContainText("file audit diff marker 260");
 });
 
 test("applies user theme media plugins to the default workbench", async ({ page }) => {

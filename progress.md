@@ -2,6 +2,22 @@
 
 ## 2026-07-20
 
+- Chat waterfall file audit details slice:
+  - Added a dedicated `FileChangeRow` instead of rendering file changes through the generic audit row.
+  - File changes now show compact path/status/change-count summaries by default.
+  - Diff/details stay hidden behind a `Details` toggle and reuse `ChatWaterfall` expansion state across virtualized unmount/remount.
+  - Added a copy-path action for file change rows when a primary path is available.
+  - Extended the long transcript Playwright test with a file-change payload, Files-scope search, default collapsed-state checks, detail expansion, and persistence after jumping away and returning.
+  - Hardened parallel-agent fallback naming so agent rail selection does not depend on child thread metadata arriving before collab tool rows.
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun run typecheck`
+    - `bun run build`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows parallel agents rail"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat|matches desktop and mobile"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts` (26/26 Chromium tests)
+
 - Chat waterfall tool audit details slice:
   - Tool audit rows now default to a compact header plus server/tool/status/duration chips.
   - Arguments, results, row text, and payload-derived detail content are hidden behind a `Details` toggle.
