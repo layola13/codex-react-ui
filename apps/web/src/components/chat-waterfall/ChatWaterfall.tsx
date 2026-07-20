@@ -30,6 +30,7 @@ export type ChatWorkingStatus = {
 export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDisplay = "summary" }: Props) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const previousRowCountRef = useRef(rows.length);
+  const jumpToLatestRef = useRef<() => void>(() => undefined);
   const [nearBottom, setNearBottom] = useState(true);
   const [newRowsCount, setNewRowsCount] = useState(0);
   const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
@@ -164,6 +165,9 @@ export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDi
       } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
         event.preventDefault();
         setPromptMapOpen(true);
+      } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "ArrowDown" || event.key === "End")) {
+        event.preventDefault();
+        jumpToLatestRef.current();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -230,6 +234,8 @@ export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDi
       virtualizer.scrollToIndex(rowIndex + beforeOffset, { align: "start" });
     });
   }
+
+  jumpToLatestRef.current = jumpToLatest;
 
   function scrollToBottom() {
     virtualizer.scrollToIndex(virtualCount - 1, { align: "end" });

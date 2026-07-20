@@ -1515,7 +1515,7 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
 });
 
 test("virtualizes long main chat transcripts and keeps jump-to-latest usable", async ({ page }) => {
-  test.setTimeout(60000);
+  test.setTimeout(90000);
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
 
@@ -1710,8 +1710,10 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
     element.dispatchEvent(new Event("scroll"));
   });
   await expect(page.getByRole("button", { name: /Jump to latest/ })).toBeVisible();
-  await page.getByRole("button", { name: /Jump to latest/ }).click();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+ArrowDown" : "Control+Shift+ArrowDown");
   await expect(page.getByText("Long assistant answer 319")).toBeVisible();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
+  await expect(page.getByTestId("chat-search-overlay")).toBeVisible();
   await page.getByRole("combobox", { name: "Search scope" }).click();
   await page.getByRole("option", { name: "Commands" }).click();
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");

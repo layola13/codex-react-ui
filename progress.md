@@ -17,6 +17,7 @@
   - Added per-answer usage details after the answer body: input/output tokens, cached/read cache tokens, cache write tokens, cache hit rate, speed, cost line items, and total cost.
   - Changed the bottom assistant usage detail row to be hidden by default behind a Settings -> Layout toggle, because the answer header already shows the compact summary.
   - Added total cost chips to conversation history rows, with hover details for cumulative token usage when available.
+  - Added `Cmd/Ctrl+Shift+ArrowDown` and `Cmd/Ctrl+Shift+End` shortcuts for Jump to latest in the virtualized waterfall.
   - Simulated a real task with workspace `~/projects/` and prompt `详细评估sci工程`.
   - Captured screenshot evidence:
     - `snapshot/sci-evaluation-working-cost-ui.png`
@@ -25,6 +26,7 @@
   - Verification passed:
     - `bun run typecheck`
     - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "virtualizes long main chat"`
     - `bun test:e2e tests/e2e/workbench.spec.ts -g "shows working status|virtualizes long main chat"`
     - `bun run build`
 

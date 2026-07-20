@@ -21,6 +21,7 @@ Reduced command audit output to a one-line collapsed preview by default.
    - Assistant answer headers show compact token/speed/cost summaries when token usage is available.
    - Assistant answer ending details are hidden by default and can be enabled from Settings -> Layout.
    - Conversation history rows show a total cost chip, with cumulative token details on hover when usage is available.
+   - Jump to latest supports `Cmd/Ctrl+Shift+ArrowDown` and `Cmd/Ctrl+Shift+End` for PC keyboard navigation.
 2. Virtualization:
    - Command row height estimates now assume compact collapsed output, so long terminal logs do not reserve large offscreen space.
 3. Verification:
@@ -31,6 +32,7 @@ Reduced command audit output to a one-line collapsed preview by default.
    - Playwright verifies live assistant token usage metadata after a token usage notification.
    - Playwright verifies live assistant first-token latency metadata.
    - Playwright verifies header usage summaries, default-hidden bottom detail rows, and history total cost chips.
+   - Playwright verifies keyboard Jump to latest from a scrolled-away virtualized transcript.
    - Latest verification passed full typecheck, production build, and focused Working/virtualized transcript e2e.
    - Real-browser simulation used workspace `~/projects/` and prompt `详细评估sci工程`, with screenshots saved for working state, completed cost details, and relay rate settings.
 
