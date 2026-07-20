@@ -1,6 +1,102 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
+function createStoredTestZip(entries: Record<string, Buffer>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  const records: Array<{ path: string; data: Buffer; crc: number; offset: number }> = [];
+  let offset = 0;
+  for (const [path, data] of Object.entries(entries)) {
+    const name = Buffer.from(path);
+    const crc = crc32(data);
+    const header = Buffer.alloc(30 + name.length);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(0, 6);
+    header.writeUInt16LE(0, 8);
+    header.writeUInt32LE(crc, 14);
+    header.writeUInt32LE(data.length, 18);
+    header.writeUInt32LE(data.length, 22);
+    header.writeUInt16LE(name.length, 26);
+    name.copy(header, 30);
+    localParts.push(header, data);
+    records.push({ path, data, crc, offset });
+    offset += header.length + data.length;
+  }
+  const centralOffset = offset;
+  for (const record of records) {
+    const name = Buffer.from(record.path);
+    const header = Buffer.alloc(46 + name.length);
+    header.writeUInt32LE(0x02014b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(20, 6);
+    header.writeUInt16LE(0, 8);
+    header.writeUInt16LE(0, 10);
+    header.writeUInt32LE(record.crc, 16);
+    header.writeUInt32LE(record.data.length, 20);
+    header.writeUInt32LE(record.data.length, 24);
+    header.writeUInt16LE(name.length, 28);
+    header.writeUInt32LE(record.offset, 42);
+    name.copy(header, 46);
+    centralParts.push(header);
+    offset += header.length;
+  }
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(records.length, 8);
+  end.writeUInt16LE(records.length, 10);
+  end.writeUInt32LE(offset - centralOffset, 12);
+  end.writeUInt32LE(centralOffset, 16);
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+function readStoredTestZip(zip: Buffer): Map<string, Buffer> {
+  const endOffset = zip.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (endOffset < 0) {
+    throw new Error("Missing ZIP end directory");
+  }
+  const entryCount = zip.readUInt16LE(endOffset + 10);
+  let cursor = zip.readUInt32LE(endOffset + 16);
+  const files = new Map<string, Buffer>();
+  for (let index = 0; index < entryCount; index += 1) {
+    if (zip.readUInt32LE(cursor) !== 0x02014b50) {
+      throw new Error("Invalid ZIP central directory");
+    }
+    const method = zip.readUInt16LE(cursor + 10);
+    const size = zip.readUInt32LE(cursor + 20);
+    const nameLength = zip.readUInt16LE(cursor + 28);
+    const extraLength = zip.readUInt16LE(cursor + 30);
+    const commentLength = zip.readUInt16LE(cursor + 32);
+    const localOffset = zip.readUInt32LE(cursor + 42);
+    const name = zip.subarray(cursor + 46, cursor + 46 + nameLength).toString("utf8");
+    cursor += 46 + nameLength + extraLength + commentLength;
+    if (method !== 0) {
+      throw new Error("Only stored ZIP entries are supported by this test helper");
+    }
+    const localNameLength = zip.readUInt16LE(localOffset + 26);
+    const localExtraLength = zip.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    files.set(name, zip.subarray(dataStart, dataStart + size));
+  }
+  return files;
+}
+
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = crc32Table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const crc32Table = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+  return value >>> 0;
+});
+
 const mockProvider = {
   id: "hubproxy-grok",
   kind: "responsesRelay",
@@ -1281,6 +1377,18 @@ test("supports uploaded background images and user theme switching", async ({ pa
   await expect(page.getByLabel("Main chat waterfall background")).toHaveValue(/^data:image\/jpeg;base64,/);
   await expect(page.getByLabel("Workbench background video")).toHaveValue(/^data:video\/mp4;base64,/);
   await expect(page.getByLabel("Dynamic background")).toHaveText("Three.js loop");
+  const [themeZipDownload] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export ZIP" }).click()]);
+  const themeZipPath = await themeZipDownload.path();
+  if (!themeZipPath) {
+    throw new Error("Theme ZIP download path was unavailable.");
+  }
+  const exportedThemeFiles = readStoredTestZip(await readFile(themeZipPath));
+  const exportedThemeJson = exportedThemeFiles.get("theme.json");
+  expect(exportedThemeJson?.toString("utf8")).toContain("\"name\": \"Reference Rose\"");
+  expect(exportedThemeJson?.toString("utf8")).toContain("\"appBackgroundImage\": \"assets/appBackgroundImage.jpg\"");
+  expect(exportedThemeJson?.toString("utf8")).toContain("\"appBackgroundVideo\": \"assets/appBackgroundVideo.mp4\"");
+  expect(exportedThemeFiles.get("assets/appBackgroundImage.jpg")?.byteLength).toBeGreaterThan(1000);
+  expect(exportedThemeFiles.get("assets/appBackgroundVideo.mp4")?.byteLength).toBeGreaterThan(0);
   await page.getByRole("textbox", { name: "Secondary", exact: true }).fill("#2563EB");
   await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-reference-rose-/);
@@ -1309,7 +1417,7 @@ test("supports uploaded background images and user theme switching", async ({ pa
       backgroundScene: { renderer: "canvas", preset: "particles", color: "#0F766E", secondaryColor: "#F59E0B", speed: 0.8, density: 0.4, opacity: 0.5 }
     }
   };
-  await page.getByLabel("Custom theme plugin JSON file").setInputFiles({
+  await page.getByLabel("Custom theme plugin JSON or ZIP file").setInputFiles({
     name: "imported-mint.theme.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(importedTheme))
@@ -1323,6 +1431,50 @@ test("supports uploaded background images and user theme switching", async ({ pa
   await expect(page.getByRole("option", { name: "Reference Rose" }).last()).toBeVisible();
   await expect(page.getByRole("option", { name: "Imported Mint" })).toBeVisible();
   await page.keyboard.press("Escape");
+
+  const zippedTheme = {
+    name: "Zipped Mint",
+    description: "ZIP theme with separate media assets.",
+    preview: { primary: "#047857", secondary: "#F97316", background: "#F0FDFA" },
+    dark: false,
+    assets: {
+      appBackgroundImage: "assets/waterfall.svg",
+      composerBackgroundImage: "assets/composer.svg",
+      appBackgroundVideo: "assets/loop.webm"
+    },
+    layout: {
+      heroEnabled: true,
+      petEnabled: true,
+      decorationIntensity: "rich",
+      backgroundOverlayOpacity: 0.02,
+      workspaceSurfaceOpacity: 0.16,
+      panelSurfaceOpacity: 0.68,
+      toneColor: "#047857",
+      toneOpacity: 0,
+      backgroundScene: { renderer: "canvas", preset: "aurora", color: "#047857", secondaryColor: "#F97316", speed: 0.7, density: 0.45, opacity: 0.5 }
+    }
+  };
+  const zippedThemeSvg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="180"><rect width="360" height="180" fill="#ccfbf1"/><circle cx="270" cy="70" r="52" fill="#047857" opacity=".35"/></svg>'
+  );
+  const zippedThemeBuffer = createStoredTestZip({
+    "theme.json": Buffer.from(JSON.stringify(zippedTheme)),
+    "assets/waterfall.svg": zippedThemeSvg,
+    "assets/composer.svg": zippedThemeSvg,
+    "assets/loop.webm": Buffer.from([26, 69, 223, 163, 159, 66, 134, 129, 1, 66, 247, 129, 1])
+  });
+  await page.getByLabel("Custom theme plugin JSON or ZIP file").setInputFiles({
+    name: "zipped-mint.theme.zip",
+    mimeType: "application/zip",
+    buffer: zippedThemeBuffer
+  });
+  await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue("Zipped Mint");
+  await expect(page.getByLabel("Main chat waterfall background")).toHaveValue(/^data:image\/svg\+xml;base64,/);
+  await expect(page.getByLabel("Composer input background")).toHaveValue(/^data:image\/svg\+xml;base64,/);
+  await expect(page.getByLabel("Workbench background video")).toHaveValue(/^data:video\/webm;base64,/);
+  await expect(page.getByLabel("Dynamic background")).toHaveText("Canvas loop");
+  await page.getByRole("button", { name: /Save plugin|Save changes/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-color-scheme", /user-zipped-mint-/);
 });
 
 test("supports drag and drop image attachments in the composer", async ({ page }) => {

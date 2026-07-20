@@ -1,5 +1,21 @@
 # Progress
 
+## 2026-07-20
+
+- Theme portability ZIP slice:
+  - Added Settings -> Appearance theme ZIP export alongside the existing JSON export. ZIP packages contain root `theme.json` plus extracted local media files under `assets/`.
+  - Added theme ZIP import that reads `theme.json`, resolves relative image/video asset paths back into safe data URLs, preserves remote URLs as-is, and keeps existing `.theme.json` import compatibility.
+  - Added browser-side ZIP read/write helpers for stored ZIP entries, including manifest validation, relative path safety checks, per-asset size limits, and support for deflated imports when the browser provides `DecompressionStream`.
+  - Extended English and Chinese Settings theme labels for ZIP export and generic theme import.
+  - Expanded the existing uploaded background/theme switching Playwright test to verify ZIP downloads contain `theme.json` plus media assets and that ZIP imports restore image/video asset fields before saving.
+  - Refreshed screenshot evidence:
+    - `snapshot/user-theme-background-switching.png`
+  - Verification passed:
+    - `bun --filter @codex-ui/web typecheck`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "supports uploaded background images and user theme switching"`
+    - `bun run typecheck`
+    - `bun run build`
+
 ## 2026-07-19
 
 - Playwright verification stability follow-up:

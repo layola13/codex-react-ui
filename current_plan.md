@@ -6,6 +6,21 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented ZIP-based user theme portability while preserving existing JSON theme import/export compatibility.
+
+1. Theme ZIP export:
+   - Settings -> Appearance now offers `Export ZIP` next to the existing JSON export.
+   - The ZIP contains a root `theme.json` manifest and local data URL media extracted into `assets/`.
+   - Remote theme asset URLs remain as URLs in `theme.json`.
+2. Theme ZIP import:
+   - `.zip` imports read root `theme.json`, validate relative asset paths, restore packaged image/video assets as safe data URLs, and reuse the existing theme normalizer.
+   - Existing `.json` imports still work through the original compatibility path.
+3. Verification:
+   - The uploaded-background/theme-switching Playwright test now checks ZIP download contents and ZIP import save behavior.
+   - Latest verification passed `bun --filter @codex-ui/web typecheck`, the focused Playwright theme test, `bun run typecheck`, and `bun run build`.
+
+## Previous Completed Slice
+
 Implemented the Slash Command parity slice for the main Web composer while keeping sidechat slash-shaped text isolated and unparsed.
 
 1. Keep the existing browser-owned commands:

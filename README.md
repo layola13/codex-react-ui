@@ -14,7 +14,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Main composer UI commands `/fast`, `/status`, `/stats`, `/usage`, `/goal`, and `/plan` are handled by the browser before `turn/start`; Settings-oriented commands open Settings instead of the right workspace.
 - App-server-backed main composer commands `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new` use native workbench actions instead of being sent as prompt text.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
-- User theme plugins with editable preview colors, image/GIF/video backgrounds, optional dynamic Canvas/Three.js scenes, background tuning controls, and JSON import/export.
+- User theme plugins with editable preview colors, image/GIF/video backgrounds, optional dynamic Canvas/Three.js scenes, background tuning controls, and JSON plus ZIP import/export.
 
 ## Development
 
@@ -99,7 +99,7 @@ The uploaded image is stored as `assets.appBackgroundImage`. Uploaded videos are
 
 Theme plugins can also include a declaration-based dynamic background scene in `layout.backgroundScene`. Supported renderers are `canvas` and `three`, with presets such as `aurora`, `particles`, and `orbit`. Imported themes do not execute arbitrary JavaScript; shared Canvas/Three.js backgrounds are rendered only from the stored declaration fields.
 
-Custom theme plugins can be exported as JSON and imported on another machine from the same Theme plugins view. Export/import preserves media assets, background tuning, tone settings, and dynamic background declarations so themes can be exchanged intact.
+Custom theme plugins can be exported as JSON or as a ZIP package from the same Theme plugins view. ZIP packages contain a root `theme.json` plus local media files under `assets/`, while JSON import remains supported for compatibility. Export/import preserves media assets, background tuning, tone settings, and dynamic background declarations so themes can be exchanged intact.
 
 ## Main Slash Commands
 

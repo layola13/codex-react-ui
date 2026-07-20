@@ -2645,6 +2645,26 @@ function CustomThemePluginEditor({
     URL.revokeObjectURL(url);
   }
 
+  async function exportThemeZipDraft() {
+    const plugin = buildThemePluginDraft();
+    if (!plugin) {
+      return;
+    }
+    try {
+      const blob = await createThemeZipBlob(plugin);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${plugin.id}.theme.zip`;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (zipError) {
+      setError(zipError instanceof Error ? zipError.message : String(zipError));
+    }
+  }
+
   return (
     <Box sx={{ p: 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: "background.default" }}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
@@ -2985,14 +3005,17 @@ function CustomThemePluginEditor({
           <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportThemeDraft} aria-label={t("settings.theme.exportJson")}>
             {t("settings.theme.exportJson")}
           </Button>
-          <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => themeImportRef.current?.click()} aria-label={t("settings.theme.importJson")}>
-            {t("settings.theme.importJson")}
+          <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => void exportThemeZipDraft()} aria-label={t("settings.theme.exportZip")}>
+            {t("settings.theme.exportZip")}
+          </Button>
+          <Button size="small" variant="outlined" startIcon={<UploadFileIcon />} onClick={() => themeImportRef.current?.click()} aria-label={t("settings.theme.importTheme")}>
+            {t("settings.theme.importTheme")}
           </Button>
           <input
             ref={themeImportRef}
             type="file"
-            aria-label="Custom theme plugin JSON file"
-            accept="application/json,.json"
+            aria-label="Custom theme plugin JSON or ZIP file"
+            accept="application/json,application/zip,.json,.zip"
             hidden
             onChange={(event) => {
               const file = event.currentTarget.files?.[0] ?? null;
@@ -3067,6 +3090,18 @@ function isSafeThemeVideoUrl(value: string): boolean {
 const MAX_THEME_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_THEME_VIDEO_BYTES = 6 * 1024 * 1024;
 const MAX_THEME_JSON_BYTES = 16 * 1024 * 1024;
+const MAX_THEME_ZIP_BYTES = 32 * 1024 * 1024;
+const THEME_ZIP_MANIFEST = "theme.json";
+const THEME_ASSET_FIELDS = [
+  "appBackgroundImage",
+  "appBackgroundVideo",
+  "composerBackgroundImage",
+  "welcomeBackgroundImage",
+  "historyBackgroundImage",
+  "heroImage",
+  "cornerImage",
+  "petImage"
+] as const satisfies ReadonlyArray<keyof NonNullable<ThemePlugin["assets"]>>;
 
 function readThemeImageFile(file: File): Promise<string> {
   if (!file.type.startsWith("image/")) {
@@ -3114,11 +3149,379 @@ function readThemeVideoFile(file: File): Promise<string> {
 }
 
 async function readThemePluginFile(file: File): Promise<ThemePlugin> {
+  if (isThemeZipFile(file)) {
+    return readThemePluginZipFile(file);
+  }
   if (file.size > MAX_THEME_JSON_BYTES) {
     throw new Error("Theme plugin JSON must be smaller than 16 MiB.");
   }
   const parsed = JSON.parse(await file.text()) as unknown;
   return normalizeImportedThemePlugin(parsed);
+}
+
+async function createThemeZipBlob(plugin: ThemePlugin): Promise<Blob> {
+  const { manifest, assets } = themePluginToZipManifest(plugin);
+  const encoder = new TextEncoder();
+  const entries: ZipEntryInput[] = [
+    {
+      path: THEME_ZIP_MANIFEST,
+      data: encoder.encode(`${JSON.stringify(manifest, null, 2)}\n`)
+    },
+    ...assets
+  ];
+  return new Blob([uint8ToArrayBuffer(createStoredZip(entries))], { type: "application/zip" });
+}
+
+function themePluginToZipManifest(plugin: ThemePlugin): { manifest: ThemePlugin; assets: ZipEntryInput[] } {
+  const manifest = structuredClone(plugin) as ThemePlugin;
+  const assets: ZipEntryInput[] = [];
+  if (!manifest.assets) {
+    return { manifest, assets };
+  }
+  const nextAssets: NonNullable<ThemePlugin["assets"]> = { ...manifest.assets };
+  for (const field of THEME_ASSET_FIELDS) {
+    const value = nextAssets[field];
+    if (!value?.startsWith("data:")) {
+      continue;
+    }
+    const dataUrl = parseThemeDataUrl(value);
+    const fieldKind = field === "appBackgroundVideo" ? "video" : "image";
+    if (fieldKind === "image" && !dataUrl.mime.startsWith("image/")) {
+      throw new Error("Theme ZIP image assets must use data:image URLs.");
+    }
+    if (fieldKind === "video" && !dataUrl.mime.startsWith("video/")) {
+      throw new Error("Theme ZIP video assets must use data:video URLs.");
+    }
+    const maxBytes = fieldKind === "video" ? MAX_THEME_VIDEO_BYTES : MAX_THEME_IMAGE_BYTES;
+    if (dataUrl.data.byteLength > maxBytes) {
+      throw new Error(fieldKind === "video" ? "Theme background video must be smaller than 6 MiB." : "Theme background image must be smaller than 6 MiB.");
+    }
+    const path = `assets/${field}.${extensionForMime(dataUrl.mime, fieldKind)}`;
+    assets.push({ path, data: dataUrl.data });
+    nextAssets[field] = path;
+  }
+  manifest.assets = removeEmptyThemeAssets(nextAssets);
+  return { manifest, assets };
+}
+
+async function readThemePluginZipFile(file: File): Promise<ThemePlugin> {
+  if (file.size > MAX_THEME_ZIP_BYTES) {
+    throw new Error("Theme ZIP must be smaller than 32 MiB.");
+  }
+  const files = await readZipEntries(new Uint8Array(await file.arrayBuffer()));
+  const manifestBytes = files.get(THEME_ZIP_MANIFEST);
+  if (!manifestBytes) {
+    throw new Error("Theme ZIP must contain theme.json at the archive root.");
+  }
+  if (manifestBytes.byteLength > MAX_THEME_JSON_BYTES) {
+    throw new Error("Theme plugin JSON must be smaller than 16 MiB.");
+  }
+  const parsed = JSON.parse(new TextDecoder().decode(manifestBytes)) as unknown;
+  return normalizeImportedThemePlugin(resolveThemeZipAssetPaths(parsed, files));
+}
+
+function resolveThemeZipAssetPaths(value: unknown, files: Map<string, Uint8Array>): unknown {
+  if (!isPlainRecord(value)) {
+    return value;
+  }
+  const rawAssets = isPlainRecord(value.assets) ? value.assets : {};
+  const assets: Record<string, unknown> = { ...rawAssets };
+  for (const field of THEME_ASSET_FIELDS) {
+    const entry = rawAssets[field];
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const path = normalizeZipPath(entry);
+    if (!path || isExternalThemeAssetPath(path)) {
+      continue;
+    }
+    const data = files.get(path);
+    if (!data) {
+      throw new Error(`Theme ZIP is missing asset ${path}.`);
+    }
+    const fieldKind = field === "appBackgroundVideo" ? "video" : "image";
+    const maxBytes = fieldKind === "video" ? MAX_THEME_VIDEO_BYTES : MAX_THEME_IMAGE_BYTES;
+    if (data.byteLength > maxBytes) {
+      throw new Error(fieldKind === "video" ? "Theme background video must be smaller than 6 MiB." : "Theme background image must be smaller than 6 MiB.");
+    }
+    const mime = mimeForThemeAsset(path, fieldKind);
+    assets[field] = `data:${mime};base64,${uint8ToBase64(data)}`;
+  }
+  return {
+    ...value,
+    assets
+  };
+}
+
+type ZipEntryInput = {
+  path: string;
+  data: Uint8Array;
+};
+
+type ZipEntryRecord = ZipEntryInput & {
+  crc: number;
+  offset: number;
+};
+
+function isThemeZipFile(file: File): boolean {
+  return file.type === "application/zip" || /\.zip$/i.test(file.name);
+}
+
+function isExternalThemeAssetPath(value: string): boolean {
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("blob:") || value.startsWith("data:");
+}
+
+function parseThemeDataUrl(value: string): { mime: string; data: Uint8Array } {
+  const match = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(value);
+  if (!match) {
+    throw new Error("Theme media data URL is invalid.");
+  }
+  const mime = match[1]?.toLowerCase();
+  const payload = match[3];
+  if (!mime || typeof payload !== "string") {
+    throw new Error("Theme media data URL is invalid.");
+  }
+  if (match[2]) {
+    const binary = atob(payload);
+    const data = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      data[index] = binary.charCodeAt(index);
+    }
+    return { mime, data };
+  }
+  return { mime, data: new TextEncoder().encode(decodeURIComponent(payload)) };
+}
+
+function extensionForMime(mime: string, kind: "image" | "video"): string {
+  switch (mime.toLowerCase()) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+    case "image/jpg":
+      return "jpg";
+    case "image/webp":
+      return "webp";
+    case "image/gif":
+      return "gif";
+    case "image/svg+xml":
+      return "svg";
+    case "video/mp4":
+      return "mp4";
+    case "video/webm":
+      return "webm";
+    default:
+      return kind === "video" ? "bin" : "img";
+  }
+}
+
+function mimeForThemeAsset(path: string, kind: "image" | "video"): string {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lower.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lower.endsWith(".svg")) {
+    return "image/svg+xml";
+  }
+  if (lower.endsWith(".mp4")) {
+    return "video/mp4";
+  }
+  if (lower.endsWith(".webm")) {
+    return "video/webm";
+  }
+  return kind === "video" ? "video/mp4" : "image/png";
+}
+
+function uint8ToBase64(data: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < data.byteLength; offset += chunkSize) {
+    const chunk = data.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+function createStoredZip(entries: ZipEntryInput[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  const records: ZipEntryRecord[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const path = normalizeZipPath(entry.path);
+    if (!path) {
+      throw new Error("Theme ZIP entry path is invalid.");
+    }
+    const nameBytes = encoder.encode(path);
+    const crc = crc32(entry.data);
+    const localHeader = new Uint8Array(30 + nameBytes.byteLength);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, entry.data.byteLength, true);
+    localView.setUint32(22, entry.data.byteLength, true);
+    localView.setUint16(26, nameBytes.byteLength, true);
+    localHeader.set(nameBytes, 30);
+    localParts.push(localHeader, entry.data);
+    records.push({ path, data: entry.data, crc, offset });
+    offset += localHeader.byteLength + entry.data.byteLength;
+  }
+  const centralOffset = offset;
+  for (const record of records) {
+    const nameBytes = encoder.encode(record.path);
+    const header = new Uint8Array(46 + nameBytes.byteLength);
+    const view = new DataView(header.buffer);
+    view.setUint32(0, 0x02014b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(6, 20, true);
+    view.setUint16(8, 0, true);
+    view.setUint16(10, 0, true);
+    view.setUint32(16, record.crc, true);
+    view.setUint32(20, record.data.byteLength, true);
+    view.setUint32(24, record.data.byteLength, true);
+    view.setUint16(28, nameBytes.byteLength, true);
+    view.setUint32(42, record.offset, true);
+    header.set(nameBytes, 46);
+    centralParts.push(header);
+    offset += header.byteLength;
+  }
+  const centralSize = offset - centralOffset;
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, records.length, true);
+  endView.setUint16(10, records.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, centralOffset, true);
+  return concatUint8Arrays([...localParts, ...centralParts, end]);
+}
+
+async function readZipEntries(data: Uint8Array): Promise<Map<string, Uint8Array>> {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const endOffset = findZipEndOfCentralDirectory(view);
+  if (endOffset < 0) {
+    throw new Error("Theme ZIP could not be read.");
+  }
+  const entryCount = view.getUint16(endOffset + 10, true);
+  const centralOffset = view.getUint32(endOffset + 16, true);
+  const files = new Map<string, Uint8Array>();
+  let cursor = centralOffset;
+  const decoder = new TextDecoder();
+  for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
+    if (cursor + 46 > data.byteLength || view.getUint32(cursor, true) !== 0x02014b50) {
+      throw new Error("Theme ZIP central directory is invalid.");
+    }
+    const flags = view.getUint16(cursor + 8, true);
+    const method = view.getUint16(cursor + 10, true);
+    const compressedSize = view.getUint32(cursor + 20, true);
+    const fileNameLength = view.getUint16(cursor + 28, true);
+    const extraLength = view.getUint16(cursor + 30, true);
+    const commentLength = view.getUint16(cursor + 32, true);
+    const localOffset = view.getUint32(cursor + 42, true);
+    const nameStart = cursor + 46;
+    const path = normalizeZipPath(decoder.decode(data.subarray(nameStart, nameStart + fileNameLength)));
+    cursor = nameStart + fileNameLength + extraLength + commentLength;
+    if (!path || path.endsWith("/")) {
+      continue;
+    }
+    if ((flags & 0x1) !== 0) {
+      throw new Error("Encrypted theme ZIP files are not supported.");
+    }
+    if (localOffset + 30 > data.byteLength || view.getUint32(localOffset, true) !== 0x04034b50) {
+      throw new Error("Theme ZIP local file header is invalid.");
+    }
+    const localNameLength = view.getUint16(localOffset + 26, true);
+    const localExtraLength = view.getUint16(localOffset + 28, true);
+    const compressedStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressedEnd = compressedStart + compressedSize;
+    if (compressedEnd > data.byteLength) {
+      throw new Error("Theme ZIP asset data is truncated.");
+    }
+    const compressed = data.subarray(compressedStart, compressedEnd);
+    const fileData = method === 0 ? compressed : await inflateZipEntry(method, compressed);
+    files.set(path, fileData);
+  }
+  return files;
+}
+
+function findZipEndOfCentralDirectory(view: DataView): number {
+  const minOffset = Math.max(0, view.byteLength - 0xffff - 22);
+  for (let offset = view.byteLength - 22; offset >= minOffset; offset -= 1) {
+    if (view.getUint32(offset, true) === 0x06054b50) {
+      return offset;
+    }
+  }
+  return -1;
+}
+
+async function inflateZipEntry(method: number, compressed: Uint8Array): Promise<Uint8Array> {
+  if (method !== 8 || typeof DecompressionStream === "undefined") {
+    throw new Error("Theme ZIP uses an unsupported compression method.");
+  }
+  const stream = new Blob([uint8ToArrayBuffer(compressed)]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function normalizeZipPath(path: string): string | null {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\/+/, "");
+  if (!normalized || normalized.startsWith("/") || normalized.includes("../") || normalized === ".." || normalized.includes("\0")) {
+    return null;
+  }
+  return normalized;
+}
+
+function concatUint8Arrays(parts: Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.byteLength;
+  }
+  return output;
+}
+
+function uint8ToArrayBuffer(data: Uint8Array): ArrayBuffer {
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+}
+
+let crc32Table: Uint32Array | null = null;
+
+function crc32(data: Uint8Array): number {
+  const table = getCrc32Table();
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc = (table[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function getCrc32Table(): Uint32Array {
+  if (crc32Table) {
+    return crc32Table;
+  }
+  const table = new Uint32Array(256);
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+    }
+    table[index] = value >>> 0;
+  }
+  crc32Table = table;
+  return table;
 }
 
 function normalizeImportedThemePlugin(value: unknown): ThemePlugin {
