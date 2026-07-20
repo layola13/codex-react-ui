@@ -2852,7 +2852,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               <AssessmentIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <FormControl size="small" sx={{ minWidth: { xs: 74, sm: 96 }, display: { xs: "none", sm: "inline-flex" } }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 96, sm: 128 }, display: { xs: "none", sm: "inline-flex" } }}>
             <Select
               value={locale}
               inputProps={{ "aria-label": t("app.language") }}
