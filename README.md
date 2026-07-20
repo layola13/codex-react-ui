@@ -17,6 +17,10 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Main chat uses a dedicated virtualized waterfall row model with lighter assistant prose, compact user bubbles, inline completed-thinking panels, compact expandable tool/file/command audit rows with file-path summaries, desktop prompt-floor navigation, a searchable prompt map, data-driven transcript search, bottom-follow behavior, and a Jump to latest control for long transcripts.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
 - User theme plugins with editable preview colors, image/GIF/video backgrounds, optional dynamic Canvas/Three.js scenes, background tuning controls, and JSON plus ZIP import/export.
+- Sub2API-style **membership system** (admin Members UI): create members, capability matrix, per-member **relay whitelist**, concurrency limit, balance/credits, and private workspace jails.
+- **Security**: login captcha, optional registration, Google Authenticator TOTP, self-service password change with **animated SVG captcha**.
+- **Usage & billing**: turn-based debit, usage summary charts, balance ledger, admin recharge with notes.
+- **Settings → Launch adapters**: catalog of [layola13 `*-launch`](https://github.com/layola13) bridges (`https://github.com/layola13/xxxxx-launch`), install/copy commands, and a multi-engine switcher UI (default **Codex** only today).
 
 ## Development
 
@@ -80,9 +84,11 @@ bun run readme:autopush:stop
 
 The watcher only stages `README.md`, writes its pid/log files under `.codex-maintenance/`, and uses `origin` plus the current branch by default. Override the polling interval or remote with `README_AUTOPUSH_INTERVAL` and `README_AUTOPUSH_REMOTE`.
 
-## Provider Switching
+## Provider Switching (Relay channels)
 
-Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Bun process memory and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
+Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Bun process memory / OS keyring and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
+
+Admins manage channels under **Settings → Relay**. Members only see relays listed in their `allowedProviderIds` (configured under **Settings → Members** when creating or editing a user).
 
 Activating a provider writes:
 
@@ -118,18 +124,37 @@ Each member has:
 - `status`: `active` | `disabled`
 - `maxPermission`: `readonlyAsk` | `workspaceAsk` | `fullAsk` | `dangerBypass`
 - `allowWrite`, `allowNetwork`, `allowDangerBypass`
+- `concurrency` (1–100): max concurrent `turn/start` slots (enforced server-side)
+- `balance` credits: non-admin turns debit a flat unit on `turn/start` when balance &gt; 0
+- `allowedProviderIds`: which relay channels the member may list/activate (empty = none)
 - private `workspaceRoot` under `~/.codex-react-ui/members/<userId>/workspace`
 
-The bridge **clamps/rejects** client `thread/start` and `turn/start` params so members cannot smuggle `--dangerously-bypass-approvals-and-sandbox` or write modes they do not own. Thread ownership is stored so members only see their own chat history.
+The bridge **clamps/rejects** client `thread/start` and `turn/start` params so members cannot smuggle `--dangerously-bypass-approvals-and-sandbox` or write modes they do not own. Thread ownership is stored so members only see their own chat history. Non-admins can **view/activate** allowed relays only; they cannot create, edit, or delete relay configs.
 
 Admin APIs:
 
 - `GET /api/members`
-- `POST /api/members`
-- `PATCH /api/members/:id`
+- `POST /api/members` (optional `allowedProviderIds` on create)
+- `PATCH /api/members/:id` (permissions, concurrency, relay ACL, password reset)
 - `DELETE /api/members/:id`
+- `POST /api/members/:id/balance` (set / add / subtract with notes)
+- `GET /api/usage/summary`, `GET /api/usage/ledger` (admin)
+- `GET /api/me/ledger`, `POST /api/me/password` (self-service)
 
-UI: **Settings → Members** (admin only).
+UI:
+
+- **Settings → Members** (admin): create/edit members, capability switches, **allowed relays**, concurrency, recharge
+- **Settings → Usage & Billing**: charts + ledger; members see own usage
+- **Settings → Security**: admin registration/captcha/default concurrency toggles; everyone can enable TOTP and change password (animated captcha required)
+
+### Demo accounts (local seed)
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Admin | `admin@example.com` | `ChangeMe123!` |
+| Member | `member1@example.com` | `MemberPass1!` |
+
+Set `CODEX_UI_JWT_SECRET` (min 32 chars) when membership login is on.
 
 ### Security recommendation (Linux users / SSH / Docker)
 
@@ -195,6 +220,62 @@ Sidechat tabs remain separate from the main workbench focus. Opening a sidechat 
 
 Slash-command-shaped sidechat input is not parsed, blocked, or rewritten by the browser UI. Text such as `/goal ...` is sent as normal Codex text input exactly as typed; commands that only exist in the terminal TUI still need app-server support before they can perform TUI-specific behavior here.
 
+## Launch Adapters (`*-launch`)
+
+Many third-party relays only speak **OpenAI Chat Completions**, while Codex (and this UI) use the **Responses** wire API. [code-launch](https://github.com/layola13/code-launch) runs a local translation proxy so Codex can talk to Chat Completions endpoints.
+
+Open **Settings → Launch adapters** for:
+
+1. **Chat engine switcher** — default / active: **Codex**. Other engines are shown as planned (UI chat not wired yet).
+2. **Download catalog** — every [layola13 `*-launch`](https://github.com/layola13) helper using the pattern:
+
+   `https://github.com/layola13/xxxxx-launch`
+
+| Adapter | Product | Protocol notes |
+| --- | --- | --- |
+| [code-launch](https://github.com/layola13/code-launch) | Codex CLI / this UI | **Required** for Chat Completions-only relays |
+| [agy-launch](https://github.com/layola13/agy-launch) | Antigravity (`agy`) CLI | Chat Completions bridge |
+| [auggie-launch](https://github.com/layola13/auggie-launch) | Augment / auggie | Chat Completions bridge |
+| [claude-launch](https://github.com/layola13/claude-launch) | Claude Code | Anthropic ↔ Chat Completions |
+| [crush-launch](https://github.com/layola13/crush-launch) | Charm Crush | Env → OpenAI-compatible provider |
+| [gemini-launch](https://github.com/layola13/gemini-launch) | Gemini CLI | Chat Completions bridge |
+| [grok-launch](https://github.com/layola13/grok-launch) | Grok-oriented CLI | Chat Completions bridge |
+| [coderabbit-launch](https://github.com/layola13/coderabbit-launch) | CodeRabbit CLI | Local MITM rewrite |
+| [freebuff-launch](https://github.com/layola13/freebuff-launch) | Freebuff CLI | Local MITM rewrite |
+| [agent-launch](https://github.com/layola13/agent-launch) | Generic agent CLIs | See repo README |
+
+Quick install for Codex:
+
+```bash
+git clone https://github.com/layola13/code-launch.git
+cd code-launch && ./install.sh
+# Edit ~/.config/code-launch/.env
+#   CODE_LAUNCH_BASE_URL=https://your-relay.example/v1
+#   CODE_LAUNCH_MODEL=your-model
+#   CODE_LAUNCH_API_KEY=sk-...
+#   CODE_LAUNCH_WIRE_API=chat   # when upstream is Chat Completions only
+export PATH="$HOME/.local/bin:$PATH"
+code-launch
+```
+
+**Settings → Relay** also shows a banner and per-channel chips when a saved provider is likely Chat Completions-only and needs `code-launch`.
+
+### Multi-engine roadmap (chat UI)
+
+| Engine | Protocol | Status |
+| --- | --- | --- |
+| Codex | Responses (+ `code-launch` when needed) | **Active (default)** |
+| agy | Chat Completions | Planned |
+| auggie | Chat Completions | Planned |
+| claude | Chat Completions | Planned |
+| crush | Chat Completions | Planned |
+| grok | Chat Completions | Planned |
+| gemini | Chat Completions | Planned |
+
+Planned work: switch the main chat surface between engines while reusing the same membership, relay ACL, and billing model.
+
 ## Current Gaps
 
-- Codex currently uses the Responses wire API for custom providers here; chat-completions-only relays still need a compatible Responses endpoint or an upstream Codex capability change.
+- Main chat still runs on **Codex** only; multi-engine UI switching for agy / auggie / claude / crush / grok / gemini is planned (download launchers already in Settings).
+- Token-accurate billing is not implemented yet; non-admin turns use a flat debit unit on `turn/start`.
+- Chat Completions-only relays still need **code-launch** (or a Responses-compatible upstream) for Codex traffic.
