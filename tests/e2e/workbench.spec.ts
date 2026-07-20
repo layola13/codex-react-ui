@@ -730,6 +730,22 @@ test.beforeEach(async ({ page }) => {
       },
       keywords: []
     };
+    let mockThreadRows: Array<Record<string, string | number>> = [
+      { id: "thread-1", name: "Mock thread", preview: "Mock thread preview", status: "idle", cwd: "/root/projects", source: "cli", updatedAt: 1710000030, recencyAt: 1710000030 },
+      { id: "thread-2", preview: "Second task", status: "idle", cwd: "/root/projects/codex-react-ui", source: "appServer", updatedAt: 1710000010, recencyAt: 1710000010 },
+      {
+        id: "019c2d47-4935-7423-a190-05691f566092",
+        name: "Session Index Title",
+        preview: "rollout preview fallback",
+        status: "idle",
+        cwd: "/root/projects/indexed",
+        source: "vscode",
+        modelProvider: "openai",
+        createdAt: 1709900000,
+        updatedAt: 1710000020,
+        recencyAt: 1710000020
+      }
+    ];
 
     function rpcResult(method: string, params?: unknown): unknown {
       switch (method) {
@@ -777,43 +793,28 @@ test.beforeEach(async ({ page }) => {
         case "thread/list":
           {
             const searchTerm = typeof (params as { searchTerm?: unknown } | undefined)?.searchTerm === "string" ? String((params as { searchTerm?: string }).searchTerm).toLowerCase() : "";
-            const rows: Array<Record<string, string | number>> = [
-              { id: "thread-1", name: "Mock thread", preview: "Mock thread preview", status: "idle", cwd: "/root/projects", source: "cli", updatedAt: 1710000030, recencyAt: 1710000030 },
-              { id: "thread-2", preview: "Second task", status: "idle", cwd: "/root/projects/codex-react-ui", source: "appServer", updatedAt: 1710000010, recencyAt: 1710000010 },
-              {
-                id: "019c2d47-4935-7423-a190-05691f566092",
-                name: "Session Index Title",
-                preview: "rollout preview fallback",
-                status: "idle",
-                cwd: "/root/projects/indexed",
-                source: "vscode",
-                modelProvider: "openai",
-                createdAt: 1709900000,
-                updatedAt: 1710000020,
-                recencyAt: 1710000020
-              }
-            ];
             const filtered = searchTerm
-              ? rows.filter((row) =>
+              ? mockThreadRows.filter((row) =>
                   [row.name, row.preview, row.cwd, row.source, row.modelProvider, row.id]
                     .filter((value): value is string => typeof value === "string")
                     .some((value) => value.toLowerCase().includes(searchTerm))
                 )
-              : rows;
+              : mockThreadRows;
             return { data: filtered };
           }
         case "thread/read": {
           const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
+          const row = mockThreadRows.find((entry) => entry.id === threadId);
           return {
             thread: {
               id: threadId,
-              name: threadId === "019c2d47-4935-7423-a190-05691f566092" ? "Session Index Title" : threadId === "thread-1" ? "Mock thread" : undefined,
-              preview: threadId === "thread-2" ? "Second task" : threadId === "019c2d47-4935-7423-a190-05691f566092" ? "rollout preview fallback" : "Mock thread preview",
-              status: "idle",
-              cwd: threadId === "019c2d47-4935-7423-a190-05691f566092" ? "/root/projects/indexed" : "/root/projects",
-              source: "cli",
-              updatedAt: 1710000020,
-              recencyAt: 1710000020,
+              name: typeof row?.name === "string" ? row.name : undefined,
+              preview: typeof row?.preview === "string" ? row.preview : undefined,
+              status: typeof row?.status === "string" ? row.status : "idle",
+              cwd: typeof row?.cwd === "string" ? row.cwd : "/root/projects",
+              source: typeof row?.source === "string" ? row.source : "cli",
+              updatedAt: typeof row?.updatedAt === "number" ? row.updatedAt : 1710000020,
+              recencyAt: typeof row?.recencyAt === "number" ? row.recencyAt : 1710000020,
               turns: []
             }
           };
@@ -822,8 +823,23 @@ test.beforeEach(async ({ page }) => {
           const id = `thread-new-${++threadStartCount}`;
           return { thread: { id, preview: `New mock thread ${threadStartCount}`, status: "idle" } };
         }
-        case "thread/name/set":
+        case "thread/name/set": {
+          const nameParams = params as { threadId?: string; name?: string } | undefined;
+          mockThreadRows = mockThreadRows.map((row) =>
+            row.id === nameParams?.threadId ? { ...row, name: nameParams.name ?? row.name, updatedAt: 1710000040, recencyAt: 1710000040 } : row
+          );
           return {};
+        }
+        case "thread/archive": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId;
+          mockThreadRows = mockThreadRows.filter((row) => row.id !== threadId);
+          return {};
+        }
+        case "thread/delete": {
+          const threadId = (params as { threadId?: string } | undefined)?.threadId;
+          mockThreadRows = mockThreadRows.filter((row) => row.id !== threadId);
+          return {};
+        }
         case "review/start": {
           const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
           return {
@@ -840,14 +856,15 @@ test.beforeEach(async ({ page }) => {
           return {};
         case "thread/resume": {
           const threadId = (params as { threadId?: string } | undefined)?.threadId ?? "thread-1";
+          const row = mockThreadRows.find((entry) => entry.id === threadId);
           return {
             thread: {
               id: threadId,
-              name: threadId === "019c2d47-4935-7423-a190-05691f566092" ? "Session Index Title" : undefined,
-              preview: threadId === "thread-2" ? "Second task" : threadId === "019c2d47-4935-7423-a190-05691f566092" ? "rollout preview fallback" : "Mock thread",
-              status: "idle",
-              cwd: "/root/projects",
-              source: "cli"
+              name: typeof row?.name === "string" ? row.name : undefined,
+              preview: typeof row?.preview === "string" ? row.preview : undefined,
+              status: typeof row?.status === "string" ? row.status : "idle",
+              cwd: typeof row?.cwd === "string" ? row.cwd : "/root/projects",
+              source: typeof row?.source === "string" ? row.source : "cli"
             },
             model: "gpt-5.6-sol",
             modelProvider: "openai",
@@ -1317,22 +1334,54 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: /Session Index Title/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Session Index Title/ })).not.toContainText("rollout preview fallback");
+  const sessionRow = page.getByRole("button", { name: "Open history Session Index Title" });
+  await expect(sessionRow).toBeVisible();
+  await expect(sessionRow).not.toContainText("rollout preview fallback");
   await page.getByLabel("Search history").fill("indexed");
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { searchTerm?: string } }> }).__codexUiOutbound ?? [];
     return messages.some((message) => message.method === "thread/list" && message.params?.searchTerm === "indexed");
   });
-  await expect(page.getByRole("button", { name: /Session Index Title/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Mock thread/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open history Session Index Title" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open history Mock thread" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Session Index Title/ }).click();
+  await page.getByRole("button", { name: "Open history Session Index Title" }).click();
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
     return messages.some((message) => message.method === "thread/resume" && message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092");
   });
   await expect(page.getByRole("tab", { name: "Session Index Title" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByRole("button", { name: "Rename history Session Index Title" }).click();
+  await page.getByLabel("Thread name").fill("Renamed history row");
+  await page.getByRole("button", { name: "Save rename" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string; name?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) =>
+        message.method === "thread/name/set" &&
+        message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092" &&
+        message.params?.name === "Renamed history row"
+    );
+  });
+  await expect(page.getByRole("tab", { name: "Renamed history row" })).toHaveAttribute("aria-selected", "true");
+
+  await page.getByLabel("Search history").fill("");
+  await expect(page.getByRole("button", { name: "Open history Second task" })).toBeVisible();
+  await page.getByRole("button", { name: "Archive history Second task" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/archive" && message.params?.threadId === "thread-2");
+  });
+  await expect(page.getByRole("button", { name: "Open history Second task" })).toHaveCount(0);
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete history Mock thread" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "thread/delete" && message.params?.threadId === "thread-1");
+  });
+  await expect(page.getByRole("button", { name: "Open history Mock thread" })).toHaveCount(0);
 });
 
 test("applies user theme media plugins to the default workbench", async ({ page }) => {

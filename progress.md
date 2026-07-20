@@ -8,8 +8,10 @@
   - History titles now prefer app-server `name`/title metadata, then rollout `preview`, then timestamp plus short thread id.
   - Added a History search box that combines app-server title search with local matching over title, preview, cwd, provider, source, model, and id.
   - Opening a history row or task tab now calls `thread/resume` before `thread/read`, using the current model and permission context.
+  - Added history row operations for inline rename, archive, and delete through `thread/name/set`, `thread/archive`, and `thread/delete`, keeping cached history, visible rows, and task tabs synchronized.
+  - Added local notification handling for `thread/archived`, `thread/deleted`, and `thread/unarchived` so backend-pushed changes do not leave stale rows visible.
   - Updated thread start/read/name notification parsing so renamed or resumed threads keep title metadata synchronized.
-  - Expanded Playwright coverage for history search, metadata title precedence, and `thread/resume` on selection.
+  - Expanded Playwright coverage for history search, metadata title precedence, `thread/resume` on selection, and row rename/archive/delete operations.
   - Verification passed:
     - `bun --filter @codex-ui/web typecheck`
     - `bun test:e2e tests/e2e/workbench.spec.ts -g "searches Codex history"`

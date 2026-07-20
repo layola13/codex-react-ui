@@ -504,6 +504,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     dispatch({ type: "threads", threads: historySearchTerm.trim() ? filterHistoryThreads(threadResult, historySearchTerm) : threadResult });
   }, [client, historySearchTerm]);
 
+  const applyHistoryThreads = useCallback(
+    (threads: ClientState["threads"]) => {
+      allHistoryThreadsRef.current = threads;
+      dispatch({ type: "threads", threads: historySearchTerm.trim() ? filterHistoryThreads(threads, historySearchTerm) : threads });
+    },
+    [historySearchTerm]
+  );
+
   useEffect(() => {
     if (!state.connected || !state.token) {
       return;
@@ -1228,7 +1236,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
       try {
         await client.rpc("thread/name/set", { threadId, name: normalized });
-        dispatch({ type: "threads", threads: renameThreadEntry(state.threads, threadId, normalized) });
+        applyHistoryThreads(renameThreadEntry(allHistoryThreadsRef.current, threadId, normalized));
         setSlashNotice({
           id: `rename-${Date.now()}`,
           title: "Thread renamed",
@@ -1239,7 +1247,63 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: errorMessage("Rename thread", error) });
       }
     },
-    [client, state.activeThreadId, state.threads]
+    [applyHistoryThreads, client, state.activeThreadId]
+  );
+
+  const renameHistoryThread = useCallback(
+    async (threadId: string, name: string) => {
+      const normalized = name.trim();
+      if (!normalized) {
+        return;
+      }
+      try {
+        await client.rpc("thread/name/set", { threadId, name: normalized });
+        applyHistoryThreads(renameThreadEntry(allHistoryThreadsRef.current, threadId, normalized));
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Rename history thread", error) });
+        throw error;
+      }
+    },
+    [applyHistoryThreads, client]
+  );
+
+  const archiveHistoryThread = useCallback(
+    async (threadId: string) => {
+      try {
+        await client.rpc("thread/archive", { threadId });
+        applyHistoryThreads(allHistoryThreadsRef.current.filter((thread) => thread.id !== threadId));
+        if (state.activeThreadId === threadId) {
+          setWelcomeDismissed(false);
+          dispatch({ type: "newConversation" });
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Archive history thread", error) });
+        throw error;
+      }
+    },
+    [applyHistoryThreads, client, state.activeThreadId]
+  );
+
+  const deleteHistoryThread = useCallback(
+    async (threadId: string) => {
+      try {
+        await client.rpc("thread/delete", { threadId });
+        applyHistoryThreads(allHistoryThreadsRef.current.filter((thread) => thread.id !== threadId));
+        setThreadGoals((current) => {
+          const next = { ...current };
+          delete next[threadId];
+          return next;
+        });
+        if (state.activeThreadId === threadId) {
+          setWelcomeDismissed(false);
+          dispatch({ type: "newConversation" });
+        }
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage("Delete history thread", error) });
+        throw error;
+      }
+    },
+    [applyHistoryThreads, client, state.activeThreadId]
   );
 
   const startReview = useCallback(
@@ -2594,6 +2658,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       onSearchChange={setHistorySearchTerm}
                       onRefresh={() => void loadHistory(historySearchTerm)}
                       onSelect={(threadId) => selectTaskTab(threadId)}
+                      onRename={(threadId, name) => renameHistoryThread(threadId, name)}
+                      onArchive={(threadId) => archiveHistoryThread(threadId)}
+                      onDelete={(threadId) => deleteHistoryThread(threadId)}
                       onInstallApp={() => void handleInstallApp()}
                       onOpenSettings={() => openSettings("codex")}
                     />
@@ -2634,6 +2701,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 onSearchChange={setHistorySearchTerm}
                 onRefresh={() => void loadHistory(historySearchTerm)}
                 onSelect={(threadId) => selectTaskTab(threadId)}
+                onRename={(threadId, name) => renameHistoryThread(threadId, name)}
+                onArchive={(threadId) => archiveHistoryThread(threadId)}
+                onDelete={(threadId) => deleteHistoryThread(threadId)}
                 onInstallApp={() => void handleInstallApp()}
                 onOpenSettings={() => openSettings("codex")}
               />

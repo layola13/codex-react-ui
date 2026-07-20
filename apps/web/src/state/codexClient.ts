@@ -625,6 +625,21 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       threads: state.threads.map((thread) => (thread.id === threadId ? { ...thread, title: name, name, preview: name } : thread))
     };
   }
+  if (method === "thread/archived" || method === "thread/deleted") {
+    const threadId = stringValue(params.threadId);
+    if (!threadId) {
+      return state;
+    }
+    return {
+      ...state,
+      activeThreadId: state.activeThreadId === threadId ? null : state.activeThreadId,
+      threads: state.threads.filter((thread) => thread.id !== threadId),
+      turns: method === "thread/deleted" ? state.turns.filter((turn) => turn.threadId !== threadId) : state.turns
+    };
+  }
+  if (method === "thread/unarchived") {
+    return state;
+  }
   if (method === "turn/started") {
     const turn = asRecord(params.turn);
     const id = stringValue(turn.id);

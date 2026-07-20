@@ -1,5 +1,11 @@
+import { useState } from "react";
 import { Avatar, Box, Button, Chip, Divider, IconButton, List, ListItemButton, ListItemText, Stack, TextField, Tooltip, Typography } from "@mui/material";
+import ArchiveOutlinedIcon from "@mui/icons-material/ArchiveOutlined";
+import CheckIcon from "@mui/icons-material/Check";
+import CloseIcon from "@mui/icons-material/Close";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import DownloadIcon from "@mui/icons-material/Download";
+import DriveFileRenameOutlineIcon from "@mui/icons-material/DriveFileRenameOutline";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
 import { alpha } from "@mui/material/styles";
@@ -18,6 +24,9 @@ type Props = {
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
   onSelect: (threadId: string) => void;
+  onRename: (threadId: string, name: string) => void | Promise<void>;
+  onArchive: (threadId: string) => void | Promise<void>;
+  onDelete: (threadId: string) => void | Promise<void>;
   onInstallApp?: () => void;
   onOpenSettings: () => void;
 };
@@ -34,9 +43,63 @@ export function HistorySidebar({
   onSearchChange,
   onRefresh,
   onSelect,
+  onRename,
+  onArchive,
+  onDelete,
   onInstallApp,
   onOpenSettings
 }: Props) {
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
+
+  const beginRename = (thread: ThreadEntry) => {
+    setEditingThreadId(thread.id);
+    setRenameDraft(threadTitle(thread));
+  };
+
+  const saveRename = async (threadId: string) => {
+    const nextName = renameDraft.trim();
+    if (!nextName) {
+      return;
+    }
+    setBusyThreadId(threadId);
+    try {
+      await onRename(threadId, nextName);
+      setEditingThreadId(null);
+      setRenameDraft("");
+    } catch {
+      // App owns the visible error surface.
+    } finally {
+      setBusyThreadId(null);
+    }
+  };
+
+  const archiveThread = async (threadId: string) => {
+    setBusyThreadId(threadId);
+    try {
+      await onArchive(threadId);
+    } catch {
+      // App owns the visible error surface.
+    } finally {
+      setBusyThreadId(null);
+    }
+  };
+
+  const deleteThread = async (thread: ThreadEntry) => {
+    if (!window.confirm(t("history.deleteConfirm", { title: threadTitle(thread) }))) {
+      return;
+    }
+    setBusyThreadId(thread.id);
+    try {
+      await onDelete(thread.id);
+    } catch {
+      // App owns the visible error surface.
+    } finally {
+      setBusyThreadId(null);
+    }
+  };
+
   return (
     <Box
       data-testid="history-sidebar"
@@ -91,42 +154,124 @@ export function HistorySidebar({
             <Typography variant="caption">{searchTerm ? t("history.emptySearch") : t("history.emptyDescription")}</Typography>
           </Box>
         )}
-        {threads.map((thread) => (
-          <ListItemButton
-            key={thread.id}
-            selected={activeThreadId === thread.id}
-            onClick={() => onSelect(thread.id)}
-            sx={{
-              border: "1px solid",
-              borderColor: activeThreadId === thread.id ? "primary.main" : "divider",
-              bgcolor: activeThreadId === thread.id ? "action.selected" : "background.paper",
-              "& + &": { mt: 1 },
-              "&::before": {
-                content: '""',
-                width: 6,
-                height: 6,
-                mr: 1,
-                borderRadius: 999,
-                bgcolor: activeThreadId === thread.id ? "primary.main" : "transparent",
-                flexShrink: 0
-              }
-            }}
-          >
-            <ListItemText
-              primary={threadTitle(thread)}
-              secondary={
-                <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
-                  <Chip size="small" label={threadSourceLabel(thread, t)} variant="outlined" />
-                  <Chip size="small" label={thread.status ?? t("history.stored")} />
-                  {thread.model && <Chip size="small" label={thread.model} variant="outlined" />}
-                  {thread.modelProvider && <Typography variant="caption">{thread.modelProvider}</Typography>}
-                  {thread.cwd && <Typography variant="caption" title={thread.cwd}>{shortCwd(thread.cwd)}</Typography>}
+        {threads.map((thread) => {
+          const title = threadTitle(thread);
+          const isEditing = editingThreadId === thread.id;
+          const disabled = busyThreadId === thread.id;
+          return (
+            <ListItemButton
+              key={thread.id}
+              selected={activeThreadId === thread.id}
+              onClick={() => {
+                if (!isEditing) {
+                  onSelect(thread.id);
+                }
+              }}
+              aria-label={t("history.openAria", { title })}
+              sx={{
+                border: "1px solid",
+                borderColor: activeThreadId === thread.id ? "primary.main" : "divider",
+                bgcolor: activeThreadId === thread.id ? "action.selected" : "background.paper",
+                alignItems: "flex-start",
+                gap: 0.75,
+                "& + &": { mt: 1 },
+                "&::before": {
+                  content: '""',
+                  width: 6,
+                  height: 6,
+                  mt: 1.5,
+                  borderRadius: 999,
+                  bgcolor: activeThreadId === thread.id ? "primary.main" : "transparent",
+                  flexShrink: 0
+                }
+              }}
+            >
+              {isEditing ? (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  alignItems="center"
+                  sx={{ minWidth: 0, flex: 1 }}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void saveRename(thread.id);
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setEditingThreadId(null);
+                      setRenameDraft("");
+                    }
+                  }}
+                >
+                  <TextField
+                    size="small"
+                    value={renameDraft}
+                    onChange={(event) => setRenameDraft(event.target.value)}
+                    inputProps={{ "aria-label": t("history.renameLabel") }}
+                    autoFocus
+                    fullWidth
+                  />
+                  <Tooltip title={t("history.saveRename")}>
+                    <span>
+                      <IconButton size="small" aria-label={t("history.saveRename")} disabled={!renameDraft.trim() || disabled} onClick={() => void saveRename(thread.id)}>
+                        <CheckIcon fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                  <Tooltip title={t("history.cancelRename")}>
+                    <IconButton
+                      size="small"
+                      aria-label={t("history.cancelRename")}
+                      disabled={disabled}
+                      onClick={() => {
+                        setEditingThreadId(null);
+                        setRenameDraft("");
+                      }}
+                    >
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </Stack>
-              }
-              primaryTypographyProps={{ noWrap: true, fontWeight: activeThreadId === thread.id ? 700 : 500 }}
-            />
-          </ListItemButton>
-        ))}
+              ) : (
+                <>
+                  <ListItemText
+                    primary={title}
+                    secondary={
+                      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                        <Chip size="small" label={threadSourceLabel(thread, t)} variant="outlined" />
+                        <Chip size="small" label={thread.status ?? t("history.stored")} />
+                        {thread.model && <Chip size="small" label={thread.model} variant="outlined" />}
+                        {thread.modelProvider && <Typography variant="caption">{thread.modelProvider}</Typography>}
+                        {thread.cwd && <Typography variant="caption" title={thread.cwd}>{shortCwd(thread.cwd)}</Typography>}
+                      </Stack>
+                    }
+                    primaryTypographyProps={{ noWrap: true, fontWeight: activeThreadId === thread.id ? 700 : 500 }}
+                    sx={{ minWidth: 0, flex: 1 }}
+                  />
+                  <Stack direction="row" spacing={0.25} onClick={(event) => event.stopPropagation()} sx={{ flexShrink: 0 }}>
+                    <Tooltip title={t("history.rename")}>
+                      <IconButton size="small" aria-label={t("history.renameAria", { title })} disabled={disabled} onClick={() => beginRename(thread)}>
+                        <DriveFileRenameOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={t("history.archive")}>
+                      <IconButton size="small" aria-label={t("history.archiveAria", { title })} disabled={disabled} onClick={() => void archiveThread(thread.id)}>
+                        <ArchiveOutlinedIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={t("history.delete")}>
+                      <IconButton size="small" aria-label={t("history.deleteAria", { title })} disabled={disabled} onClick={() => void deleteThread(thread)}>
+                        <DeleteOutlineIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </>
+              )}
+            </ListItemButton>
+          );
+        })}
       </List>
       <Divider />
       <Box data-testid="left-bottom-account-area" sx={{ p: 1.25, flex: "0 0 auto" }}>

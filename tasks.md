@@ -11,7 +11,7 @@
 - [x] Add zip-based theme export/import with `theme.json` plus media assets, while preserving JSON import compatibility.
 - [x] Design and implement dedicated Codex history management for `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` and `~/.codex/archived_sessions`: list by Codex's thread list semantics, not by opaque filename.
 - [x] Use Codex's `session_index.jsonl` as the primary title source for history rows; fall back to rollout `preview` / first user message; fall back again to timestamp + short UUID.
-- [ ] Add history operations for open/resume by `thread/resume`, rename via `thread/name/set` + `session_index.jsonl` compatibility, search by title/preview/cwd/provider/source, and archive/delete where backend support exists.
+- [x] Add history operations for open/resume by `thread/resume`, rename via `thread/name/set` + `session_index.jsonl` compatibility, search by title/preview/cwd/provider/source, and archive/delete where backend support exists.
 - [x] Review `/root/projects/codex` source for how Codex discovers, names, and summarizes session history before implementing the history manager.
 - [x] Fix New Chat startup flow so every new conversation first shows a workspace selection panel, defaults to `~/`, and blocks sending until the user confirms the workspace.
 - [x] Keep the composer text area editable while Codex is not ready or workspace selection is pending; only the Send action should be blocked with a clear inline reason.

@@ -17,9 +17,11 @@ Implemented Codex history management around app-server thread semantics.
 3. Search and open:
    - History search sends app-server `searchTerm` and locally matches loaded rows by title, preview, cwd, provider, source, model, and id.
    - Selecting a history row or task tab calls `thread/resume` before `thread/read`.
+   - History rows support inline rename plus archive/delete through app-server thread RPCs.
+   - Archive/delete remove rows from cached and visible history immediately; delete notifications also clear cached turns.
 4. Verification:
-   - Playwright covers history metadata search, title precedence, and resume on selection.
-   - Latest verification passed focused history, slash-command regressions, full `workbench.spec.ts` e2e (25/25), `bun run typecheck`, and `bun run build`.
+   - Playwright covers history metadata search, title precedence, resume on selection, and row rename/archive/delete operations.
+   - Latest verification passed focused history e2e, slash/new-chat regression e2e, full `workbench.spec.ts` e2e (25/25), `bun run typecheck`, and `bun run build`.
 
 ## Previous Completed Slice
 
