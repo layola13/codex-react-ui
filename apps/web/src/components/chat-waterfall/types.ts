@@ -32,6 +32,8 @@ export type ChatRowRole = "user" | "assistant" | "tool" | "system";
 
 export type ChatRowWidth = "prose" | "wide" | "full";
 
+export type AssistantUsageDisplayMode = "summary" | "details";
+
 export type ChatWaterfallRow = {
   key: string;
   turnId: string;

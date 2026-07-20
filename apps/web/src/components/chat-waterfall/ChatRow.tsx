@@ -10,21 +10,22 @@ import SmartToyIcon from "@mui/icons-material/SmartToy";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import type { TranslateFn } from "../../i18n";
 import { MarkdownMessage } from "../MarkdownMessage";
-import type { ChatWaterfallRow } from "./types";
+import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./types";
 
 type Props = {
   row: ChatWaterfallRow;
   t: TranslateFn;
   expanded: boolean;
   onToggleExpanded: () => void;
+  assistantUsageDisplay?: AssistantUsageDisplayMode;
 };
 
-export function ChatRow({ row, t, expanded, onToggleExpanded }: Props) {
+export function ChatRow({ row, t, expanded, onToggleExpanded, assistantUsageDisplay = "summary" }: Props) {
   switch (row.kind) {
     case "userMessage":
       return <UserMessageRow row={row} />;
     case "assistantMessage":
-      return <AssistantMessageRow row={row} t={t} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
+      return <AssistantMessageRow row={row} t={t} expanded={expanded} onToggleExpanded={onToggleExpanded} assistantUsageDisplay={assistantUsageDisplay} />;
     case "reasoningPreview":
       return <ReasoningPreviewRow row={row} t={t} />;
     case "commandExecution":
@@ -71,12 +72,14 @@ function AssistantMessageRow({
   row,
   t,
   expanded,
-  onToggleExpanded
+  onToggleExpanded,
+  assistantUsageDisplay
 }: {
   row: ChatWaterfallRow;
   t: TranslateFn;
   expanded: boolean;
   onToggleExpanded: () => void;
+  assistantUsageDisplay: AssistantUsageDisplayMode;
 }) {
   const reasoningContent = row.reasoning?.trim() ?? "";
   const tinted = row.assistantTone === "tinted";
@@ -196,7 +199,7 @@ function AssistantMessageRow({
         >
           {row.text && <MarkdownMessage text={row.text} />}
           <ImageAttachments row={row} />
-          <AssistantUsageDetails row={row} />
+          {assistantUsageDisplay === "details" && <AssistantUsageDetails row={row} />}
         </Box>
       </Box>
     </Box>

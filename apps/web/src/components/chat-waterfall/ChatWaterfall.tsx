@@ -9,13 +9,14 @@ import { ChatFloorRail, type ChatFloorEntry } from "./ChatFloorRail";
 import { ChatPromptMap } from "./ChatPromptMap";
 import { ChatSearchOverlay, buildChatSearchResults, type ChatSearchScope } from "./ChatSearchOverlay";
 import { estimateChatRowSize } from "./chatRowEstimates";
-import type { ChatWaterfallRow } from "./types";
+import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./types";
 
 type Props = {
   rows: ChatWaterfallRow[];
   t: TranslateFn;
   before?: ReactNode;
   workingStatus?: ChatWorkingStatus | null;
+  assistantUsageDisplay?: AssistantUsageDisplayMode;
 };
 
 export type ChatWorkingStatus = {
@@ -26,7 +27,7 @@ export type ChatWorkingStatus = {
   backgroundTerminalCount: number;
 };
 
-export function ChatWaterfall({ rows, t, before, workingStatus }: Props) {
+export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDisplay = "summary" }: Props) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const previousRowCountRef = useRef(rows.length);
   const [nearBottom, setNearBottom] = useState(true);
@@ -385,6 +386,7 @@ export function ChatWaterfall({ rows, t, before, workingStatus }: Props) {
                   t={t}
                   expanded={expandedRowKeys.has(row.key)}
                   onToggleExpanded={() => toggleRowExpanded(row.key, virtualRow.index - beforeOffset)}
+                  assistantUsageDisplay={assistantUsageDisplay}
                 />
               </Box>
             );
