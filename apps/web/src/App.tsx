@@ -4210,6 +4210,7 @@ function LoginScreen({
     } catch {
       setCaptchaId("");
       setCaptchaSvg("");
+      setCaptchaAnswer("");
     }
   }, []);
 
@@ -4357,15 +4358,30 @@ function LoginScreen({
                     <Box
                       sx={{
                         flex: 1,
-                        height: 56,
+                        height: 72,
+                        minWidth: 220,
                         borderRadius: 2,
                         overflow: "hidden",
                         border: "1px solid",
                         borderColor: "divider",
-                        bgcolor: "#0f172a"
+                        bgcolor: "#0f172a",
+                        display: "grid",
+                        placeItems: "center",
+                        "& svg": {
+                          display: "block",
+                          width: "100%",
+                          height: "100%"
+                        }
                       }}
-                      dangerouslySetInnerHTML={{ __html: captchaSvg || "" }}
-                    />
+                    >
+                      {captchaSvg ? (
+                        <Box sx={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: captchaSvg }} />
+                      ) : (
+                        <Typography variant="caption" color="rgba(226,232,240,0.72)" sx={{ fontWeight: 800 }}>
+                          {t("auth.refreshCaptcha")}
+                        </Typography>
+                      )}
+                    </Box>
                     <Button size="small" variant="outlined" onClick={() => void refreshCaptcha()} sx={{ borderRadius: 999, minWidth: 72 }}>
                       {t("auth.refreshCaptcha")}
                     </Button>

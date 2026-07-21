@@ -562,7 +562,7 @@ export async function fetchPublicAuthConfig(): Promise<PublicAuthConfig> {
 }
 
 export async function fetchCaptcha(): Promise<CaptchaChallenge> {
-  const response = await fetch("/api/auth/captcha");
+  const response = await fetch("/api/auth/captcha", { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Captcha failed: ${response.status}`);
   }

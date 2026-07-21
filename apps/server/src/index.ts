@@ -216,7 +216,11 @@ async function handleHttpRequest(request: Request, server: Server<SocketData>): 
         return jsonResponse({ error: "Auth disabled" }, 400, headers);
       }
       const captcha = securityStore.createCaptcha();
-      return jsonResponse(captcha, 200, headers);
+      const captchaHeaders = new Headers(headers);
+      captchaHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+      captchaHeaders.set("Pragma", "no-cache");
+      captchaHeaders.set("Expires", "0");
+      return jsonResponse(captcha, 200, captchaHeaders);
     }
 
     if (url.pathname === "/api/register" && request.method === "POST") {

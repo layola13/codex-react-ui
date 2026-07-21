@@ -160,6 +160,9 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
       setCaptchaSvg(challenge.svg);
       setCaptchaAnswer("");
     } catch (err) {
+      setCaptchaId("");
+      setCaptchaSvg("");
+      setCaptchaAnswer("");
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -344,12 +347,26 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
                 borderColor: "divider",
                 bgcolor: "#0b1220",
                 cursor: "pointer",
-                boxShadow: "0 0 0 1px rgba(56,189,248,0.15), 0 8px 24px rgba(2,6,23,0.35)"
+                display: "grid",
+                placeItems: "center",
+                boxShadow: "0 0 0 1px rgba(56,189,248,0.15), 0 8px 24px rgba(2,6,23,0.35)",
+                "& svg": {
+                  display: "block",
+                  width: "100%",
+                  height: "100%"
+                }
               }}
               onClick={() => void refreshPasswordCaptcha()}
               title={t("settings.security.captchaRefresh")}
-              dangerouslySetInnerHTML={{ __html: captchaSvg || "" }}
-            />
+            >
+              {captchaSvg ? (
+                <Box sx={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: captchaSvg }} />
+              ) : (
+                <Typography variant="caption" color="rgba(226,232,240,0.72)" sx={{ fontWeight: 800 }}>
+                  {t("settings.security.captchaRefresh")}
+                </Typography>
+              )}
+            </Box>
             <Stack spacing={1} sx={{ flex: 1 }}>
               <TextField
                 size="small"

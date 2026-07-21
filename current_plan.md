@@ -4,6 +4,23 @@
 
 Build a local-first React + MUI facade for Codex CLI where Codex remains the execution engine and the browser UI manages configuration, conversation history, prompts, permissions, providers, tools, MCP, Skills, and Plugins.
 
+## Active Slice
+
+Fix the animated math captcha sometimes rendering as a blank dark box on login and password-change flows.
+
+1. Rendering:
+   - Keep SVG colors compatible with inline SVG attributes by using hex colors plus opacity attributes.
+   - Fit the 220x72 SVG into stable 72px captcha containers on login and security settings pages.
+   - Show a visible refresh prompt instead of an empty dark box when captcha fetch/render fails.
+2. Reload/cache:
+   - Return `/api/auth/captcha` with no-store headers because captcha challenges are one-time-use.
+   - Fetch captcha from the browser with `cache: "no-store"`.
+3. Verification:
+   - Run typecheck and build.
+   - Restart the background server on port 43110.
+   - Verify the login captcha DOM has visible SVG text in a real browser session.
+   - Commit and push after the slice is green.
+
 ## Completed Slice
 
 Implemented AxonHub-style Relay channel model fetching, active-model selection, remarks, and documentation.

@@ -2,6 +2,11 @@
 
 ## 2026-07-21
 
+- Captcha visibility/reload slice started:
+  - Investigating login reports where the animated SVG captcha renders as a dark/black box without readable digits.
+  - Code-index narrowed the relevant implementation to `securityStore.ts`, `/api/auth/captcha`, `fetchCaptcha()`, `LoginScreen`, and `SecuritySettingsPanel`.
+  - Initial fix direction: inline-SVG color compatibility, no-store cache headers, stable 72px containers, and visible fallback text when captcha refresh fails.
+
 - AxonHub-style Relay channels slice:
   - Added a server-side `POST /api/provider/fetch-models` endpoint that fetches upstream model IDs through the local Bun server instead of from the browser.
   - Added provider model fetching support for OpenAI-compatible `/v1/models`, Anthropic-like `/v1/models`, Gemini `/v1beta/models`, Zhipu/bigmodel variants, and raw `#` Base URL handling.

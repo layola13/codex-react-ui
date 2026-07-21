@@ -374,7 +374,7 @@ function renderCaptchaSvg(text: string): string {
     const x2 = randomInt(0, 220);
     const y2 = randomInt(0, 72);
     noise.push(
-      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(148,163,184,0.28)" stroke-width="1">` +
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#94a3b8" stroke-opacity="0.28" stroke-width="1">` +
         `<animate attributeName="x1" values="${x1};${x2};${x1}" dur="${2 + (i % 3)}s" repeatCount="indefinite"/>` +
         `<animate attributeName="y2" values="${y2};${y1};${y2}" dur="${2.4 + (i % 2)}s" repeatCount="indefinite"/>` +
       `</line>`
@@ -384,8 +384,9 @@ function renderCaptchaSvg(text: string): string {
     const cx = randomInt(6, 214);
     const cy = randomInt(6, 66);
     const r = randomInt(1, 3);
+    const opacity = (0.15 + (i % 4) * 0.05).toFixed(2);
     noise.push(
-      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(56,189,248,${0.15 + (i % 4) * 0.05})">` +
+      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#38bdf8" fill-opacity="${opacity}">` +
         `<animate attributeName="cy" values="${cy};${Math.max(4, cy - 10)};${cy}" dur="${1.6 + (i % 5) * 0.35}s" repeatCount="indefinite"/>` +
         `<animate attributeName="opacity" values="0.25;0.7;0.25" dur="${1.2 + (i % 3) * 0.4}s" repeatCount="indefinite"/>` +
       `</circle>`
@@ -410,17 +411,17 @@ function renderCaptchaSvg(text: string): string {
     </filter>
   </defs>
   <rect width="220" height="72" rx="14" fill="url(#bg${uid})"/>
-  <rect x="2" y="2" width="216" height="68" rx="12" fill="none" stroke="rgba(56,189,248,0.35)" stroke-width="1.5">
+  <rect x="2" y="2" width="216" height="68" rx="12" fill="none" stroke="#38bdf8" stroke-opacity="0.35" stroke-width="1.5">
     <animate attributeName="stroke-opacity" values="0.25;0.8;0.25" dur="2.2s" repeatCount="indefinite"/>
   </rect>
   ${noise.join("")}
-  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="24" font-weight="800"
-    fill="#e2e8f0" filter="url(#glow${uid})" transform="rotate(${rotate} 110 36)" letter-spacing="2">
+  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="26" font-weight="900"
+    fill="#f8fafc" stroke="#020617" stroke-width="0.7" paint-order="stroke fill" filter="url(#glow${uid})" transform="rotate(${rotate} 110 36)" letter-spacing="2">
     <animate attributeName="opacity" values="0.85;1;0.85" dur="1.5s" repeatCount="indefinite"/>
     ${escapeXml(text)}
   </text>
-  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="24" font-weight="800"
-    fill="rgba(56,189,248,0.18)" transform="rotate(${rotate + 2} 112 38)" letter-spacing="2">${escapeXml(text)}</text>
+  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="26" font-weight="900"
+    fill="#38bdf8" fill-opacity="0.22" transform="rotate(${rotate + 2} 112 38)" letter-spacing="2">${escapeXml(text)}</text>
 </svg>`;
 }
 

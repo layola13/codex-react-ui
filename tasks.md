@@ -2,6 +2,7 @@
 
 ## Now
 
+- [ ] Fix animated SVG captcha visibility/reload so login and password-change captcha do not render as a blank dark box.
 - [x] Verify and fix the reported blank homepage with a real browser run; prioritize service worker/cache issues and any console errors.
 - [x] Change the PWA service worker to avoid cache-first HTML app-shell responses, so stale cached `index.html` cannot white-screen the latest build.
 - [x] Rename composer status icon accessibility text so it no longer collides with the real Send button.
