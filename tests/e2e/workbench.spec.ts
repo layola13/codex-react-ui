@@ -205,6 +205,7 @@ async function confirmWorkspace(page: Page, cwd = "~/"): Promise<void> {
 }
 
 let providerApiList = [mockProvider];
+let providerModelFetchRequests: Array<{ baseUrl?: string; apiKey?: string; kind?: string; providerId?: string }> = [];
 let auditApiEvents: Array<{
   id: string;
   createdAt: number;
@@ -222,6 +223,7 @@ let auditApiEvents: Array<{
 
 test.beforeEach(async ({ page }) => {
   providerApiList = [mockProvider];
+  providerModelFetchRequests = [];
   auditApiEvents = [];
 
   await page.addInitScript(() => {
@@ -260,8 +262,67 @@ test.beforeEach(async ({ page }) => {
       }
 
       public send(raw: string): void {
-        const message = JSON.parse(raw) as { id?: string; method?: string; type?: string; model?: string; params?: unknown };
+        const message = JSON.parse(raw) as {
+          id?: string;
+          method?: string;
+          type?: string;
+          providerId?: string;
+          model?: string;
+          provider?: {
+            id?: string;
+            kind?: string;
+            name?: string;
+            baseUrl?: string;
+            apiKeyRef?: string;
+            apiKeyPreview?: string;
+            apiKeyStorage?: string;
+            defaultModel?: string;
+            nativeModels?: string[];
+            modelAliases?: Array<{ alias: string; model: string }>;
+            modelRates?: unknown[];
+            remark?: string;
+            createdAt?: number;
+            updatedAt?: number;
+          };
+          apiKey?: string;
+          params?: unknown;
+        };
         outbound.push(message);
+        if (message.type === "provider.save" && message.id && message.provider) {
+          const name = message.provider.name || "Saved relay";
+          const providerId =
+            message.provider.id ||
+            name
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "")
+              .slice(0, 40) ||
+            "saved-relay";
+          const preview =
+            message.apiKey && message.apiKey.length > 8
+              ? `${message.apiKey.slice(0, 4)}...${message.apiKey.slice(-4)}`
+              : message.provider.apiKeyPreview;
+          setTimeout(
+            () =>
+              this.emit({
+                type: "provider.saved",
+                id: message.id,
+                provider: {
+                  ...message.provider,
+                  id: providerId,
+                  name,
+                  apiKeyRef: message.apiKey ? `env:CODEX_UI_PROVIDER_${providerId.replace(/[^A-Za-z0-9]/g, "_").toUpperCase()}_API_KEY` : message.provider.apiKeyRef,
+                  apiKeyPreview: preview,
+                  apiKeyStorage: message.apiKey ? "keyring" : message.provider.apiKeyStorage ?? "none",
+                  createdAt: message.provider.createdAt || Date.now(),
+                  updatedAt: Date.now()
+                }
+              }),
+            0
+          );
+          return;
+        }
         if (message.type === "provider.activate" && message.id) {
           setTimeout(
             () =>
@@ -269,8 +330,8 @@ test.beforeEach(async ({ page }) => {
                 type: "provider.activated",
                 id: message.id,
                 activation: {
-                  providerId: "hubproxy-grok",
-                  modelProvider: "hubproxy-grok",
+                  providerId: message.providerId ?? "hubproxy-grok",
+                  modelProvider: message.providerId ?? "hubproxy-grok",
                   model: message.model ?? "codex",
                   restartedAt: Date.now()
                 }
@@ -1237,6 +1298,21 @@ test.beforeEach(async ({ page }) => {
       ...imported
     ];
     await route.fulfill({ json: { importedProviders: imported.length, providers: providerApiList } });
+  });
+  await page.route("/api/provider/fetch-models", async (route) => {
+    const body = route.request().postDataJSON() as { baseUrl?: string; apiKey?: string; kind?: string; providerId?: string };
+    providerModelFetchRequests.push(body);
+    await route.fulfill({
+      json: {
+        endpoint: `${(body.baseUrl ?? "").replace(/\/+$/, "")}/models`,
+        error: null,
+        models: [
+          { id: "deepseek-chat" },
+          { id: "glm-4.5" },
+          { id: "openai/gpt-5.5" }
+        ]
+      }
+    });
   });
   await page.route("/api/audit/events", (route) => route.fulfill({ json: { data: auditApiEvents } }));
 });
@@ -2590,6 +2666,72 @@ test("exposes every bundled Codex schema setting in All config", async ({ page }
   }
 });
 
+test("creates relay channels with fetched active models, remarks, and model activation", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Relay settings").click();
+
+  await page.getByRole("button", { name: "Add channel" }).click();
+  await expect(page.getByRole("heading", { name: "Add channel" })).toBeVisible();
+
+  await page.getByLabel("Channel name").fill("Axon Relay");
+  await page.getByLabel("Base URL").fill("https://axon.example/v1");
+  await page.getByLabel("Relay API key").fill("sk-test-axon-relay");
+  await page.getByLabel("Active models").fill("");
+  await page.getByLabel("Remark").fill("integration smoke remark");
+
+  await page.getByRole("button", { name: "Fetch models" }).click();
+  await expect(page.getByText("Fetched models", { exact: true })).toBeVisible();
+  expect(providerModelFetchRequests).toContainEqual({
+    baseUrl: "https://axon.example/v1",
+    apiKey: "sk-test-axon-relay",
+    kind: "responsesRelay"
+  });
+
+  await page.getByText("deepseek-chat", { exact: true }).click();
+  await page.getByText("glm-4.5", { exact: true }).click();
+  await page.getByRole("button", { name: "Add selected (2)" }).click();
+  await expect(page.getByLabel("Active models")).toHaveValue("deepseek-chat, glm-4.5");
+
+  await page.getByRole("button", { name: "Create" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; provider?: { name?: string; nativeModels?: string[]; remark?: string }; apiKey?: string }> })
+      .__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "provider.save" &&
+        message.provider?.name === "Axon Relay" &&
+        message.provider?.remark === "integration smoke remark" &&
+        message.provider?.nativeModels?.join(",") === "deepseek-chat,glm-4.5" &&
+        message.apiKey === "sk-test-axon-relay"
+    );
+  });
+
+  const axonRow = page.getByRole("row").filter({ hasText: "Axon Relay" }).first();
+  await expect(axonRow).toBeVisible();
+  await expect(axonRow.getByText("integration smoke remark")).toBeVisible();
+  await expect(axonRow).toContainText("deepseek-chat");
+  await expect(axonRow).toContainText("glm-4.5");
+
+  await axonRow.getByRole("combobox").click();
+  await page.getByRole("option", { name: "glm-4.5" }).click();
+  await axonRow.getByRole("button", { name: "Activate" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; providerId?: string; model?: string }> })
+      .__codexUiOutbound;
+    return messages?.some((message) => message.type === "provider.activate" && message.providerId === "axon-relay" && message.model === "glm-4.5");
+  });
+  await expect(axonRow.getByText("Active", { exact: true }).first()).toBeVisible();
+
+  await axonRow.getByLabel("Expand Axon Relay").click();
+  await expect(page.getByText("Key storage")).toBeVisible();
+  await expect(page.getByText("integration smoke remark")).toHaveCount(2);
+
+  await page.getByPlaceholder("Search relay channels, models, tags, or URLs").fill("integration smoke");
+  await expect(page.getByRole("row").filter({ hasText: "Axon Relay" }).first()).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: "HubProxy Grok" })).toHaveCount(0);
+});
+
 test("resolves chained provider aliases before starting a turn", async ({ page }) => {
   await page.goto("/");
   await confirmWorkspace(page);
@@ -2602,7 +2744,9 @@ test("resolves chained provider aliases before starting a turn", async ({ page }
 
   await page.getByRole("button", { name: "Activate" }).click();
   await page.getByRole("button", { name: "Close settings" }).click();
+  await confirmWorkspace(page);
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use the relay alias");
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
   await page.getByRole("button", { name: "Send" }).click();
 
   await page.waitForFunction(() => {

@@ -46,6 +46,7 @@
 - [x] Remove duplicate new conversation entry points by keeping top-level New Chat, converting the task-tab new action to a compact plus button, and making Conversations a history-only list.
 - [x] Refine Settings -> Relay channel management so the default view is the Channels list, Add/Edit opens the Model Channel form separately, and rows support activate, test, edit, and delete.
 - [x] Improve Settings -> Relay channels with AxonHub-style model fetching, active-model selection, channel remarks, expandable channel details, saved-key model refresh, and README workflow documentation.
+- [x] Add automated code-level verification for Relay channel create/fetch-models/active-models/remarks/activation and server-side model fetch parsing.
 - [x] Fix Settings -> Plugins so API-key mode no longer surfaces remote catalog auth warnings; local Code Index marketplace now shows without alerts.
 - [x] Refresh the `aihub.top` relay key in both UI and database, then revalidate the updated provider with a real request.
 - [x] Add a real request list to the homepage that shows live request/token usage at a glance.

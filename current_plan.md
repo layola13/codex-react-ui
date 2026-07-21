@@ -22,6 +22,9 @@ Implemented AxonHub-style Relay channel model fetching, active-model selection, 
    - Updated all bundled locale JSON files for the new Relay labels.
    - Updated README's Provider Switching section with the AxonHub-style channel workflow: create channel, choose API format, fetch models, activate models, save, activate, member ACL, and code-launch boundary.
 4. Verification:
+   - Added and passed a Playwright test for the full Settings -> Relay channel workflow: create channel, fetch upstream models, select active models, save a remark, verify list/details, choose a model, and activate.
+   - Added and passed Bun tests for the server model fetcher across OpenAI-compatible, Gemini-style, Anthropic-like, and HTTP-error responses.
+   - Related provider alias/profile import Playwright coverage still passes.
    - `bun run typecheck` passed.
    - `bun run build` passed.
    - Locale JSON parse check passed.

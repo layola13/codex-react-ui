@@ -11,7 +11,13 @@
   - Expanded the channel list with row expansion, model chips, key storage, timestamps, remarks, active/test actions, and per-channel model selectors.
   - Updated all bundled locale JSON files for the new Relay labels, including English and Chinese.
   - Updated `README.md` from the AxonHub channel-management reference so the Provider Switching section now documents create channel, fetch models, active models, remarks, activate, ACL, and code-launch boundaries.
+  - Added a focused Playwright test that creates a relay channel from Settings, fetches model IDs, selects active models, saves a remark, verifies the channel list/details, selects a model, and activates the saved channel.
+  - Added Bun tests for the server-side provider model fetcher covering OpenAI-compatible, Gemini-style, Anthropic-like, and upstream HTTP failure responses.
+  - Hardened the provider alias Playwright test so it re-confirms workspace readiness before sending after Settings closes.
   - Verification passed:
+    - `bun test tests/server/providerModels.test.ts`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "creates relay channels"`
+    - `bun test:e2e tests/e2e/workbench.spec.ts -g "resolves chained provider aliases|exports and imports UI profiles"`
     - `bun run typecheck`
     - `bun run build`
     - locale JSON parse check
