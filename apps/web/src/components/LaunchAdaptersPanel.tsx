@@ -5,8 +5,15 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   FormControlLabel,
+  IconButton,
+  LinearProgress,
   Link,
   Paper,
   Radio,
@@ -16,6 +23,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -41,6 +49,7 @@ import {
   fetchLaunchAdapters,
   installLaunchAdapters,
   writeLaunchAdapterEnvs,
+  testLaunchAdapterModel,
   type LaunchAdapterStatus,
   type LaunchEnvValues,
   type InstallLaunchResultItem
@@ -209,13 +218,26 @@ type CatalogProps = {
   token?: string | null;
   /** When membership is on, only admin can mutate host installs. */
   isAdmin?: boolean;
+  /**
+   * When true, the sidebar shows host *-launch history tabs (read-only).
+   * Default is false; code is kept so this can be re-enabled later.
+   */
+  showLaunchHistory?: boolean;
+  onShowLaunchHistoryChange?: (enabled: boolean) => void;
 };
 
 /**
  * Full settings surface: engine plan (default Codex) + layola13 *-launch download catalog
  * with host install detection and optional one-click install + .env write.
  */
-export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdmin = true }: CatalogProps) {
+export function LaunchAdaptersCatalog({
+  t,
+  fullPage = false,
+  token = null,
+  isAdmin = true,
+  showLaunchHistory = false,
+  onShowLaunchHistoryChange
+}: CatalogProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [engine, setEngine] = useState<ChatEngineId>("codex");
   const { locale } = useI18n();
@@ -223,6 +245,7 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
 
   const [statusMap, setStatusMap] = useState<Record<string, LaunchAdapterStatus>>({});
   const [sourceRoot, setSourceRoot] = useState<string>("");
+  const [customSourceRoot, setCustomSourceRoot] = useState<string>("~/projects");
   const [detectLoading, setDetectLoading] = useState(false);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
@@ -232,9 +255,63 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
   const [skipCli, setSkipCli] = useState(true);
   const [forceEnv, setForceEnv] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [installingIds, setInstallingIds] = useState<string[]>([]);
+  const [installProgressStep, setInstallProgressStep] = useState<string>("");
   const [installLog, setInstallLog] = useState<InstallLaunchResultItem[] | null>(null);
+  const [liveLogs, setLiveLogs] = useState<Array<{ time: string; text: string; level: "info" | "success" | "error" | "warn" }>>([]);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [testingModel, setTestingModel] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [confirmWarnDialog, setConfirmWarnDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    actionType: "install" | "env";
+    targetIds?: string[];
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    actionType: "install"
+  });
   const canMutate = Boolean(token) && isAdmin;
+
+  const handleForceProceed = () => {
+    const { actionType, targetIds } = confirmWarnDialog;
+    setConfirmWarnDialog((s) => ({ ...s, open: false }));
+    if (actionType === "install") {
+      void executeInstall(targetIds, true);
+    } else {
+      void executeWriteEnv(true);
+    }
+  };
+
+  const addLiveLog = (text: string, level: "info" | "success" | "error" | "warn" = "info") => {
+    const time = new Date().toLocaleTimeString();
+    setLiveLogs((prev) => [...prev, { time, text, level }]);
+  };
+
+  const onTestModel = async (envToTest?: LaunchEnvValues) => {
+    if (!token) return;
+    const env = envToTest || (envMode === "shared" ? sharedEnv : undefined);
+    if (!env || !env.baseUrl || !env.apiKey) {
+      setTestResult({
+        ok: false,
+        message: localeIsCn ? "测试前请填入 Base URL 与 API Key" : "Base URL and API Key are required for testing."
+      });
+      return;
+    }
+    setTestingModel(true);
+    setTestResult(null);
+    try {
+      const res = await testLaunchAdapterModel(token, env);
+      setTestResult({ ok: res.ok, message: res.message });
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setTestingModel(false);
+    }
+  };
 
   const reloadStatus = useCallback(async () => {
     if (!token) {
@@ -246,11 +323,14 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
     try {
       const data = await fetchLaunchAdapters(token);
       setSourceRoot(data.sourceRoot);
+      if (data.sourceRoot) {
+        setCustomSourceRoot(data.sourceRoot);
+      }
       const map: Record<string, LaunchAdapterStatus> = {};
       const nextSelected: Record<string, boolean> = {};
       for (const row of data.adapters) {
         map[row.id] = row;
-        nextSelected[row.id] = row.needsInstall && row.cloneable;
+        nextSelected[row.id] = (row.needsInstall || Boolean(row.needsSetup)) && row.cloneable;
       }
       setStatusMap(map);
       setSelected((prev) => {
@@ -276,48 +356,164 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
   }, [reloadStatus]);
 
   const missingCount = useMemo(
-    () => Object.values(statusMap).filter((s) => s.needsInstall).length,
+    () => Object.values(statusMap).filter((s) => s.needsInstall || s.needsSetup).length,
     [statusMap]
   );
   const selectedIds = useMemo(
     () => Object.entries(selected).filter(([, v]) => v).map(([id]) => id),
     [selected]
   );
+  const installableMissingIds = useMemo(
+    () => Object.values(statusMap)
+      .filter((s) => s.needsInstall && (s.cloneable || s.sourcePresent))
+      .map((s) => s.id),
+    [statusMap]
+  );
 
-  const onInstall = async (ids?: string[]) => {
+  const executeInstall = async (ids?: string[], bypassValidation = false) => {
     if (!token || !canMutate) return;
+    const targetIds = ids && ids.length ? ids : selectedIds;
+    if (targetIds.length === 0) return;
+
+    if (!bypassValidation && envMode !== "none") {
+      const firstId = targetIds[0] || "";
+      const envToTest = envMode === "shared" ? sharedEnv : (separateEnv[firstId] ?? {});
+      if (envToTest.baseUrl && envToTest.apiKey) {
+        setTestingModel(true);
+        try {
+          const testRes = await testLaunchAdapterModel(token, envToTest);
+          setTestResult({ ok: testRes.ok, message: testRes.message });
+          if (!testRes.ok) {
+            setConfirmWarnDialog({
+              open: true,
+              title: localeIsCn ? "⚠️ 模型校验/10秒对话测试未通过" : "⚠️ Model Validation Failed",
+              message: localeIsCn
+                ? `${testRes.message}。如果继续写入或安装，对应的 CLI 引擎可能无法正常对话工作。确认要强行写入与安装吗？`
+                : `${testRes.message}. Forcing save or install may cause CLI adapters to fail during dialogue. Force proceed?`,
+              actionType: "install",
+              targetIds
+            });
+            return;
+          }
+        } catch {
+          /* ignore error and proceed if unhandled */
+        } finally {
+          setTestingModel(false);
+        }
+      }
+    }
+
     setInstalling(true);
+    setInstallingIds(targetIds);
     setActionMsg(null);
+    setDetectError(null);
     setInstallLog(null);
+    setLiveLogs([]);
+
+    const targetDir = customSourceRoot || "~/projects";
+    addLiveLog(`开始一键安装与配置：选定 ${targetIds.length} 个适配器 [${targetIds.join(", ")}]`, "info");
+    addLiveLog(`源码将被克隆并安装至：${targetDir}`, "info");
+    addLiveLog(`.env 模式：${envMode === "shared" ? "全部统一" : envMode === "separate" ? "分开填写" : "不写 .env"}，跳过 CLI：${skipCli ? "是" : "否"}`, "info");
+
+    if (envMode !== "none") {
+      setInstallProgressStep("1/2: 正在验证 OpenAI API 模型连通性...");
+      addLiveLog(`正在通过 OpenAI API 校验模型配置...`, "warn");
+    } else {
+      setInstallProgressStep("1/1: 正在执行 git clone 与 ./install.sh...");
+    }
+
     try {
       const payload = {
-        ids: ids && ids.length ? ids : selectedIds,
+        ids: targetIds,
         missingOnly: false,
         skipCli,
         envMode,
         sharedEnv: envMode === "shared" ? sharedEnv : undefined,
         separateEnv: envMode === "separate" ? separateEnv : undefined,
-        forceEnv
+        forceEnv,
+        sourceRoot: targetDir
       };
-      const result = await installLaunchAdapters(token, payload);
+      const result = await installLaunchAdapters(token, payload, (serverLogs) => {
+        setLiveLogs(serverLogs);
+        const last = serverLogs[serverLogs.length - 1];
+        if (last) {
+          setInstallProgressStep(last.text);
+        }
+      });
       setInstallLog(result.results);
       const map: Record<string, LaunchAdapterStatus> = {};
       for (const row of result.adapters) map[row.id] = row;
       setStatusMap(map);
+
       const ok = result.results.filter((r) => r.ok).length;
       const fail = result.results.filter((r) => !r.ok).length;
+
+      for (const r of result.results) {
+        if (r.ok) {
+          addLiveLog(`[${r.id}] ✓ 安装成功: ${r.steps.join(" -> ")}`, "success");
+        } else {
+          addLiveLog(`[${r.id}] ✗ 安装失败: ${r.error || "未知错误"}`, "error");
+        }
+      }
+
       setActionMsg(t("settings.launch.installDone", { ok: String(ok), fail: String(fail) }));
+      addLiveLog(`安装任务完成：成功 ${ok} 个，失败 ${fail} 个。`, ok > 0 ? "success" : "error");
     } catch (err) {
-      setDetectError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setDetectError(msg);
+      addLiveLog(`✗ 任务异常中断: ${msg}`, "error");
     } finally {
       setInstalling(false);
+      setInstallingIds([]);
+      setInstallProgressStep("");
     }
   };
 
-  const onWriteEnvOnly = async () => {
+  const onInstall = async (ids?: string[]) => {
+    await executeInstall(ids, false);
+  };
+
+  const executeWriteEnv = async (bypassValidation = false) => {
     if (!token || !canMutate || envMode === "none") return;
+    const targetIds = selectedIds.length ? selectedIds : CHAT_ENGINE_PLAN.map((a) => a.id);
+
+    if (!bypassValidation) {
+      const firstId = targetIds[0] || "";
+      const envToTest = envMode === "shared" ? sharedEnv : (separateEnv[firstId] ?? {});
+      if (envToTest.baseUrl && envToTest.apiKey) {
+        setTestingModel(true);
+        try {
+          const testRes = await testLaunchAdapterModel(token, envToTest);
+          setTestResult({ ok: testRes.ok, message: testRes.message });
+          if (!testRes.ok) {
+            setConfirmWarnDialog({
+              open: true,
+              title: localeIsCn ? "⚠️ 模型校验未通过" : "⚠️ Model Validation Failed",
+              message: localeIsCn
+                ? `${testRes.message}。强行写入 .env 配置可能导致后续对话报错。是否仍要保存？`
+                : `${testRes.message}. Force writing .env may lead to chat failures. Proceed anyway?`,
+              actionType: "env"
+            });
+            return;
+          }
+        } catch {
+          /* ignore error */
+        } finally {
+          setTestingModel(false);
+        }
+      }
+    }
+
     setInstalling(true);
+    setInstallingIds(targetIds);
     setActionMsg(null);
+    setDetectError(null);
+    setLiveLogs([]);
+
+    addLiveLog(`开始写入 .env 配置（模式: ${envMode === "shared" ? "全部统一" : "分开填写"}）`, "info");
+    addLiveLog(`正在校验模型连通性并写入各自 ~/.config/<name>/.env ...`, "warn");
+    setInstallProgressStep("正在验证模型并写入 .env 配置文件...");
+
     try {
       const result = await writeLaunchAdapterEnvs(token, {
         mode: envMode === "separate" ? "separate" : "shared",
@@ -329,32 +525,58 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
       const map: Record<string, LaunchAdapterStatus> = {};
       for (const row of result.adapters) map[row.id] = row;
       setStatusMap(map);
+
+      for (const r of result.results) {
+        if (r.ok) {
+          addLiveLog(`[${r.id}] ✓ 已写入环境配置: ${r.path}`, "success");
+        } else {
+          addLiveLog(`[${r.id}] ✗ 写入环境失败: ${r.error || "未知错误"}`, "error");
+        }
+      }
+
       setActionMsg(t("settings.launch.envWrote", { count: String(result.results.filter((r) => r.ok).length) }));
     } catch (err) {
-      setDetectError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setDetectError(msg);
+      addLiveLog(`✗ 写入 .env 失败: ${msg}`, "error");
     } finally {
       setInstalling(false);
+      setInstallingIds([]);
+      setInstallProgressStep("");
     }
+  };
+
+  const onWriteEnvOnly = async () => {
+    await executeWriteEnv(false);
   };
 
   const statusChip = (adapter: LaunchAdapter) => {
     const st = statusMap[adapter.id];
+    if (installingIds.includes(adapter.id)) {
+      return <Chip size="small" color="info" icon={<CircularProgress size={12} color="inherit" />} label={localeIsCn ? "安装中…" : "Installing…"} />;
+    }
     if (!token) {
       return <Chip size="small" variant="outlined" label={t("settings.launch.statusUnknown")} />;
     }
-    if (!st) {
-      return <Chip size="small" variant="outlined" label={t("settings.launch.statusChecking")} />;
+    if (detectLoading && !st) {
+      return <Chip size="small" variant="outlined" icon={<CircularProgress size={12} />} label={t("settings.launch.statusChecking")} />;
     }
-    if (st.installed && st.envConfigured) {
+    if (detectError && !st) {
+      return <Chip size="small" color="error" icon={<ErrorOutlineIcon />} label={t("settings.launch.statusUnknown")} />;
+    }
+    if (!st) {
+      return <Chip size="small" variant="outlined" label={t("settings.launch.statusUnknown")} />;
+    }
+    if (st.wrapperPath && st.envConfigured) {
       return <Chip size="small" color="success" icon={<CheckCircleIcon />} label={t("settings.launch.statusReady")} />;
     }
-    if (st.installed && !st.envConfigured) {
+    if (st.wrapperPath && !st.envConfigured) {
       return <Chip size="small" color="warning" label={t("settings.launch.statusNeedEnv")} />;
     }
-    if (!st.cloneable) {
-      return <Chip size="small" color="default" label={t("settings.launch.statusNoRepo")} />;
+    if (st.sourcePresent || st.cloneable) {
+      return <Chip size="small" color="error" icon={<ErrorOutlineIcon />} label={t("settings.launch.statusMissing")} />;
     }
-    return <Chip size="small" color="error" icon={<ErrorOutlineIcon />} label={t("settings.launch.statusMissing")} />;
+    return <Chip size="small" color="default" label={t("settings.launch.statusNoRepo")} />;
   };
 
   const activeEngine: ChatEnginePlan = useMemo(() => {
@@ -481,6 +703,23 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
               <Typography variant="caption" color="text.secondary">
                 {t("settings.launch.engineRoadmap")}
               </Typography>
+              <Divider />
+              <Stack spacing={0.75}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={showLaunchHistory}
+                      onChange={(event) => onShowLaunchHistoryChange?.(event.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label={t("settings.launch.showHistory")}
+                  sx={{ m: 0, alignItems: "flex-start" }}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {t("settings.launch.showHistoryHint")}
+                </Typography>
+              </Stack>
             </Stack>
           </Paper>
         </>
@@ -533,9 +772,24 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
               <Typography variant="body2" color="text.secondary">
                 {t("settings.launch.oneClickHint", {
                   missing: String(missingCount),
-                  root: sourceRoot || "~/.codex-react-ui/launch-src"
+                  selected: String(selectedIds.length),
+                  root: customSourceRoot || "~/projects"
                 })}
               </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                label={localeIsCn ? "源码克隆与安装目录 (默认 ~/projects)" : "Source Clone Directory (default ~/projects)"}
+                value={customSourceRoot}
+                onChange={(e) => setCustomSourceRoot(e.target.value)}
+                placeholder="~/projects"
+                helperText={
+                  localeIsCn
+                    ? "未创建的目录在克隆前会自动新建 (mkdir -p)，适配器源码将存放在此。"
+                    : "Missing directories will be created automatically before cloning."
+                }
+                sx={{ mt: 1 }}
+              />
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               <Button
@@ -562,14 +816,8 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
               <Button
                 size="small"
                 variant="contained"
-                onClick={() =>
-                  void onInstall(
-                    Object.values(statusMap)
-                      .filter((s) => s.needsInstall && (s.cloneable || s.sourcePresent))
-                      .map((s) => s.id)
-                  )
-                }
-                disabled={!canMutate || installing || missingCount === 0}
+                onClick={() => void executeInstall(installableMissingIds)}
+                disabled={!canMutate || installing || installableMissingIds.length === 0}
                 sx={{ borderRadius: 999, fontWeight: 800 }}
               >
                 {t("settings.launch.installMissing")}
@@ -617,32 +865,47 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
           </RadioGroup>
 
           {envMode === "shared" ? (
-            <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
-              <TextField
-                size="small"
-                fullWidth
-                label={t("settings.launch.envBaseUrl")}
-                value={sharedEnv.baseUrl ?? ""}
-                onChange={(e) => setSharedEnv((s) => ({ ...s, baseUrl: e.target.value }))}
-                placeholder="https://api.example.com/v1"
-              />
-              <TextField
-                size="small"
-                fullWidth
-                label={t("settings.launch.envModel")}
-                value={sharedEnv.model ?? ""}
-                onChange={(e) => setSharedEnv((s) => ({ ...s, model: e.target.value }))}
-                placeholder="gpt-4o"
-              />
-              <TextField
-                size="small"
-                fullWidth
-                type="password"
-                label={t("settings.launch.envApiKey")}
-                value={sharedEnv.apiKey ?? ""}
-                onChange={(e) => setSharedEnv((s) => ({ ...s, apiKey: e.target.value }))}
-                placeholder="sk-..."
-              />
+            <Stack spacing={1.25}>
+              <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label={t("settings.launch.envBaseUrl")}
+                  value={sharedEnv.baseUrl ?? ""}
+                  onChange={(e) => setSharedEnv((s) => ({ ...s, baseUrl: e.target.value }))}
+                  placeholder="https://api.shuaiapi.com/v1"
+                />
+                <TextField
+                  size="small"
+                  fullWidth
+                  label={t("settings.launch.envModel")}
+                  value={sharedEnv.model ?? ""}
+                  onChange={(e) => setSharedEnv((s) => ({ ...s, model: e.target.value }))}
+                  placeholder="grok-4.5"
+                />
+                <TextField
+                  size="small"
+                  fullWidth
+                  type="password"
+                  label={t("settings.launch.envApiKey")}
+                  value={sharedEnv.apiKey ?? ""}
+                  onChange={(e) => setSharedEnv((s) => ({ ...s, apiKey: e.target.value }))}
+                  placeholder="sk-..."
+                />
+              </Stack>
+              <Box>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="info"
+                  startIcon={testingModel ? <CircularProgress size={14} color="inherit" /> : null}
+                  disabled={testingModel || !sharedEnv.baseUrl || !sharedEnv.apiKey}
+                  onClick={() => void onTestModel(sharedEnv)}
+                  sx={{ borderRadius: 999 }}
+                >
+                  {testingModel ? t("settings.launch.testingModel") : t("settings.launch.testModel")}
+                </Button>
+              </Box>
             </Stack>
           ) : null}
 
@@ -652,10 +915,22 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
                 const env = separateEnv[adapter.id] ?? {};
                 return (
                   <Paper key={adapter.id} variant="outlined" sx={{ p: 1.25, borderRadius: 2 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 800 }}>
-                      {adapter.name} ({adapter.envPrefix}*)
-                    </Typography>
-                    <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ mt: 1 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800 }}>
+                        {adapter.name} ({adapter.envPrefix}*)
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="info"
+                        disabled={testingModel || !env.baseUrl || !env.apiKey}
+                        onClick={() => void onTestModel(env)}
+                        sx={{ borderRadius: 999, fontSize: 11, py: 0.25 }}
+                      >
+                        {testingModel ? t("settings.launch.testingModel") : t("settings.launch.testModel")}
+                      </Button>
+                    </Stack>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
                       <TextField
                         size="small"
                         fullWidth
@@ -667,6 +942,7 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
                             [adapter.id]: { ...s[adapter.id], baseUrl: e.target.value }
                           }))
                         }
+                        placeholder="https://api.shuaiapi.com/v1"
                       />
                       <TextField
                         size="small"
@@ -679,6 +955,7 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
                             [adapter.id]: { ...s[adapter.id], model: e.target.value }
                           }))
                         }
+                        placeholder="grok-4.5"
                       />
                       <TextField
                         size="small"
@@ -692,6 +969,7 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
                             [adapter.id]: { ...s[adapter.id], apiKey: e.target.value }
                           }))
                         }
+                        placeholder="sk-..."
                       />
                     </Stack>
                   </Paper>
@@ -703,6 +981,12 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
                 </Typography>
               ) : null}
             </Stack>
+          ) : null}
+
+          {testResult ? (
+            <Alert severity={testResult.ok ? "success" : "error"} variant="outlined" sx={{ borderRadius: 2 }}>
+              {testResult.message}
+            </Alert>
           ) : null}
 
           <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
@@ -725,34 +1009,89 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
             </Button>
           </Stack>
 
-          {installLog ? (
-            <Box
-              component="pre"
+          {installing ? (
+            <Alert severity="info" variant="outlined" icon={<CircularProgress size={16} />} sx={{ borderRadius: 2 }}>
+              <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                {installProgressStep || "正在执行一键安装与配置..."}
+              </Typography>
+              <LinearProgress sx={{ mt: 1, borderRadius: 1 }} />
+            </Alert>
+          ) : null}
+
+          {(installing || liveLogs.length > 0 || installLog) && (
+            <Paper
+              variant="outlined"
               sx={{
-                m: 0,
-                p: 1.25,
-                borderRadius: 1.5,
-                bgcolor: "action.hover",
-                fontSize: 11,
-                fontFamily: "JetBrains Mono, ui-monospace, monospace",
-                maxHeight: 220,
-                overflow: "auto",
-                whiteSpace: "pre-wrap"
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: "#0f172a",
+                color: "#f8fafc",
+                borderColor: "divider",
+                fontFamily: "JetBrains Mono, ui-monospace, monospace"
               }}
             >
-              {installLog
-                .map((r) =>
-                  [
-                    `# ${r.id} ${r.ok ? "OK" : "FAIL"}`,
-                    ...r.steps.map((s) => `  ${s}`),
-                    r.error ? `  error: ${r.error}` : ""
-                  ]
-                    .filter(Boolean)
-                    .join("\n")
-                )
-                .join("\n\n")}
-            </Box>
-          ) : null}
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1, pb: 0.5, borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="caption" sx={{ fontWeight: 900, color: "#38bdf8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    控制台运行日志 (Console Logs)
+                  </Typography>
+                  {installing ? (
+                    <Chip size="small" color="primary" label="执行中" sx={{ height: 18, fontSize: 10 }} />
+                  ) : (
+                    <Chip size="small" color="success" label="已就绪" sx={{ height: 18, fontSize: 10 }} />
+                  )}
+                </Stack>
+                {liveLogs.length > 0 && (
+                  <Button size="small" sx={{ color: "#94a3b8", fontSize: 10, minWidth: 0, py: 0 }} onClick={() => setLiveLogs([])}>
+                    清空日志
+                  </Button>
+                )}
+              </Stack>
+              <Box
+                sx={{
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word"
+                }}
+              >
+                {liveLogs.map((log, i) => (
+                  <Box
+                    key={i}
+                    sx={{
+                      color:
+                        log.level === "error"
+                          ? "#f87171"
+                          : log.level === "success"
+                          ? "#4ade80"
+                          : log.level === "warn"
+                          ? "#fbbf24"
+                          : "#cbd5e1"
+                    }}
+                  >
+                    <span style={{ color: "#64748b", marginRight: 8 }}>[{log.time}]</span>
+                    {log.text}
+                  </Box>
+                ))}
+                {installLog &&
+                  installLog.map((r, i) => (
+                    <Box key={`res-${i}`} sx={{ mt: 1, pt: 1, borderTop: "1px dashed rgba(255,255,255,0.15)" }}>
+                      <span style={{ color: r.ok ? "#4ade80" : "#f87171", fontWeight: 800 }}>
+                        [{r.id}] {r.ok ? "✓ SUCCESS" : "✗ FAILED"}
+                      </span>
+                      {r.steps.map((s, idx) => (
+                        <Box key={idx} sx={{ color: "#94a3b8", pl: 2 }}>
+                          ↳ {s}
+                        </Box>
+                      ))}
+                      {r.error && <Box sx={{ color: "#f87171", pl: 2, fontWeight: 700 }}>↳ 错误原因: {r.error}</Box>}
+                    </Box>
+                  ))}
+              </Box>
+            </Paper>
+          )}
         </Stack>
       </Paper>
 
@@ -879,6 +1218,33 @@ export function LaunchAdaptersCatalog({ t, fullPage = false, token = null, isAdm
           );
         })}
       </Box>
+      <Dialog open={confirmWarnDialog.open} onClose={() => setConfirmWarnDialog((s) => ({ ...s, open: false }))}>
+        <DialogTitle sx={{ fontWeight: 800, color: "error.main" }}>
+          {confirmWarnDialog.title}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: "text.primary", fontSize: 14 }}>
+            {confirmWarnDialog.message}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setConfirmWarnDialog((s) => ({ ...s, open: false }))}
+            sx={{ borderRadius: 999 }}
+          >
+            取消 (Cancel)
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleForceProceed}
+            sx={{ borderRadius: 999, fontWeight: 800 }}
+          >
+            仍要强行写入/安装 (Force Proceed)
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Snackbar open={Boolean(copiedId)} autoHideDuration={1800} onClose={() => setCopiedId(null)} message={t("settings.launch.copied")} />
     </Stack>
   );

@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+
+type InstallLogLevel = "info" | "success" | "error" | "warn";
+type InstallSubLogger = (msg: string, level: InstallLogLevel) => void;
 
 export type LaunchAdapterSpec = {
   id: string;
@@ -126,6 +130,7 @@ export type LaunchAdapterStatus = {
   envConfigured: boolean;
   envPreview: { baseUrl: string | null; model: string | null; hasApiKey: boolean };
   needsInstall: boolean;
+  needsSetup: boolean;
 };
 
 export type LaunchEnvValues = {
@@ -144,8 +149,12 @@ export type InstallLaunchRequest = {
   envMode?: "shared" | "separate" | "none";
   sharedEnv?: LaunchEnvValues;
   separateEnv?: Record<string, LaunchEnvValues>;
-  /** Force rewrite env even if present */
+  /** Overwrite existing .env keys when writing env files */
   forceEnv?: boolean;
+  /** Custom clone target directory (defaults to ~/projects) */
+  sourceRoot?: string;
+  /** Skip duplicate model test during installation job */
+  skipModelTest?: boolean;
 };
 
 export type InstallLaunchResultItem = {
@@ -162,8 +171,15 @@ function home(): string {
   return process.env.HOME || process.env.USERPROFILE || homedir();
 }
 
-export function defaultSourceRoot(): string {
-  return process.env.CODEX_UI_LAUNCH_SRC_ROOT || join(home(), ".codex-react-ui", "launch-src");
+export function defaultSourceRoot(customPath?: string): string {
+  if (customPath && customPath.trim()) {
+    const raw = customPath.trim();
+    if (raw.startsWith("~/")) {
+      return join(home(), raw.slice(2));
+    }
+    return resolve(raw);
+  }
+  return process.env.CODEX_UI_LAUNCH_SRC_ROOT || join(home(), "projects");
 }
 
 function pathDirs(): string[] {
@@ -231,9 +247,10 @@ function isPlaceholder(value: string | undefined): boolean {
   );
 }
 
-function resolveSourceDir(spec: LaunchAdapterSpec): string | null {
+function resolveSourceDir(spec: LaunchAdapterSpec, customPath?: string): string | null {
+  const root = defaultSourceRoot(customPath);
   const candidates = [
-    join(defaultSourceRoot(), spec.repo),
+    join(root, spec.repo),
     join(home(), "projects", spec.repo),
     join(home(), "src", spec.repo),
     join("/root/projects", spec.repo)
@@ -250,48 +267,73 @@ export function getSpec(id: string): LaunchAdapterSpec | undefined {
   return LAUNCH_SPECS.find((s) => s.id === id);
 }
 
-export function detectAdapter(spec: LaunchAdapterSpec): LaunchAdapterStatus {
-  const wrapperPath = findOnPath(spec.wrapperBins);
-  const productCliPath = findOnPath(spec.productBins);
-  const sourceDir = resolveSourceDir(spec);
-  const envPath = configEnvPath(spec);
-  const envMap = parseEnvFile(envPath);
-  const baseUrl = envMap[`${spec.envPrefix}BASE_URL`] ?? null;
-  const model = envMap[`${spec.envPrefix}MODEL`] ?? null;
-  const apiKey = envMap[`${spec.envPrefix}API_KEY`] ?? envMap[`${spec.envPrefix}API_KEYS`] ?? "";
-  const hasApiKey = !isPlaceholder(apiKey);
-  const envPresent = existsSync(envPath);
-  const envConfigured = Boolean(baseUrl && !isPlaceholder(baseUrl) && hasApiKey);
-  const installed = Boolean(wrapperPath || sourceDir);
-  const needsInstall = !installed || !envConfigured;
+export function detectAdapter(spec: LaunchAdapterSpec, customSourceRoot?: string): LaunchAdapterStatus {
+  try {
+    const wrapperPath = findOnPath(spec.wrapperBins);
+    const productCliPath = findOnPath(spec.productBins);
+    const sourceDir = resolveSourceDir(spec, customSourceRoot);
+    const envPath = configEnvPath(spec);
+    const envMap = parseEnvFile(envPath);
+    const baseUrl = envMap[`${spec.envPrefix}BASE_URL`] ?? null;
+    const model = envMap[`${spec.envPrefix}MODEL`] ?? null;
+    const apiKey = envMap[`${spec.envPrefix}API_KEY`] ?? envMap[`${spec.envPrefix}API_KEYS`] ?? "";
+    const hasApiKey = !isPlaceholder(apiKey);
+    const envPresent = existsSync(envPath);
+    const envConfigured = Boolean(baseUrl && !isPlaceholder(baseUrl) && hasApiKey);
+    const installed = Boolean(wrapperPath);
+    const needsInstall = !installed;
+    const needsSetup = !envConfigured;
 
-  return {
-    id: spec.id,
-    repo: spec.repo,
-    cloneUrl: spec.cloneUrl,
-    cloneable: Boolean(spec.cloneUrl),
-    installed,
-    wrapperPath,
-    productCliPath,
-    productCliPresent: Boolean(productCliPath),
-    sourceDir,
-    sourcePresent: Boolean(sourceDir),
-    envPath,
-    envPresent,
-    envConfigured,
-    envPreview: {
-      baseUrl: baseUrl && !isPlaceholder(baseUrl) ? baseUrl : baseUrl,
-      model,
-      hasApiKey
-    },
-    needsInstall
-  };
+    return {
+      id: spec.id,
+      repo: spec.repo,
+      cloneUrl: spec.cloneUrl,
+      cloneable: Boolean(spec.cloneUrl),
+      installed,
+      wrapperPath,
+      productCliPath,
+      productCliPresent: Boolean(productCliPath),
+      sourceDir,
+      sourcePresent: Boolean(sourceDir),
+      envPath,
+      envPresent,
+      envConfigured,
+      envPreview: {
+        baseUrl: baseUrl && !isPlaceholder(baseUrl) ? baseUrl : baseUrl,
+        model,
+        hasApiKey
+      },
+      needsInstall,
+      needsSetup
+    };
+  } catch {
+    const envPath = configEnvPath(spec);
+    return {
+      id: spec.id,
+      repo: spec.repo,
+      cloneUrl: spec.cloneUrl,
+      cloneable: Boolean(spec.cloneUrl),
+      installed: false,
+      wrapperPath: null,
+      productCliPath: null,
+      productCliPresent: false,
+      sourceDir: null,
+      sourcePresent: false,
+      envPath,
+      envPresent: false,
+      envConfigured: false,
+      envPreview: { baseUrl: null, model: null, hasApiKey: false },
+      needsInstall: true,
+      needsSetup: true
+    };
+  }
 }
 
-export function detectAll(): { sourceRoot: string; adapters: LaunchAdapterStatus[] } {
+export function detectAll(customSourceRoot?: string): { sourceRoot: string; adapters: LaunchAdapterStatus[] } {
+  const root = defaultSourceRoot(customSourceRoot);
   return {
-    sourceRoot: defaultSourceRoot(),
-    adapters: LAUNCH_SPECS.map(detectAdapter)
+    sourceRoot: root,
+    adapters: LAUNCH_SPECS.map((spec) => detectAdapter(spec, customSourceRoot))
   };
 }
 
@@ -374,11 +416,72 @@ export function writeAdapterEnv(
   return { path, wrote: true, skipped: false };
 }
 
+function createLineLogger(prefix: string, level: InstallLogLevel, onLog?: InstallSubLogger) {
+  let pending = "";
+  const emit = (line: string) => {
+    const text = line.trim();
+    if (text) {
+      onLog?.(`${prefix}${text}`, level);
+    }
+  };
+  return {
+    write(chunk: string) {
+      pending += chunk.replace(/\r/g, "\n");
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      for (const line of lines) {
+        emit(line);
+      }
+    },
+    flush() {
+      emit(pending);
+      pending = "";
+    }
+  };
+}
+
+async function readProcessOutput(
+  stream: ReadableStream<Uint8Array> | null,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  if (!stream) {
+    return "";
+  }
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      const text = decoder.decode(value, { stream: true });
+      if (text) {
+        output += text;
+        onChunk(text);
+      }
+    }
+    const rest = decoder.decode();
+    if (rest) {
+      output += rest;
+      onChunk(rest);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return output;
+}
+
 async function runCmd(
   cmd: string[],
   cwd: string,
-  timeoutMs: number
+  timeoutMs: number,
+  onLog?: InstallSubLogger
 ): Promise<{ ok: boolean; stdout: string; stderr: string; code: number }> {
+  const stdoutLog = createLineLogger("", "info", onLog);
+  const stderrLog = createLineLogger("stderr: ", "warn", onLog);
+  let timedOut = false;
   const proc = Bun.spawn(cmd, {
     cwd,
     stdout: "pipe",
@@ -386,10 +489,17 @@ async function runCmd(
     env: {
       ...process.env,
       PATH: `${join(home(), ".local", "bin")}:${process.env.PATH ?? ""}`,
-      GIT_TERMINAL_PROMPT: "0"
+      GIT_TERMINAL_PROMPT: "0",
+      CI: process.env.CI ?? "1",
+      npm_config_audit: "false",
+      npm_config_fund: "false",
+      npm_config_update_notifier: "false",
+      npm_config_yes: "true"
     }
   });
   const timer = setTimeout(() => {
+    timedOut = true;
+    onLog?.(`command timed out after ${Math.round(timeoutMs / 1000)}s: ${cmd.join(" ")}`, "error");
     try {
       proc.kill();
     } catch {
@@ -397,16 +507,26 @@ async function runCmd(
     }
   }, timeoutMs);
   const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
+    readProcessOutput(proc.stdout, (chunk) => stdoutLog.write(chunk)),
+    readProcessOutput(proc.stderr, (chunk) => stderrLog.write(chunk)),
     proc.exited
   ]);
   clearTimeout(timer);
-  return { ok: code === 0, stdout, stderr, code };
+  stdoutLog.flush();
+  stderrLog.flush();
+  return { ok: !timedOut && code === 0, stdout, stderr, code: timedOut ? 124 : code };
 }
 
-async function ensureCloned(spec: LaunchAdapterSpec, steps: string[]): Promise<string> {
-  const existing = resolveSourceDir(spec);
+async function ensureCloned(
+  spec: LaunchAdapterSpec,
+  steps: string[],
+  customSourceRoot?: string,
+  onSubLog?: InstallSubLogger
+): Promise<string> {
+  const root = defaultSourceRoot(customSourceRoot);
+  mkdirSync(root, { recursive: true });
+  const target = join(root, spec.repo);
+  const existing = resolveSourceDir(spec, customSourceRoot);
   if (existing) {
     steps.push(`source present: ${existing}`);
     return existing;
@@ -416,18 +536,17 @@ async function ensureCloned(spec: LaunchAdapterSpec, steps: string[]): Promise<s
       `${spec.id}: no public GitHub clone URL (repo not published under layola13). Provide the source manually or publish the repo.`
     );
   }
-  const root = defaultSourceRoot();
-  mkdirSync(root, { recursive: true });
-  const target = join(root, spec.repo);
   if (existsSync(target)) {
     steps.push(`using existing checkout: ${target}`);
     return target;
   }
-  steps.push(`git clone ${spec.cloneUrl}`);
+  steps.push(`git clone ${spec.cloneUrl} -> ${target}`);
+  onSubLog?.(`$ git clone --depth 1 ${spec.cloneUrl} ${target}`, "info");
   const result = await runCmd(
     ["git", "clone", "--depth", "1", spec.cloneUrl, target],
     root,
-    180_000
+    180_000,
+    onSubLog
   );
   if (!result.ok) {
     throw new Error(`git clone failed: ${result.stderr || result.stdout || `exit ${result.code}`}`);
@@ -435,7 +554,12 @@ async function ensureCloned(spec: LaunchAdapterSpec, steps: string[]): Promise<s
   return target;
 }
 
-async function runInstallSh(sourceDir: string, skipCli: boolean, steps: string[]): Promise<void> {
+async function runInstallSh(
+  sourceDir: string,
+  skipCli: boolean,
+  steps: string[],
+  onSubLog?: InstallSubLogger
+): Promise<void> {
   const script = join(sourceDir, "install.sh");
   if (!existsSync(script)) {
     throw new Error(`install.sh not found in ${sourceDir}`);
@@ -450,7 +574,8 @@ async function runInstallSh(sourceDir: string, skipCli: boolean, steps: string[]
     args.push("--skip-cli");
   }
   steps.push(args.join(" "));
-  const result = await runCmd(args, sourceDir, skipCli ? 120_000 : 600_000);
+  onSubLog?.(`$ ${args.join(" ")}`, "info");
+  const result = await runCmd(args, sourceDir, skipCli ? 120_000 : 600_000, onSubLog);
   if (!result.ok) {
     throw new Error(
       `install.sh failed (exit ${result.code}): ${(result.stderr || result.stdout).slice(-2000)}`
@@ -461,17 +586,24 @@ async function runInstallSh(sourceDir: string, skipCli: boolean, steps: string[]
 
 async function installOne(
   id: string,
-  opts: InstallLaunchRequest
+  opts: InstallLaunchRequest,
+  onSubLog?: InstallSubLogger
 ): Promise<InstallLaunchResultItem> {
   const steps: string[] = [];
   const spec = getSpec(id);
   if (!spec) {
+    onSubLog?.(`未知的适配器标识: ${id}`, "error");
     return { id, ok: false, steps, error: `Unknown adapter: ${id}` };
   }
   try {
-    const sourceDir = await ensureCloned(spec, steps);
+    onSubLog?.(`正在准备源码 (${spec.cloneUrl ?? id})...`, "info");
+    const sourceDir = await ensureCloned(spec, steps, opts.sourceRoot, onSubLog);
+    onSubLog?.(`✓ 源码目录就绪: ${sourceDir}`, "success");
+
     const skipCli = opts.skipCli !== false; // default true
-    await runInstallSh(sourceDir, skipCli, steps);
+    onSubLog?.(`正在运行 bash ./install.sh ${skipCli ? "--skip-cli" : ""} ...`, "info");
+    await runInstallSh(sourceDir, skipCli, steps, onSubLog);
+    onSubLog?.(`✓ ./install.sh 执行完成`, "success");
 
     if (opts.envMode && opts.envMode !== "none") {
       let values: LaunchEnvValues = {};
@@ -481,28 +613,191 @@ async function installOne(
         values = opts.separateEnv?.[id] ?? {};
       }
       const envResult = writeAdapterEnv(spec, values, Boolean(opts.forceEnv));
-      steps.push(
-        envResult.skipped
-          ? `env skip (existing): ${envResult.path}`
-          : `env wrote: ${envResult.path}`
-      );
+      const stepMsg = envResult.skipped
+        ? `env skip (existing): ${envResult.path}`
+        : `env wrote: ${envResult.path}`;
+      steps.push(stepMsg);
+      onSubLog?.(`✓ 环境配置文件已写入: ${envResult.path}`, "success");
     }
 
-    return { id, ok: true, steps, status: detectAdapter(spec) };
+    return { id, ok: true, steps, status: detectAdapter(spec, opts.sourceRoot) };
   } catch (error) {
+    const errStr = error instanceof Error ? error.message : String(error);
+    onSubLog?.(`✗ ${id} 处理异常: ${errStr}`, "error");
     return {
       id,
       ok: false,
       steps,
-      error: error instanceof Error ? error.message : String(error),
-      status: detectAdapter(spec)
+      error: errStr,
+      status: detectAdapter(spec, opts.sourceRoot)
     };
   }
 }
 
+export type TestOpenAiApiRequest = {
+  baseUrl?: string;
+  model?: string;
+  apiKey?: string;
+};
+
+export type TestOpenAiApiResult = {
+  ok: boolean;
+  step1Ok: boolean;
+  step2Ok: boolean;
+  message: string;
+  statusCode?: number;
+};
+
+export async function testOpenAiApi(values: TestOpenAiApiRequest): Promise<TestOpenAiApiResult> {
+  const rawBaseUrl = (values.baseUrl ?? "").trim();
+  const apiKey = (values.apiKey ?? "").trim();
+  const model = (values.model ?? "").trim() || "gpt-3.5-turbo";
+
+  if (!rawBaseUrl) {
+    return { ok: false, step1Ok: false, step2Ok: false, message: "需填写 Base URL 才能发起模型测试。" };
+  }
+  if (!apiKey) {
+    return { ok: false, step1Ok: false, step2Ok: false, message: "需填写 API Key 才能发起模型测试。" };
+  }
+
+  let baseUrl = rawBaseUrl.replace(/\/+$/, "");
+  if (!baseUrl.endsWith("/v1") && !baseUrl.includes("/v1/")) {
+    baseUrl = `${baseUrl}/v1`;
+  } else if (baseUrl.endsWith("/chat/completions")) {
+    baseUrl = baseUrl.replace(/\/chat\/completions$/, "");
+  }
+
+  // Step 1: GET /v1/models (Fetch model list & verify authentication)
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const modelsResp = await fetch(`${baseUrl}/models`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeout));
+
+    if (!modelsResp.ok) {
+      const bodyText = await modelsResp.text().catch(() => "");
+      return {
+        ok: false,
+        step1Ok: false,
+        step2Ok: false,
+        statusCode: modelsResp.status,
+        message: `【步骤一失败】无法获取模型列表 (HTTP ${modelsResp.status})。请检查 API Key 与 Base URL 是否正确。${bodyText ? ` 错误提示: ${bodyText.slice(0, 150)}` : ""}`
+      };
+    }
+  } catch (err: any) {
+    const isTimeout = err.name === "AbortError";
+    return {
+      ok: false,
+      step1Ok: false,
+      step2Ok: false,
+      message: `【步骤一失败】获取模型列表 ${isTimeout ? "6秒超时" : "连接失败"}: ${err.message || String(err)}`
+    };
+  }
+
+  // Step 2: POST /v1/chat/completions (Actual chat dialogue execution with strict 10s timeout)
+  const chatUrl = `${baseUrl}/chat/completions`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(chatUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: "hi" }],
+        max_tokens: 15
+      }),
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeout));
+
+    const contentType = response.headers.get("content-type") ?? "";
+    const bodyText = await response.text().catch(() => "");
+
+    if (response.ok) {
+      return {
+        ok: true,
+        step1Ok: true,
+        step2Ok: true,
+        statusCode: response.status,
+        message: `【测试通过】①模型列表获取成功  ②对话测试成功（模型 '${model}' 10秒内正常响应）`
+      };
+    }
+
+    let jsonError = "";
+    if (contentType.includes("application/json") && bodyText) {
+      try {
+        const parsed = JSON.parse(bodyText);
+        if (parsed.error?.message) {
+          jsonError = String(parsed.error.message);
+        } else if (typeof parsed.error === "string") {
+          jsonError = parsed.error;
+        }
+      } catch {}
+    }
+
+    return {
+      ok: false,
+      step1Ok: true,
+      step2Ok: false,
+      statusCode: response.status,
+      message: `【步骤二失败】模型对话无法正常响应 (HTTP ${response.status}): ${jsonError || bodyText.slice(0, 180) || response.statusText}`
+    };
+  } catch (err: any) {
+    const isTimeout = err.name === "AbortError";
+    return {
+      ok: false,
+      step1Ok: true,
+      step2Ok: false,
+      message: isTimeout
+        ? `【步骤二失败】模型对话测试10秒超时（模型 '${model}' 超过10秒未响应），无法正常完成对话`
+        : `【步骤二失败】无法连接到对话接口 (${chatUrl}): ${err.message || String(err)}`
+    };
+  }
+}
+
+async function validateEnvModeBeforeSave(
+  mode: "shared" | "separate" | "none" | undefined,
+  sharedEnv: LaunchEnvValues | undefined,
+  separateEnv: Record<string, LaunchEnvValues> | undefined,
+  targetIds: string[]
+): Promise<void> {
+  if (mode === "shared" && sharedEnv) {
+    const res = await testOpenAiApi(sharedEnv);
+    if (!res.ok) {
+      throw new Error(`OpenAI API test failed: ${res.message}`);
+    }
+  } else if (mode === "separate" && separateEnv) {
+    const testedKeys = new Set<string>();
+    for (const id of targetIds) {
+      const values = separateEnv[id];
+      if (values && (values.baseUrl || values.apiKey)) {
+        const key = `${values.baseUrl || ""}:${values.apiKey || ""}:${values.model || ""}`;
+        if (testedKeys.has(key)) continue;
+        testedKeys.add(key);
+        const res = await testOpenAiApi(values);
+        if (!res.ok) {
+          throw new Error(`OpenAI API test failed for adapter ${id}: ${res.message}`);
+        }
+      }
+    }
+  }
+}
+
 export async function installLaunchAdapters(
-  opts: InstallLaunchRequest
+  opts: InstallLaunchRequest,
+  onLog?: (text: string, level: InstallLogLevel) => void
 ): Promise<{ results: InstallLaunchResultItem[]; adapters: LaunchAdapterStatus[] }> {
+  const log = (text: string, level: InstallLogLevel = "info") => {
+    onLog?.(text, level);
+  };
+
   // Serialize installs to avoid concurrent git/npm races
   while (installLock) {
     await installLock;
@@ -514,7 +809,7 @@ export async function installLaunchAdapters(
   try {
     let ids = opts.ids?.length ? [...opts.ids] : [];
     if (opts.missingOnly || ids.length === 0) {
-      const all = detectAll().adapters;
+      const all = detectAll(opts.sourceRoot).adapters;
       ids = all
         .filter((a) => (opts.missingOnly ? a.needsInstall : true))
         .filter((a) => a.cloneable || a.sourcePresent)
@@ -525,25 +820,62 @@ export async function installLaunchAdapters(
     }
     // De-dupe
     ids = [...new Set(ids)];
-    const results: InstallLaunchResultItem[] = [];
-    for (const id of ids) {
-      results.push(await installOne(id, opts));
+
+    log(`开始按顺序一键安装选定的 ${ids.length} 个适配器: [${ids.join(", ")}]`, "info");
+    log(`源码保存路径: ${defaultSourceRoot(opts.sourceRoot)}`, "info");
+
+    if (opts.envMode && opts.envMode !== "none" && !opts.skipModelTest) {
+      log(`正在校验 OpenAI API 模型可用性...`, "warn");
+      try {
+        await validateEnvModeBeforeSave(opts.envMode, opts.sharedEnv, opts.separateEnv, ids);
+        log(`✓ OpenAI API 模型连通性测试通过`, "success");
+      } catch (err: any) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`⚠ 模型校验返回警告/超时: ${msg}`, "warn");
+        log(`仍将继续为您克隆源码并保存 .env 配置，请在安装完成后检查网络`, "info");
+      }
     }
-    return { results, adapters: detectAll().adapters };
+
+    const results: InstallLaunchResultItem[] = [];
+    let current = 1;
+    for (const id of ids) {
+      log(`----------------------------------------`, "info");
+      log(`[${current}/${ids.length}] 正在处理适配器: ${id}`, "info");
+      const itemRes = await installOne(id, opts, (subMsg, subLevel) => log(subMsg, subLevel));
+      results.push(itemRes);
+      if (itemRes.ok) {
+        log(`[${current}/${ids.length}] ✓ ${id} 安装配置完毕`, "success");
+      } else {
+        log(`[${current}/${ids.length}] ✗ ${id} 处理失败: ${itemRes.error}`, "error");
+      }
+      current++;
+    }
+
+    log(`----------------------------------------`, "info");
+    const okCount = results.filter((r) => r.ok).length;
+    const failCount = results.filter((r) => !r.ok).length;
+    log(`所有适配器处理完毕：成功 ${okCount} 个，失败 ${failCount} 个`, okCount > 0 ? "success" : "error");
+
+    return { results, adapters: detectAll(opts.sourceRoot).adapters };
   } finally {
     release();
     installLock = null;
   }
 }
 
-export function writeEnvsOnly(
+export async function writeEnvsOnly(
   mode: "shared" | "separate",
   sharedEnv: LaunchEnvValues | undefined,
   separateEnv: Record<string, LaunchEnvValues> | undefined,
   ids: string[] | undefined,
   force: boolean
-): { results: Array<{ id: string; ok: boolean; path: string; wrote: boolean; error?: string }> } {
+): Promise<{ results: Array<{ id: string; ok: boolean; path: string; wrote: boolean; error?: string }> }> {
   const targets = (ids?.length ? ids : LAUNCH_SPECS.map((s) => s.id)).filter((id) => getSpec(id));
+  try {
+    await validateEnvModeBeforeSave(mode, sharedEnv, separateEnv, targets);
+  } catch {
+    /* ignore test error for writeEnvsOnly */
+  }
   const results = targets.map((id) => {
     const spec = getSpec(id)!;
     try {
@@ -563,3 +895,67 @@ export function writeEnvsOnly(
   return { results };
 }
 
+export type InstallJobLogItem = {
+  time: string;
+  text: string;
+  level: InstallLogLevel;
+};
+
+export type InstallJob = {
+  id: string;
+  status: "running" | "completed" | "failed";
+  progressStep: string;
+  logs: InstallJobLogItem[];
+  results?: InstallLaunchResultItem[];
+  adapters?: LaunchAdapterStatus[];
+  error?: string;
+  createdAt: number;
+};
+
+const installJobs = new Map<string, InstallJob>();
+
+export function createInstallJob(opts: InstallLaunchRequest): string {
+  const jobId = randomUUID();
+  const logs: InstallJobLogItem[] = [];
+
+  const addLog = (text: string, level: InstallLogLevel = "info") => {
+    const time = new Date().toLocaleTimeString();
+    logs.push({ time, text, level });
+    if (logs.length > 500) {
+      logs.splice(0, logs.length - 500);
+    }
+    if (job) {
+      job.progressStep = text;
+    }
+  };
+
+  const job: InstallJob = {
+    id: jobId,
+    status: "running",
+    progressStep: "Starting installation job...",
+    logs,
+    createdAt: Date.now()
+  };
+  installJobs.set(jobId, job);
+
+  (async () => {
+    try {
+      const res = await installLaunchAdapters(opts, (msg, level) => addLog(msg, level));
+      job.status = "completed";
+      job.progressStep = `Completed ${res.results.filter((r) => r.ok).length}/${res.results.length} adapters.`;
+      job.results = res.results;
+      job.adapters = res.adapters;
+    } catch (err: any) {
+      job.status = "failed";
+      job.error = err.message || String(err);
+      job.progressStep = `Failed: ${job.error}`;
+      addLog(`任务发生不可恢复的致命错误: ${job.error}`, "error");
+    }
+  })();
+
+  return jobId;
+}
+
+export function getInstallJob(jobId: string): InstallJob | undefined {
+  return installJobs.get(jobId);
+}

@@ -117,11 +117,16 @@ export class CodexBridge extends EventEmitter {
       this.setStatus({
         phase: "ready",
         codexBin,
-        codexVersion: await this.readCodexVersion(codexBin),
+        codexVersion: undefined,
         appServerUserAgent: typeof init.userAgent === "string" ? init.userAgent : undefined,
         codexHome: typeof init.codexHome === "string" ? init.codexHome : undefined,
         startedAt: this.status.startedAt,
         message: "Codex app-server ready"
+      });
+      void this.readCodexVersion(codexBin).then((ver) => {
+        if (ver && this.status.phase === "ready") {
+          this.setStatus({ ...this.status, codexVersion: ver });
+        }
       });
       return this.getStatus();
     } catch (error) {
@@ -150,14 +155,30 @@ export class CodexBridge extends EventEmitter {
     return this.start();
   }
 
-  public async request(method: string, params?: JsonValue): Promise<JsonValue> {
+  public async request(method: string, params?: JsonValue, timeoutMs = 15000): Promise<JsonValue> {
     if (!this.child) {
       throw new Error("Codex app-server is not running");
     }
     const id = this.nextId++;
     const payload: JsonRpcMessage = { id, method, params };
     return new Promise((resolve, reject) => {
-      this.pending.set(String(id), { resolve, reject, method });
+      const timer = setTimeout(() => {
+        if (this.pending.has(String(id))) {
+          this.pending.delete(String(id));
+          reject({ message: `Request '${method}' timed out after ${timeoutMs}ms` });
+        }
+      }, timeoutMs);
+      this.pending.set(String(id), {
+        resolve: (val) => {
+          clearTimeout(timer);
+          resolve(val);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+        method
+      });
       this.send(payload);
     });
   }
@@ -230,13 +251,37 @@ export class CodexBridge extends EventEmitter {
 
   private async readCodexVersion(codexBin: string): Promise<string | undefined> {
     return new Promise((resolve) => {
+      let resolved = false;
       const version = spawn(codexBin, ["--version"], { stdio: ["ignore", "pipe", "ignore"] });
+      const timer = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          try {
+            version.kill();
+          } catch {
+            /* ignore */
+          }
+          resolve(undefined);
+        }
+      }, 3000);
       let output = "";
       version.stdout.on("data", (chunk: Buffer) => {
         output += chunk.toString("utf8");
       });
-      version.once("exit", () => resolve(output.trim() || undefined));
-      version.once("error", () => resolve(undefined));
+      version.once("exit", () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(output.trim() || undefined);
+        }
+      });
+      version.once("error", () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          resolve(undefined);
+        }
+      });
     });
   }
 }

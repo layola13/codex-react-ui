@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Avatar,
   Box,
@@ -61,6 +61,11 @@ type Props = {
   backgroundImage?: string;
   /** Session token for host multi-engine history scanners */
   sessionToken?: string | null;
+  /**
+   * When false (default), hide non-Codex *-launch history tabs and do not fetch them.
+   * Feature kept for later re-enable from Settings → Launch adapters.
+   */
+  showLaunchHistory?: boolean;
   t: TranslateFn;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
@@ -84,6 +89,7 @@ export function HistorySidebar({
   installAvailable = false,
   backgroundImage,
   sessionToken = null,
+  showLaunchHistory = false,
   t,
   onSearchChange,
   onRefresh,
@@ -105,33 +111,74 @@ export function HistorySidebar({
   const [transcript, setTranscript] = useState<EngineTranscript | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
-
-  const loadEngineHistory = useCallback(async () => {
-    if (!sessionToken) {
-      setEngineItems([]);
-      return;
-    }
-    setEngineLoading(true);
-    setEngineError(null);
-    try {
-      const engine = engineTab === "all" || engineTab === "codex" ? "all" : engineTab;
-      const data = await fetchEngineHistory(sessionToken, {
-        engine,
-        q: searchTerm.trim() || undefined,
-        limit: 250
-      });
-      setEngines(data.engines);
-      setEngineItems(data.items);
-    } catch (err) {
-      setEngineError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setEngineLoading(false);
-    }
-  }, [sessionToken, engineTab, searchTerm]);
+  const engineRequestRef = useRef(0);
+  const transcriptRequestRef = useRef(0);
 
   useEffect(() => {
-    void loadEngineHistory();
-  }, [loadEngineHistory]);
+    // Temporarily hide all non-Codex *-launch history (including host CLI scans).
+    // Flip showLaunchHistory from Settings → Launch adapters to re-enable.
+    if (!showLaunchHistory) {
+      engineRequestRef.current += 1;
+      setEngineItems([]);
+      setEngineError(null);
+      setEngineLoading(false);
+      setEngineTab("all");
+      setTranscript(null);
+      setTranscriptError(null);
+      setTranscriptLoading(false);
+      return;
+    }
+    if (!sessionToken) {
+      setEngineItems([]);
+      setEngineError(null);
+      setEngineLoading(false);
+      return;
+    }
+
+    const requestId = ++engineRequestRef.current;
+    const controller = new AbortController();
+    // Debounce search-driven reloads so typing does not leave stale loading true.
+    const delayMs = searchTerm.trim() ? 280 : 0;
+    setEngineLoading(true);
+    setEngineError(null);
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const engine = engineTab === "all" || engineTab === "codex" ? "all" : engineTab;
+          const data = await fetchEngineHistory(sessionToken, {
+            engine,
+            q: searchTerm.trim() || undefined,
+            limit: 250,
+            signal: controller.signal,
+            timeoutMs: 12_000
+          });
+          if (requestId !== engineRequestRef.current) return;
+          setEngines(data.engines);
+          // Defense in depth: never mark non-Codex host history as resumable.
+          setEngineItems(
+            data.items.map((item) => ({
+              ...item,
+              canResume: item.engine === "codex" ? Boolean(item.canResume) : false
+            }))
+          );
+        } catch (err) {
+          if (requestId !== engineRequestRef.current) return;
+          if (controller.signal.aborted) return;
+          setEngineError(err instanceof Error ? err.message : String(err));
+        } finally {
+          if (requestId === engineRequestRef.current) {
+            setEngineLoading(false);
+          }
+        }
+      })();
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [sessionToken, engineTab, searchTerm, showLaunchHistory]);
 
   const engineMetaById = useMemo(() => {
     const map = new Map<string, EngineMeta>();
@@ -140,26 +187,34 @@ export function HistorySidebar({
   }, [engines]);
 
   const filteredEngineItems = useMemo(() => {
+    if (!showLaunchHistory) return [] as EngineHistoryItem[];
     if (engineTab === "codex") return [] as EngineHistoryItem[];
     if (engineTab === "all") return engineItems.filter((i) => i.engine !== "codex");
     return engineItems.filter((i) => i.engine === engineTab);
-  }, [engineItems, engineTab]);
+  }, [engineItems, engineTab, showLaunchHistory]);
 
-  const showCodexThreads = engineTab === "all" || engineTab === "codex";
+  const showCodexThreads = !showLaunchHistory || engineTab === "all" || engineTab === "codex";
 
   const openEngineItem = async (item: EngineHistoryItem) => {
-    if (!sessionToken) return;
+    if (!sessionToken || !showLaunchHistory) return;
+    // Only Codex app-server threads may enter the main workbench.
+    // All xxx-launch / host CLI histories are temporary read-only transcripts.
     if (item.engine === "codex" && item.canResume) {
       onSelect(item.id);
       return;
     }
+    const requestId = ++transcriptRequestRef.current;
     setTranscriptLoading(true);
     setTranscriptError(null);
     setTranscript(null);
     try {
-      const data = await fetchEngineTranscript(sessionToken, item.engine, item.id);
+      const data = await fetchEngineTranscript(sessionToken, item.engine, item.id, {
+        timeoutMs: 12_000
+      });
+      if (requestId !== transcriptRequestRef.current) return;
       setTranscript(data);
     } catch (err) {
+      if (requestId !== transcriptRequestRef.current) return;
       setTranscriptError(err instanceof Error ? err.message : String(err));
       setTranscript({
         engine: item.engine,
@@ -169,13 +224,48 @@ export function HistorySidebar({
         sourcePath: item.sourcePath
       });
     } finally {
-      setTranscriptLoading(false);
+      if (requestId === transcriptRequestRef.current) {
+        setTranscriptLoading(false);
+      }
     }
   };
 
   const handleRefreshAll = () => {
     onRefresh();
-    void loadEngineHistory();
+    if (!showLaunchHistory || !sessionToken) return;
+    // Nudge reload by reusing current dependencies; force-loading then re-running effect via tab noop is fragile,
+    // so bump request and re-fetch with the current filter immediately.
+    const requestId = ++engineRequestRef.current;
+    const controller = new AbortController();
+    setEngineLoading(true);
+    setEngineError(null);
+    void (async () => {
+      try {
+        const engine = engineTab === "all" || engineTab === "codex" ? "all" : engineTab;
+        const data = await fetchEngineHistory(sessionToken, {
+          engine,
+          q: searchTerm.trim() || undefined,
+          limit: 250,
+          signal: controller.signal,
+          timeoutMs: 12_000
+        });
+        if (requestId !== engineRequestRef.current) return;
+        setEngines(data.engines);
+        setEngineItems(
+          data.items.map((item) => ({
+            ...item,
+            canResume: item.engine === "codex" ? Boolean(item.canResume) : false
+          }))
+        );
+      } catch (err) {
+        if (requestId !== engineRequestRef.current) return;
+        setEngineError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (requestId === engineRequestRef.current) {
+          setEngineLoading(false);
+        }
+      }
+    })();
   };
 
   const beginRename = (thread: ThreadEntry) => {
@@ -257,62 +347,64 @@ export function HistorySidebar({
         </Button>
       </Stack>
       <Divider />
-      <Box sx={{ px: 0.5, pt: 0.5 }}>
-        <Tabs
-          value={engineTab}
-          onChange={(_, v) => setEngineTab(v as EngineTab)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{
-            minHeight: 36,
-            "& .MuiTab-root": { minHeight: 36, minWidth: 52, px: 1, py: 0.5, fontSize: 11, fontWeight: 800, textTransform: "none" }
-          }}
-        >
-          <Tab value="all" label={t("history.engineTabAll")} id="history-tab-all" />
-          {(engines.length
-            ? engines
-            : ([
-                { id: "codex", label: "Codex", mark: "Cx", color: "#14b8a6", launchId: "code-launch" },
-                { id: "claude", label: "Claude", mark: "Cl", color: "#f59e0b", launchId: "claude-launch" },
-                { id: "agy", label: "AGY", mark: "Ag", color: "#8b5cf6", launchId: "agy-launch" },
-                { id: "gemini", label: "Gemini", mark: "Gm", color: "#3b82f6", launchId: "gemini-launch" },
-                { id: "crush", label: "Crush", mark: "Cr", color: "#ec4899", launchId: "crush-launch" },
-                { id: "auggie", label: "Auggie", mark: "Au", color: "#06b6d4", launchId: "auggie-launch" },
-                { id: "grok", label: "Grok", mark: "X", color: "#64748b", launchId: "grok-launch" },
-                { id: "freebuff", label: "Freebuff", mark: "Fb", color: "#22c55e", launchId: "freebuff-launch" },
-                { id: "coderabbit", label: "CodeRabbit", mark: "Rb", color: "#f97316", launchId: "coderabbit-launch" }
-              ] as EngineMeta[])
-          ).map((eng) => (
-            <Tab
-              key={eng.id}
-              value={eng.id}
-              id={`history-tab-${eng.id}`}
-              label={
-                <Stack direction="row" spacing={0.5} alignItems="center">
-                  <Box
-                    sx={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: 0.75,
-                      bgcolor: eng.color,
-                      color: "#fff",
-                      fontSize: 8,
-                      fontWeight: 900,
-                      display: "grid",
-                      placeItems: "center",
-                      lineHeight: 1
-                    }}
-                  >
-                    {eng.mark}
-                  </Box>
-                  <span>{eng.label}</span>
-                </Stack>
-              }
-            />
-          ))}
-        </Tabs>
-      </Box>
+      {showLaunchHistory ? (
+        <Box sx={{ px: 0.5, pt: 0.5 }}>
+          <Tabs
+            value={engineTab}
+            onChange={(_, v) => setEngineTab(v as EngineTab)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{
+              minHeight: 36,
+              "& .MuiTab-root": { minHeight: 36, minWidth: 52, px: 1, py: 0.5, fontSize: 11, fontWeight: 800, textTransform: "none" }
+            }}
+          >
+            <Tab value="all" label={t("history.engineTabAll")} id="history-tab-all" />
+            {(engines.length
+              ? engines
+              : ([
+                  { id: "codex", label: "Codex", mark: "Cx", color: "#14b8a6", launchId: "code-launch" },
+                  { id: "claude", label: "Claude", mark: "Cl", color: "#f59e0b", launchId: "claude-launch" },
+                  { id: "agy", label: "AGY", mark: "Ag", color: "#8b5cf6", launchId: "agy-launch" },
+                  { id: "gemini", label: "Gemini", mark: "Gm", color: "#3b82f6", launchId: "gemini-launch" },
+                  { id: "crush", label: "Crush", mark: "Cr", color: "#ec4899", launchId: "crush-launch" },
+                  { id: "auggie", label: "Auggie", mark: "Au", color: "#06b6d4", launchId: "auggie-launch" },
+                  { id: "grok", label: "Grok", mark: "X", color: "#64748b", launchId: "grok-launch" },
+                  { id: "freebuff", label: "Freebuff", mark: "Fb", color: "#22c55e", launchId: "freebuff-launch" },
+                  { id: "coderabbit", label: "CodeRabbit", mark: "Rb", color: "#f97316", launchId: "coderabbit-launch" }
+                ] as EngineMeta[])
+            ).map((eng) => (
+              <Tab
+                key={eng.id}
+                value={eng.id}
+                id={`history-tab-${eng.id}`}
+                label={
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <Box
+                      sx={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 0.75,
+                        bgcolor: eng.color,
+                        color: "#fff",
+                        fontSize: 8,
+                        fontWeight: 900,
+                        display: "grid",
+                        placeItems: "center",
+                        lineHeight: 1
+                      }}
+                    >
+                      {eng.mark}
+                    </Box>
+                    <span>{eng.label}</span>
+                  </Stack>
+                }
+              />
+            ))}
+          </Tabs>
+        </Box>
+      ) : null}
       <Box sx={{ px: 1.25, py: 1 }}>
         <TextField
           size="small"
@@ -325,12 +417,12 @@ export function HistorySidebar({
             startAdornment: <SearchIcon fontSize="small" color="disabled" sx={{ mr: 0.75 }} />
           }}
         />
-        {engineError ? (
+        {showLaunchHistory && engineError ? (
           <Typography variant="caption" color="error" sx={{ display: "block", mt: 0.5 }}>
             {engineError}
           </Typography>
         ) : null}
-        {!sessionToken ? (
+        {showLaunchHistory && !sessionToken ? (
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
             {t("history.engineNeedToken")}
           </Typography>

@@ -1809,6 +1809,7 @@ export type LaunchAdapterStatus = {
   envConfigured: boolean;
   envPreview: { baseUrl: string | null; model: string | null; hasApiKey: boolean };
   needsInstall: boolean;
+  needsSetup?: boolean;
 };
 
 export type LaunchAdaptersDetectResponse = {
@@ -1845,7 +1846,9 @@ export async function installLaunchAdapters(
     sharedEnv?: LaunchEnvValues;
     separateEnv?: Record<string, LaunchEnvValues>;
     forceEnv?: boolean;
-  }
+    sourceRoot?: string;
+  },
+  onProgress?: (logs: Array<{ time: string; text: string; level: "info" | "success" | "error" | "warn" }>) => void
 ): Promise<{ results: InstallLaunchResultItem[]; adapters: LaunchAdapterStatus[] }> {
   const response = await fetch("/api/launch-adapters/install", {
     method: "POST",
@@ -1856,6 +1859,7 @@ export async function installLaunchAdapters(
     body: JSON.stringify(input)
   });
   const body = (await response.json().catch(() => ({}))) as {
+    jobId?: string;
     results?: InstallLaunchResultItem[];
     adapters?: LaunchAdapterStatus[];
     error?: string;
@@ -1863,10 +1867,55 @@ export async function installLaunchAdapters(
   if (!response.ok) {
     throw new Error(body.error || `Install failed: ${response.status}`);
   }
-  return {
-    results: body.results ?? [],
-    adapters: body.adapters ?? []
-  };
+
+  if (body.results) {
+    return {
+      results: body.results,
+      adapters: body.adapters ?? []
+    };
+  }
+
+  if (!body.jobId) {
+    throw new Error("Server did not return a valid installation job ID.");
+  }
+
+  const jobId = body.jobId;
+  const maxWaitMs = 600_000; // 10 min timeout
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    await new Promise((r) => setTimeout(r, 1200));
+    const statusResp = await fetch(`/api/launch-adapters/job-status?jobId=${encodeURIComponent(jobId)}`, {
+      headers: { "x-codex-ui-token": token }
+    });
+    if (!statusResp.ok) {
+      continue;
+    }
+    const statusData = (await statusResp.json().catch(() => ({}))) as {
+      status?: "running" | "completed" | "failed";
+      progressStep?: string;
+      logs?: Array<{ time: string; text: string; level: "info" | "success" | "error" | "warn" }>;
+      results?: InstallLaunchResultItem[];
+      adapters?: LaunchAdapterStatus[];
+      error?: string;
+    };
+
+    if (statusData.logs && statusData.logs.length) {
+      onProgress?.(statusData.logs);
+    }
+
+    if (statusData.status === "completed") {
+      return {
+        results: statusData.results ?? [],
+        adapters: statusData.adapters ?? []
+      };
+    }
+    if (statusData.status === "failed") {
+      throw new Error(statusData.error || "Installation job failed on server.");
+    }
+  }
+
+  throw new Error("Installation job timed out after 10 minutes.");
 }
 
 export async function writeLaunchAdapterEnvs(
@@ -1901,6 +1950,34 @@ export async function writeLaunchAdapterEnvs(
   return {
     results: body.results ?? [],
     adapters: body.adapters ?? []
+  };
+}
+
+export async function testLaunchAdapterModel(
+  token: string,
+  env: LaunchEnvValues
+): Promise<{ ok: boolean; step1Ok?: boolean; step2Ok?: boolean; message: string; statusCode?: number }> {
+  const response = await fetch("/api/launch-adapters/test-model", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(env)
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    step1Ok?: boolean;
+    step2Ok?: boolean;
+    message?: string;
+    statusCode?: number;
+  };
+  return {
+    ok: body.ok ?? response.ok,
+    step1Ok: body.step1Ok,
+    step2Ok: body.step2Ok,
+    message: body.message || (response.ok ? "Test succeeded" : `HTTP ${response.status}`),
+    statusCode: body.statusCode ?? response.status
   };
 }
 
@@ -1957,34 +2034,67 @@ export type EngineTranscript = {
 
 export async function fetchEngineHistory(
   token: string,
-  opts: { engine?: EngineId | "all"; q?: string; limit?: number } = {}
+  opts: { engine?: EngineId | "all"; q?: string; limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<{ engines: EngineMeta[]; items: EngineHistoryItem[] }> {
   const params = new URLSearchParams();
   if (opts.engine) params.set("engine", opts.engine);
   if (opts.q) params.set("q", opts.q);
   if (opts.limit) params.set("limit", String(opts.limit));
   const qs = params.toString();
-  const response = await fetch(`/api/engine-history${qs ? `?${qs}` : ""}`, {
-    headers: { "x-codex-ui-token": token }
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `engine-history failed: ${response.status}`);
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 12_000;
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    const response = await fetch(`/api/engine-history${qs ? `?${qs}` : ""}`, {
+      headers: { "x-codex-ui-token": token },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `engine-history failed: ${response.status}`);
+    }
+    return (await response.json()) as { engines: EngineMeta[]; items: EngineHistoryItem[] };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`engine-history timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
   }
-  return (await response.json()) as { engines: EngineMeta[]; items: EngineHistoryItem[] };
 }
 
 export async function fetchEngineTranscript(
   token: string,
   engine: EngineId,
-  id: string
+  id: string,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<EngineTranscript> {
-  const response = await fetch(`/api/engine-history/${encodeURIComponent(engine)}/${encodeURIComponent(id)}`, {
-    headers: { "x-codex-ui-token": token }
-  });
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `transcript failed: ${response.status}`);
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? 12_000;
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  opts.signal?.addEventListener("abort", onAbort, { once: true });
+  try {
+    const response = await fetch(`/api/engine-history/${encodeURIComponent(engine)}/${encodeURIComponent(id)}`, {
+      headers: { "x-codex-ui-token": token },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error || `transcript failed: ${response.status}`);
+    }
+    return (await response.json()) as EngineTranscript;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(`transcript timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onAbort);
   }
-  return (await response.json()) as EngineTranscript;
 }

@@ -13,6 +13,8 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditIcon from "@mui/icons-material/Edit";
 import FlagIcon from "@mui/icons-material/Flag";
 import ForumIcon from "@mui/icons-material/Forum";
+import KeyIcon from "@mui/icons-material/Key";
+import MemoryIcon from "@mui/icons-material/Memory";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
@@ -25,6 +27,9 @@ import type { ChatWorkingStatus } from "./chat-waterfall/ChatWaterfall";
 import { buildChatRows } from "./chat-waterfall/chatRows";
 import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./chat-waterfall/types";
 import type { TranslateFn } from "../i18n";
+import type { SettingsSectionId } from "./SettingsDrawer";
+
+type OnboardingSectionId = Extract<SettingsSectionId, "relay" | "members">;
 
 type AgentSession = {
   id: string;
@@ -129,6 +134,7 @@ type Props = {
   assistantUsageDisplay?: AssistantUsageDisplayMode;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
+  onOpenOnboardingSection?: (section: OnboardingSectionId) => void;
   onAgentThreadSelect?: (threadId: string) => void;
   onStatsClose?: () => void;
   onSlashNoticeClose?: () => void;
@@ -189,6 +195,7 @@ export function ChatPanel({
   assistantUsageDisplay = "summary",
   t,
   onPromptSelect,
+  onOpenOnboardingSection,
   onAgentThreadSelect,
   onStatsClose,
   onSlashNoticeClose,
@@ -358,6 +365,7 @@ export function ChatPanel({
                   welcomeBackgroundImage={welcomeBackgroundImage}
                   t={t}
                   onPromptSelect={onPromptSelect}
+                  onOpenOnboardingSection={onOpenOnboardingSection}
                 />
               )}
             </Stack>
@@ -749,16 +757,18 @@ function EmptyConversation({
   activeThemePlugin,
   welcomeBackgroundImage,
   t,
-  onPromptSelect
+  onPromptSelect,
+  onOpenOnboardingSection
 }: {
   selectedAgent: AgentSession | null;
   activeThemePlugin?: ThemePlugin | null;
   welcomeBackgroundImage?: string;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
+  onOpenOnboardingSection?: (section: OnboardingSectionId) => void;
 }) {
   if (!selectedAgent) {
-    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} welcomeBackgroundImage={welcomeBackgroundImage} t={t} onPromptSelect={onPromptSelect} />;
+    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} welcomeBackgroundImage={welcomeBackgroundImage} t={t} onPromptSelect={onPromptSelect} onOpenOnboardingSection={onOpenOnboardingSection} />;
   }
   return (
     <Paper
@@ -784,12 +794,14 @@ function DefaultWorkbenchEmpty({
   activeThemePlugin,
   welcomeBackgroundImage,
   t,
-  onPromptSelect
+  onPromptSelect,
+  onOpenOnboardingSection
 }: {
   activeThemePlugin?: ThemePlugin | null;
   welcomeBackgroundImage?: string;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
+  onOpenOnboardingSection?: (section: OnboardingSectionId) => void;
 }) {
   const heroImage =
     activeThemePlugin?.layout?.heroEnabled === false
@@ -856,6 +868,7 @@ function DefaultWorkbenchEmpty({
               {t("chat.emptySubtitle")}
             </Typography>
           </Stack>
+          <OnboardingGuide t={t} onPromptSelect={onPromptSelect} onOpenSection={onOpenOnboardingSection} />
           <Box
             sx={{
               display: "grid",
@@ -919,6 +932,116 @@ function DefaultWorkbenchEmpty({
         )}
       </Box>
     </Box>
+  );
+}
+
+function onboardingSteps(t: TranslateFn) {
+  return [
+    {
+      id: "relay",
+      step: "1",
+      icon: <MemoryIcon fontSize="small" />,
+      title: t("onboarding.codex.relay.title"),
+      detail: t("onboarding.codex.relay.detail"),
+      action: t("onboarding.codex.relay.action"),
+      section: "relay" as OnboardingSectionId
+    },
+    {
+      id: "test",
+      step: "2",
+      icon: <BoltIcon fontSize="small" />,
+      title: t("onboarding.codex.test.title"),
+      detail: t("onboarding.codex.test.detail"),
+      action: t("onboarding.codex.test.action"),
+      prompt: t("onboarding.codex.test.prompt")
+    },
+    {
+      id: "auth",
+      step: "3",
+      icon: <KeyIcon fontSize="small" />,
+      title: t("onboarding.codex.auth.title"),
+      detail: t("onboarding.codex.auth.detail"),
+      action: t("onboarding.codex.auth.action"),
+      section: "members" as OnboardingSectionId
+    }
+  ];
+}
+
+function OnboardingGuide({
+  t,
+  onPromptSelect,
+  onOpenSection
+}: {
+  t: TranslateFn;
+  onPromptSelect?: (text: string) => void;
+  onOpenSection?: (section: OnboardingSectionId) => void;
+}) {
+  const steps = onboardingSteps(t);
+  return (
+    <Paper
+      variant="outlined"
+      data-testid="codex-onboarding-guide"
+      sx={{
+        p: { xs: 1.5, md: 2 },
+        borderRadius: 2,
+        bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.13 : 0.08),
+        borderColor: (theme) => alpha(theme.palette.primary.main, 0.32)
+      }}
+    >
+      <Stack spacing={1.5}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ sm: "center" }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
+              {t("onboarding.codex.title")}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t("onboarding.codex.subtitle")}
+            </Typography>
+          </Box>
+          <Chip size="small" color="primary" label={t("onboarding.codex.priority")} sx={{ fontWeight: 800, alignSelf: { xs: "flex-start", sm: "center" } }} />
+        </Stack>
+        <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" } }}>
+          {steps.map((item) => (
+            <Button
+              key={item.id}
+              variant="outlined"
+              color="inherit"
+              onClick={() => {
+                if (item.prompt) {
+                  onPromptSelect?.(item.prompt);
+                  return;
+                }
+                if (item.section) {
+                  onOpenSection?.(item.section);
+                }
+              }}
+              sx={{
+                minHeight: 138,
+                justifyContent: "flex-start",
+                textAlign: "left",
+                p: 1.25,
+                borderRadius: 1.5,
+                bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.84),
+                borderColor: "divider",
+                "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" }
+              }}
+            >
+              <Stack spacing={1} sx={{ minWidth: 0, alignItems: "flex-start" }}>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Avatar sx={{ width: 24, height: 24, fontSize: 12, fontWeight: 900, bgcolor: "primary.main" }}>{item.step}</Avatar>
+                  <Box sx={{ color: "primary.main", display: "flex" }}>{item.icon}</Box>
+                </Stack>
+                <Typography sx={{ fontWeight: 850, lineHeight: 1.25 }}>{item.title}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+                  {item.detail}
+                </Typography>
+                <Chip size="small" label={item.action} variant="outlined" sx={{ mt: "auto" }} />
+              </Stack>
+            </Button>
+          ))}
+        </Box>
+      </Stack>
+    </Paper>
   );
 }
 

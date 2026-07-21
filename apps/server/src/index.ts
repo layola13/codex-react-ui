@@ -27,6 +27,9 @@ import {
   detectAll,
   installLaunchAdapters,
   writeEnvsOnly,
+  testOpenAiApi,
+  createInstallJob,
+  getInstallJob,
   type InstallLaunchRequest,
   type LaunchEnvValues
 } from "./launchInstall.js";
@@ -192,7 +195,7 @@ async function handleHttpRequest(request: Request, server: Server<SocketData>): 
         const token = bearerOrUiToken(request, url);
         const user = await authStore.getUserByToken(token);
         if (!user) {
-          return jsonResponse({ authenticated: false, loginRequired: true, token: "", user: null }, 401, headers);
+          return jsonResponse({ authenticated: false, loginRequired: true, token: "", user: null }, 200, headers);
         }
         return jsonResponse({ authenticated: true, token, user }, 200, headers);
       }
@@ -624,6 +627,17 @@ async function handleApiRequest(
       // Host-local install detection; any authenticated session (or token mode) may read.
       return jsonResponse(detectAll(), 200, headers);
     }
+    case "GET /api/launch-adapters/job-status": {
+      const jobId = url.searchParams.get("jobId");
+      if (!jobId) {
+        return jsonResponse({ error: "Missing jobId parameter" }, 400, headers);
+      }
+      const job = getInstallJob(jobId);
+      if (!job) {
+        return jsonResponse({ error: `Job not found: ${jobId}` }, 404, headers);
+      }
+      return jsonResponse(job, 200, headers);
+    }
     case "POST /api/launch-adapters/install": {
       // Mutates host filesystem (git clone, install.sh, ~/.config/*-launch/.env).
       // Prefer admin when membership is on; allow any authed session in token-only mode.
@@ -648,12 +662,26 @@ async function handleApiRequest(
           envMode,
           sharedEnv,
           separateEnv,
-          forceEnv: body.forceEnv === true
+          forceEnv: body.forceEnv === true,
+          sourceRoot: typeof body.sourceRoot === "string" ? body.sourceRoot : undefined
         };
-        const result = await installLaunchAdapters(installRequest);
-        return jsonResponse(result, 200, headers);
+        const jobId = createInstallJob(installRequest);
+        return jsonResponse({ jobId, status: "running" }, 202, headers);
       } catch (error) {
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/launch-adapters/test-model": {
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const values = parseLaunchEnv(body);
+        if (!values) {
+          return jsonResponse({ ok: false, message: "Missing baseUrl / model / apiKey" }, 400, headers);
+        }
+        const result = await testOpenAiApi(values);
+        return jsonResponse(result, result.ok ? 200 : 400, headers);
+      } catch (error) {
+        return jsonResponse({ ok: false, message: errorToMessage(error) }, 400, headers);
       }
     }
     case "POST /api/launch-adapters/env": {
@@ -666,7 +694,7 @@ async function handleApiRequest(
         const ids = Array.isArray(body.ids)
           ? body.ids.filter((entry): entry is string => typeof entry === "string")
           : undefined;
-        const result = writeEnvsOnly(
+        const result = await writeEnvsOnly(
           mode,
           parseLaunchEnv(body.sharedEnv),
           parseSeparateLaunchEnv(body.separateEnv),
@@ -779,11 +807,22 @@ function serveStatic(request: Request, url: URL, headers: Headers): Response {
   const path = decodeURIComponent(url.pathname);
   const normalized = resolve(webDistRoot, `.${path === "/" ? "/index.html" : path}`);
   const isInsideWebDist = normalized === webDistRoot || normalized.startsWith(`${webDistRoot}${sep}`);
-  if (isInsideWebDist && existsSync(normalized) && statSync(normalized).isFile()) {
-    return new Response(request.method === "HEAD" ? null : Bun.file(normalized), { headers });
+  const fileToServe = isInsideWebDist && existsSync(normalized) && statSync(normalized).isFile()
+    ? Bun.file(normalized)
+    : Bun.file(join(webDistRoot, "index.html"));
+
+  const responseHeaders = new Headers(headers);
+  if (fileToServe.type) {
+    responseHeaders.set("Content-Type", fileToServe.type);
+  } else if (normalized.endsWith(".js")) {
+    responseHeaders.set("Content-Type", "application/javascript; charset=utf-8");
+  } else if (normalized.endsWith(".css")) {
+    responseHeaders.set("Content-Type", "text/css; charset=utf-8");
+  } else if (normalized.endsWith(".html")) {
+    responseHeaders.set("Content-Type", "text/html; charset=utf-8");
   }
 
-  return new Response(request.method === "HEAD" ? null : Bun.file(join(webDistRoot, "index.html")), { headers });
+  return new Response(request.method === "HEAD" ? null : fileToServe, { headers: responseHeaders });
 }
 
 async function resolveAuth(

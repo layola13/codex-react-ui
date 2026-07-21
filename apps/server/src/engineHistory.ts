@@ -7,7 +7,7 @@ import {
   type AgentEngineId
 } from "@codex-ui/shared";
 import { Database } from "bun:sqlite";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -31,7 +31,8 @@ export const ENGINE_CATALOG: EngineMeta[] = AGENT_ENGINE_CATALOG.map((e) => ({
   launchId: e.launchId ?? e.id,
   mark: e.mark,
   color: e.color,
-  canResume: e.capabilities.resumeInUi,
+  // Phase 0: only Codex may resume into the main workbench.
+  canResume: e.id === "codex" && e.capabilities.resumeInUi,
   canChat: e.capabilities.chatRuntime
 }));
 
@@ -68,20 +69,29 @@ function home(): string {
 }
 
 function safeRead(path: string, maxBytes = 2_000_000): string | null {
+  let fd: number | null = null;
   try {
     if (!existsSync(path)) return null;
     const st = statSync(path);
     if (!st.isFile()) return null;
-    if (st.size > maxBytes) {
-      // Read head for huge files
-      const buf = Buffer.alloc(Math.min(maxBytes, st.size));
-      const fd = Bun.file(path);
-      // Bun.file text is fine for moderate; for huge use slice
-      return readFileSync(path, { encoding: "utf8" }).slice(0, maxBytes);
+    // Always bound reads so a multi-hundred-MB session dump cannot hang listing.
+    if (st.size <= maxBytes) {
+      return readFileSync(path, "utf8");
     }
-    return readFileSync(path, "utf8");
+    fd = openSync(path, "r");
+    const buf = Buffer.alloc(maxBytes);
+    const bytes = readSync(fd, buf, 0, maxBytes, 0);
+    return buf.toString("utf8", 0, bytes);
   } catch {
     return null;
+  } finally {
+    if (fd != null) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 }
 
@@ -137,9 +147,13 @@ function redact(text: string): string {
 }
 
 function walkFiles(root: string, filter: (name: string, full: string) => boolean, max = 400): string[] {
+  if (!existsSync(root)) return [];
   const out: string[] = [];
   const stack = [root];
-  while (stack.length && out.length < max) {
+  let visitedCount = 0;
+  const maxVisited = 2000;
+  while (stack.length && out.length < max && visitedCount < maxVisited) {
+    visitedCount++;
     const dir = stack.pop()!;
     let entries: string[] = [];
     try {
@@ -148,7 +162,7 @@ function walkFiles(root: string, filter: (name: string, full: string) => boolean
       continue;
     }
     for (const name of entries) {
-      if (name === "node_modules" || name === ".git") continue;
+      if (name === "node_modules" || name === ".git" || name === ".cache" || name === "tmp" || name === "temp") continue;
       const full = join(dir, name);
       let st;
       try {
@@ -619,9 +633,16 @@ export function listEngineHistory(
   let items: EngineHistoryItem[] = [];
   for (const id of ids) {
     try {
-      items.push(...SCANNERS[id]());
-    } catch {
-      /* keep going */
+      const scanned = SCANNERS[id]?.() ?? [];
+      // *-launch / non-Codex history is list+transcript only; never resume into main chat.
+      items.push(
+        ...scanned.map((item) => ({
+          ...item,
+          canResume: id === "codex" ? Boolean(item.canResume) : false
+        }))
+      );
+    } catch (error) {
+      console.warn(`[engine-history] scanner failed for ${id}:`, error instanceof Error ? error.message : error);
     }
   }
   if (q) {
@@ -721,12 +742,12 @@ function transcriptAgy(id: string): EngineTranscript | null {
 
 function transcriptGemini(id: string): EngineTranscript | null {
   const tmp = join(home(), ".gemini", "tmp");
-  const files = walkFiles(tmp, (n, full) => n.startsWith("session-") && n.endsWith(".jsonl") && (n.includes(id) || safeRead(full, 2000)?.includes(id) === true), 50);
-  // Prefer file that contains sessionId
-  let file = files.find((f) => basename(f).includes(id));
+  if (!existsSync(tmp)) return null;
+  const candidateFiles = walkFiles(tmp, (n) => n.startsWith("session-") && n.endsWith(".jsonl"), 200);
+  let file = candidateFiles.find((f) => basename(f).includes(id));
   if (!file) {
-    for (const f of walkFiles(tmp, (n) => n.startsWith("session-") && n.endsWith(".jsonl"), 200)) {
-      const head = safeRead(f, 800);
+    for (const f of candidateFiles) {
+      const head = safeRead(f, 2000);
       if (head && head.includes(id)) {
         file = f;
         break;

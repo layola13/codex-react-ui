@@ -138,6 +138,7 @@ type Props = {
   customThemePlugins: ThemePlugin[];
   leftPanelVisible: boolean;
   showAssistantUsageDetails: boolean;
+  showLaunchHistory?: boolean;
   petDockEnabled: boolean;
   cwd: string;
   permission: PermissionPresetId;
@@ -178,6 +179,7 @@ type Props = {
   onRemoveCustomThemePlugin: (id: ThemeId) => void;
   onLeftPanelVisibleChange: (visible: boolean) => void;
   onShowAssistantUsageDetailsChange: (visible: boolean) => void;
+  onShowLaunchHistoryChange?: (enabled: boolean) => void;
   onPetDockEnabledChange: (enabled: boolean) => void;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
@@ -256,6 +258,7 @@ export function SettingsDrawer({
   customThemePlugins,
   leftPanelVisible,
   showAssistantUsageDetails,
+  showLaunchHistory = false,
   petDockEnabled,
   cwd,
   permission,
@@ -297,6 +300,7 @@ export function SettingsDrawer({
   onRemoveCustomThemePlugin,
   onLeftPanelVisibleChange,
   onShowAssistantUsageDetailsChange,
+  onShowLaunchHistoryChange,
   onPetDockEnabledChange,
   onCwdChange,
   onPermissionChange,
@@ -785,7 +789,14 @@ export function SettingsDrawer({
             {section === "launch" && (
               <SettingsSection icon={<RocketLaunchIcon fontSize="small" />} title={t("settings.section.launch")} subtitle={t("settings.launch.subtitle")}>
                 <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
-                  <LaunchAdaptersCatalog t={t} fullPage token={sessionToken} isAdmin={!currentUser || currentUser.role === "admin"} />
+                  <LaunchAdaptersCatalog
+                    t={t}
+                    fullPage
+                    token={sessionToken}
+                    isAdmin={!currentUser || currentUser.role === "admin"}
+                    showLaunchHistory={showLaunchHistory}
+                    onShowLaunchHistoryChange={onShowLaunchHistoryChange}
+                  />
                 </Box>
               </SettingsSection>
             )}
@@ -1181,9 +1192,6 @@ function RelaySettingsPanel({
           </Alert>
         </Box>
       ) : null}
-      <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
-        <CodeLaunchRelayBanner t={t} />
-      </Box>
       {relayView === "form" && canManage ? (
       <Box
         sx={{
@@ -1278,6 +1286,15 @@ function RelaySettingsPanel({
                       />
                     ))}
                   </Stack>
+                  {apiFormat === "openai" ||
+                  relayLikelyNeedsCodeLaunch({
+                    kind: apiFormat,
+                    baseUrl,
+                    name,
+                    id: editingProviderId ?? undefined
+                  }) ? (
+                    <CodeLaunchRelayBanner t={t} />
+                  ) : null}
                 </Stack>
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.channelName")}>

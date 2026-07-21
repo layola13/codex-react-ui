@@ -67,7 +67,9 @@ export function useI18n() {
 
   const t = useCallback<TranslateFn>(
     (key, values) => {
-      const template: string = translations[locale][key] ?? translations.en[key] ?? key;
+      // Always fall back: incomplete locale packs must not crash the workbench.
+      const pack = translations[locale] ?? translations.en;
+      const template: string = pack[key] ?? translations.en[key] ?? key;
       if (!values) {
         return template;
       }

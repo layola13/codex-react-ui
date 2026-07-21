@@ -1,4 +1,4 @@
-const CACHE_NAME = "codex-react-ui-pwa-v2";
+const CACHE_NAME = "codex-react-ui-pwa-v4";
 const APP_SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -47,15 +47,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const fetched = fetch(request).then((response) => {
+    fetch(request)
+      .then((response) => {
         if (response.ok && response.type === "basic") {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
         return response;
-      });
-      return cached ?? fetched;
-    })
+      })
+      .catch(() => caches.match(request).then((cached) => cached ?? Response.error()))
   );
 });

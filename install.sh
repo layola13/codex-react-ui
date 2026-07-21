@@ -16,6 +16,7 @@ DEFAULT_HOST="${CODEX_UI_HOST:-127.0.0.1}"
 SKIP_BUN=0
 SKIP_BUILD=0
 SKIP_CODEX=0
+SKIP_PLAYWRIGHT=0
 FORCE_ENV=0
 NO_ENV=0
 NO_WRAPPER=0
@@ -37,6 +38,7 @@ Usage: ./install.sh [options]
     5. Write ~/.config/codex-react-ui/.env (JWT, admin, port)
     6. Install ~/.local/bin/codex-react-ui launcher wrapper
     7. Optionally check / hint for Codex CLI (CODEX_BIN)
+    8. Verify UI with Playwright headless browser test
 
 Options:
   --bin-dir DIR       Wrapper install dir (default: ~/.local/bin)
@@ -49,6 +51,7 @@ Options:
   --skip-bun          Do not install Bun (must already be on PATH)
   --skip-build        Skip bun run build (install deps only)
   --skip-codex        Do not check for Codex CLI
+  --skip-playwright   Skip Playwright post-install UI verification
   --start             Start the UI after install (foreground)
   --dev               After install, prefer `bun run dev` when starting
   --offline           Never run network package installs (fail if deps missing)
@@ -79,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --skip-bun) SKIP_BUN=1; shift ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --skip-codex) SKIP_CODEX=1; shift ;;
+    --skip-playwright) SKIP_PLAYWRIGHT=1; shift ;;
     --start) START_AFTER=1; shift ;;
     --dev) DEV_MODE=1; shift ;;
     --offline) OFFLINE=1; shift ;;
@@ -372,6 +376,62 @@ bun_install_and_build() {
   log "build complete"
 }
 
+verify_with_playwright() {
+  if [[ "$SKIP_PLAYWRIGHT" -eq 1 ]]; then
+    log "skip Playwright verification (--skip-playwright set)"
+    return 0
+  fi
+
+  log "checking Playwright browser dependencies…"
+  if [[ "$OFFLINE" -eq 0 ]]; then
+    npx playwright install chromium --with-deps >/dev/null 2>&1 || npx playwright install chromium >/dev/null 2>&1 || warn "playwright browser install had warnings"
+  fi
+
+  local host="${CODEX_UI_HOST:-$DEFAULT_HOST}"
+  local port="${CODEX_UI_PORT:-$DEFAULT_PORT}"
+  local url="http://${host}:${port}/"
+
+  local pid=""
+  local created_server=0
+
+  if ! curl -s "http://${host}:${port}/api/health" >/dev/null 2>&1; then
+    log "starting temporary server on ${url} for Playwright verification…"
+    cd "$ROOT"
+    if [[ -f "$USER_ENV" ]]; then
+      set -a
+      # shellcheck disable=SC1090
+      source "$USER_ENV"
+      set +a
+    fi
+    bun run launch -- --skip-build >/dev/null 2>&1 &
+    pid=$!
+    created_server=1
+
+    local count=0
+    until curl -s "http://${host}:${port}/api/health" >/dev/null 2>&1; do
+      sleep 0.5
+      count=$((count + 1))
+      if [[ $count -ge 30 ]]; then
+        [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+        die "server failed to start on ${url} within 15s"
+      fi
+    done
+  fi
+
+  log "running Playwright UI verification check on ${url}…"
+  if node "$ROOT/scripts/check-ui.mjs" "$url"; then
+    log "Playwright verification passed! UI is working properly."
+  else
+    [[ "$created_server" -eq 1 && -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+    die "Playwright UI verification failed for ${url}"
+  fi
+
+  if [[ "$created_server" -eq 1 && "$START_AFTER" -ne 1 && -n "$pid" ]]; then
+    log "stopping temporary test server…"
+    kill "$pid" 2>/dev/null || true
+  fi
+}
+
 print_summary() {
   cat <<EOF
 
@@ -436,6 +496,7 @@ write_wrapper
 check_codex
 ensure_path_bin "$BIN_DIR"
 ensure_path_bin "$HOME/.bun/bin"
+verify_with_playwright
 print_summary
 
 if [[ "$START_AFTER" -eq 1 ]]; then

@@ -130,6 +130,8 @@ const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
   leftPanelVisible: "codex-react-ui.left-panel-visible",
   showAssistantUsageDetails: "codex-react-ui.show-assistant-usage-details",
+  /** Temporarily hide non-Codex *-launch history until multi-engine history is stable. Default: false. */
+  showLaunchHistory: "codex-react-ui.show-launch-history",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
   panelLayout: "codex-react-ui.panel-layout",
   filesPanelLayout: "codex-react-ui.files-panel-layout"
@@ -158,6 +160,26 @@ type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
+
+async function refreshPwaCache() {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  if ("caches" in window) {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map((name) => caches.delete(name)));
+  }
+  await navigator.serviceWorker.register("/sw.js");
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 type ComposerSlashCommand =
   | { type: "settings"; section: SettingsSectionId; pluginTab?: CodexPluginSettingsTab }
@@ -306,6 +328,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
   const [showAssistantUsageDetails, setShowAssistantUsageDetails] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showAssistantUsageDetails, false));
+  const [showLaunchHistory, setShowLaunchHistory] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showLaunchHistory, false));
   const [rightWorkspaceVisible, setRightWorkspaceVisible] = useState(false);
   const [rightWorkspaceTab, setRightWorkspaceTab] = useState<RightWorkspaceTab>("sidechat");
   const [sideChatTabs, setSideChatTabs] = useState<SideChatTab[]>(() => [
@@ -528,15 +551,23 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker.register("/sw.js");
+      void refreshPwaCache().catch((error) => {
+        console.warn("[pwa] cache refresh failed", error);
+      });
+    }
+    const win = window as unknown as { __deferredPwaInstallPrompt?: BeforeInstallPromptEvent | null };
+    if (win.__deferredPwaInstallPrompt) {
+      setInstallPromptEvent(win.__deferredPwaInstallPrompt);
     }
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
+      win.__deferredPwaInstallPrompt = event as BeforeInstallPromptEvent;
       setInstallPromptEvent(event as BeforeInstallPromptEvent);
     };
     const onInstalled = () => {
       setAppInstalled(true);
       setInstallPromptEvent(null);
+      win.__deferredPwaInstallPrompt = null;
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     window.addEventListener("appinstalled", onInstalled);
@@ -553,6 +584,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.showAssistantUsageDetails, JSON.stringify(showAssistantUsageDetails));
   }, [showAssistantUsageDetails]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.showLaunchHistory, JSON.stringify(showLaunchHistory));
+  }, [showLaunchHistory]);
 
   useEffect(() => {
     if (!rightWorkspaceVisible || rightWorkspaceTab !== "sidechat") {
@@ -978,9 +1013,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
         const session = await fetchSessionToken(storedToken);
         if (!mounted) return;
-        if (session.token) {
-          window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
+        if (session.authenticated === false || session.loginRequired || !session.token) {
+          window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+          setAuthStatus("loginRequired");
+          return;
         }
+        window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
         setAuthSession(session);
         setAuthStatus("authenticated");
         dispatch({ type: "token", token: session.token });
@@ -2412,6 +2450,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           assistantUsageDisplay={showAssistantUsageDetails ? "details" : "summary"}
           t={t}
           onPromptSelect={usePromptSuggestion}
+          onOpenOnboardingSection={(section) => openSettings(section)}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
           onStatsClose={() => setStatsPanelScope(null)}
           onSlashNoticeClose={() => setSlashNotice(null)}
@@ -2522,27 +2561,44 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, session.token);
       setAuthSession(session);
       dispatch({ type: "token", token: session.token });
+      // Mark authenticated immediately so UI enters the workbench even if
+      // the WebSocket or subsequent RPCs are slow/failing.
       setAuthStatus("authenticated");
-      await client.connect(session.token);
-      const providers = await fetchProviders(session.token);
-      dispatch({ type: "providers", providers });
-      try {
-        const configResult = await client.rpc("config/read", { includeLayers: false });
-        const view = parseConfigReadResponse(configResult);
-        setCodexConfig(view);
-        const providerFromConfig = view.modelProvider ? providers.find((provider) => provider.id === view.modelProvider) : undefined;
-        if (providerFromConfig) {
-          setActiveProviderId(providerFromConfig.id);
+      // Best-effort post-login setup: never block the workbench.
+      void (async () => {
+        try {
+          await withTimeout(client.connect(session.token), 8000, "WebSocket connect timeout");
+        } catch (error) {
+          console.warn("[auth] WebSocket connect failed, workbench remains usable", error);
         }
-        if (view.model) {
-          setSelectedModel((current) => current || view.model || current);
+        try {
+          const providers = await withTimeout(fetchProviders(session.token), 8000, "Provider fetch timeout");
+          dispatch({ type: "providers", providers });
+        } catch (error) {
+          console.warn("[auth] provider fetch failed", error);
         }
-      } catch {
-        /* optional */
-      }
-      await loadBasics();
+        try {
+          const configResult = await withTimeout(client.rpc("config/read", { includeLayers: false }), 8000, "Config read timeout");
+          const view = parseConfigReadResponse(configResult);
+          setCodexConfig(view);
+          const providerFromConfig = view.modelProvider ? state.providers.find((provider) => provider.id === view.modelProvider) : undefined;
+          if (providerFromConfig) {
+            setActiveProviderId(providerFromConfig.id);
+          }
+          if (view.model) {
+            setSelectedModel((current) => current || view.model || current);
+          }
+        } catch {
+          /* optional */
+        }
+        try {
+          await withTimeout(loadBasics(), 12000, "loadBasics timeout");
+        } catch (error) {
+          console.warn("[auth] loadBasics failed, workbench remains usable", error);
+        }
+      })();
     },
-    [client, loadBasics]
+    [client, loadBasics, state.providers]
   );
 
   const handleLogin = useCallback(
@@ -2989,6 +3045,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       installAvailable={Boolean(installPromptEvent) && !appInstalled}
                       backgroundImage={historyBackgroundImage}
                       sessionToken={state.token}
+                      showLaunchHistory={showLaunchHistory}
                       t={t}
                       onSearchChange={setHistorySearchTerm}
                       onRefresh={() => void loadHistory(historySearchTerm)}
@@ -3034,6 +3091,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 installAvailable={Boolean(installPromptEvent) && !appInstalled}
                 backgroundImage={historyBackgroundImage}
                 sessionToken={state.token}
+                showLaunchHistory={showLaunchHistory}
                 t={t}
                 onSearchChange={setHistorySearchTerm}
                 onRefresh={() => void loadHistory(historySearchTerm)}
@@ -3351,6 +3409,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         customThemePlugins={customThemePlugins}
         leftPanelVisible={leftPanelVisible}
         showAssistantUsageDetails={showAssistantUsageDetails}
+        showLaunchHistory={showLaunchHistory}
         petDockEnabled={petDockEnabled}
         cwd={cwd}
         permission={permission}
@@ -3391,6 +3450,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onRemoveCustomThemePlugin={removeCustomThemePlugin}
         onLeftPanelVisibleChange={setLeftPanelVisible}
         onShowAssistantUsageDetailsChange={setShowAssistantUsageDetails}
+        onShowLaunchHistoryChange={setShowLaunchHistory}
         onPetDockEnabledChange={setPetDockEnabled}
         onCwdChange={setCwd}
         onPermissionChange={requestPermissionChange}
