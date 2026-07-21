@@ -8,7 +8,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Local Bun HTTP/WebSocket bridge on `127.0.0.1` only; the browser never talks to `codex app-server` directly.
 - Codex app-server over stdio, including `initialize`, `thread/start`, `turn/start`, `model/list`, `thread/list`, and account read.
 - New conversation permission presets, including the explicit `Dangerously bypass approvals and sandbox` option gated by typing `BYPASS`.
-- Third-party provider metadata: base URL, native models, model aliases, API key preview, save, and activate.
+- Third-party relay channel metadata: API format, base URL, fetched/active models, model aliases, model rates, API key preview, remarks, save, test, and activate.
 - Provider activation writes Codex config via `config/batchWrite` and restarts app-server so temporary API-key env vars are available.
 - Settings -> Codex Plugins manages real Codex plugin marketplaces, installed plugin mentions, hooks, plugin app auth state, and MCP server inventory without placeholder content.
 - Main composer UI commands `/fast`, `/status`, `/stats`, `/usage`, `/goal`, and `/plan` are handled by the browser before `turn/start`; Settings-oriented commands open Settings instead of the right workspace.
@@ -110,7 +110,16 @@ The watcher only stages `README.md`, writes its pid/log files under `.codex-main
 
 Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Bun process memory / OS keyring and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
 
-Admins manage channels under **Settings → Relay**. Members only see relays listed in their `allowedProviderIds` (configured under **Settings → Members** when creating or editing a user).
+Admins manage channels under **Settings → Relay**. Members only see relays listed in their `allowedProviderIds` (configured under **Settings → Members** when creating or editing a user). The UI follows an AxonHub-style channel workflow:
+
+1. Open **Settings → Relay → Add channel**.
+2. Choose an API format / service template such as Responses relay, OpenAI Chat Completions, Ollama, LM Studio, or Bedrock.
+3. Fill in channel name, Base URL, API Key, optional model aliases, model rates, and free-form **Remark** notes.
+4. Click **Fetch models** to call the upstream model-list endpoint through the local server. The fetcher supports OpenAI-compatible `/v1/models`, Anthropic-like `/v1/models`, Gemini `/v1beta/models`, and common relay URL variants.
+5. Select fetched models into the **Active models** list, or type comma-separated model IDs manually.
+6. Save the channel, then choose a model in the channel list and click **Activate**.
+
+The channel list shows saved channel ID, provider/API format, active status, tags, model chips, remarks, key storage, timestamps, and per-channel model selectors. Expanding a row shows Base URL, API format, update time, remark, key storage, tags, and the saved active models. Search matches channel name, ID, kind, Base URL, default model, active models, tags, and remarks.
 
 Activating a provider writes:
 
@@ -119,6 +128,8 @@ Activating a provider writes:
 - `model`
 
 Then the bridge restarts `codex app-server` so the selected provider and any in-memory API key are active.
+
+Chat Completions-only relays still need a Responses-compatible adapter for Codex traffic. **Settings → Relay** shows code-launch hints for known Chat Completions endpoints, and **Settings → Launch adapters** provides install/copy commands for the `*-launch` helpers.
 
 ## UI Profiles
 

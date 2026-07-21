@@ -233,6 +233,8 @@ export interface ProviderConfig {
     outputUsdPerMillion: number;
     multiplier: number;
   }>;
+  /** Free-form notes for the relay/channel, shown in list/detail views. */
+  remark?: string;
   createdAt: number;
   updatedAt: number;
 }

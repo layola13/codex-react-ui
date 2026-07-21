@@ -28,10 +28,11 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography
 } from "@mui/material";
 import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -58,6 +59,7 @@ import StorageIcon from "@mui/icons-material/Storage";
 import TokenIcon from "@mui/icons-material/Token";
 import TuneIcon from "@mui/icons-material/Tune";
 import AddIcon from "@mui/icons-material/Add";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
@@ -97,6 +99,7 @@ import type {
   SkillEntry,
   ToolingState
 } from "../state/codexClient";
+import { fetchProviderModels } from "../state/codexClient";
 import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
@@ -779,6 +782,7 @@ export function SettingsDrawer({
                 activeProvider={activeProvider}
                 selectedModel={selectedModel}
                 canManage={canManageRelay}
+                sessionToken={sessionToken}
                 t={t}
                 onSaveProvider={onSaveProvider}
                 onActivateProvider={onActivateProvider}
@@ -1006,6 +1010,7 @@ function RelaySettingsPanel({
   activeProvider,
   selectedModel,
   canManage = true,
+  sessionToken,
   t,
   onSaveProvider,
   onActivateProvider,
@@ -1016,6 +1021,7 @@ function RelaySettingsPanel({
   activeProvider?: ProviderConfig;
   selectedModel: string;
   canManage?: boolean;
+  sessionToken?: string | null;
   t: TranslateFn;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => Promise<void>;
   onActivateProvider: (providerId: string, model?: string) => Promise<void>;
@@ -1035,11 +1041,23 @@ function RelaySettingsPanel({
   const [nativeModels, setNativeModels] = useState(template.nativeModels);
   const [modelAliases, setModelAliases] = useState(template.modelAliases);
   const [modelRates, setModelRates] = useState(template.modelRates);
+  const [remark, setRemark] = useState("");
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
   const [testStatuses, setTestStatuses] = useState<Record<string, TestStatus>>({});
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+
+  // axonhub-style fetch models panel state
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [selectedFetchedModels, setSelectedFetchedModels] = useState<string[]>([]);
+  const [showFetchedModelsPanel, setShowFetchedModelsPanel] = useState(false);
+  const [fetchedModelsSearch, setFetchedModelsSearch] = useState("");
+  const [showNotAddedModelsOnly, setShowNotAddedModelsOnly] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsMessage, setFetchModelsMessage] = useState<string | null>(null);
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!canManage && relayView === "form") {
@@ -1047,17 +1065,50 @@ function RelaySettingsPanel({
     }
   }, [canManage, relayView]);
 
+  const activeModelList = useMemo(() => parseCsv(nativeModels), [nativeModels]);
+
   const filteredProviders = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) {
       return providers;
     }
     return providers.filter((provider, index) =>
-      [providerTableId(provider, index), provider.name, provider.kind, provider.baseUrl, provider.defaultModel, ...provider.nativeModels, ...providerTags(provider, provider.id === activeProviderId)]
+      [
+        providerTableId(provider, index),
+        provider.name,
+        provider.kind,
+        provider.baseUrl,
+        provider.defaultModel,
+        provider.remark,
+        ...provider.nativeModels,
+        ...providerTags(provider, provider.id === activeProviderId)
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(needle))
     );
   }, [activeProviderId, providers, search]);
+
+  const filteredFetchedModels = useMemo(() => {
+    let models = fetchedModels;
+    if (showNotAddedModelsOnly) {
+      models = models.filter((model) => !activeModelList.includes(model));
+    }
+    const needle = fetchedModelsSearch.trim().toLowerCase();
+    if (needle) {
+      models = models.filter((model) => model.toLowerCase().includes(needle));
+    }
+    return models;
+  }, [activeModelList, fetchedModels, fetchedModelsSearch, showNotAddedModelsOnly]);
+
+  const clearFetchedModelsState = () => {
+    setFetchedModels([]);
+    setSelectedFetchedModels([]);
+    setShowFetchedModelsPanel(false);
+    setFetchedModelsSearch("");
+    setShowNotAddedModelsOnly(false);
+    setFetchModelsMessage(null);
+    setFetchModelsError(null);
+  };
 
   const resetFormFromTemplate = (entry: (typeof RELAY_PROVIDER_TEMPLATES)[number]) => {
     setTemplateId(entry.id);
@@ -1067,7 +1118,9 @@ function RelaySettingsPanel({
     setNativeModels(entry.nativeModels);
     setModelAliases(entry.modelAliases);
     setModelRates(entry.modelRates);
+    setRemark("");
     setApiKey("");
+    clearFetchedModelsState();
   };
 
   const startAddChannel = () => {
@@ -1091,9 +1144,92 @@ function RelaySettingsPanel({
     setNativeModels(provider.nativeModels.join(", "));
     setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
     setModelRates(formatModelRates(provider.modelRates) || formatModelRates(defaultRatesForProvider(provider)));
+    setRemark(provider.remark ?? "");
     setApiKey("");
     setEditingProviderId(provider.id);
+    clearFetchedModelsState();
     setRelayView("form");
+  };
+
+  const editingProviderEarly = providers.find((provider) => provider.id === editingProviderId);
+  const canFetchModels = Boolean(baseUrl.trim()) && (Boolean(apiKey.trim()) || Boolean(editingProviderEarly?.apiKeyPreview) || Boolean(editingProviderId));
+
+  const handleFetchModels = async () => {
+    if (!canManage || fetchingModels) {
+      return;
+    }
+    if (!baseUrl.trim()) {
+      setFetchModelsError(t("settings.relay.fetchModelsNeedBaseUrl"));
+      return;
+    }
+    if (!apiKey.trim() && !editingProviderId && !editingProviderEarly?.apiKeyPreview) {
+      setFetchModelsError(t("settings.relay.fetchModelsNeedKey"));
+      return;
+    }
+    if (!sessionToken) {
+      setFetchModelsError(t("settings.relay.fetchModelsFailed"));
+      return;
+    }
+
+    setFetchingModels(true);
+    setFetchModelsError(null);
+    setFetchModelsMessage(null);
+    try {
+      const result = await fetchProviderModels(sessionToken, {
+        baseUrl: baseUrl.trim(),
+        apiKey: apiKey.trim() || undefined,
+        kind: apiFormat,
+        providerId: editingProviderId ?? undefined
+      });
+      if (result.error && result.models.length === 0) {
+        setFetchModelsError(result.error || t("settings.relay.fetchModelsFailed"));
+        return;
+      }
+      const models = result.models.map((entry) => entry.id).filter(Boolean);
+      setFetchedModels(models);
+      setSelectedFetchedModels([]);
+      setShowFetchedModelsPanel(true);
+      setFetchedModelsSearch("");
+      setShowNotAddedModelsOnly(false);
+      const count = models.length;
+      setFetchModelsMessage(
+        count > 100
+          ? t("settings.relay.fetchModelsSuccessLarge", { count })
+          : t("settings.relay.fetchModelsSuccess", { count })
+      );
+      if (result.error) {
+        setFetchModelsError(result.error);
+      }
+    } catch (error) {
+      setFetchModelsError(formatRelayErrorText(error) || t("settings.relay.fetchModelsFailed"));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const toggleFetchedModelSelection = (model: string) => {
+    setSelectedFetchedModels((prev) => (prev.includes(model) ? prev.filter((entry) => entry !== model) : [...prev, model]));
+  };
+
+  const selectAllFilteredModels = () => {
+    setSelectedFetchedModels(filteredFetchedModels);
+  };
+
+  const deselectAllFetchedModels = () => {
+    setSelectedFetchedModels([]);
+  };
+
+  // Toggle semantics from axonhub: selected already-active models are removed; others are added.
+  const applySelectedFetchedModels = () => {
+    if (selectedFetchedModels.length === 0) {
+      return;
+    }
+    const current = parseCsv(nativeModels);
+    const toRemove = new Set(selectedFetchedModels.filter((model) => current.includes(model)));
+    const toAdd = selectedFetchedModels.filter((model) => !current.includes(model));
+    const next = [...current.filter((model) => !toRemove.has(model)), ...toAdd];
+    setNativeModels(next.join(", "));
+    setSelectedFetchedModels([]);
   };
 
   const saveChannel = async () => {
@@ -1118,6 +1254,7 @@ function RelaySettingsPanel({
           nativeModels: nativeModelList,
           modelAliases: parseAliases(modelAliases),
           modelRates: parseModelRates(modelRates),
+          remark: remark.trim() || undefined,
           createdAt: editingProvider?.createdAt ?? now,
           updatedAt: now
         },
@@ -1126,6 +1263,7 @@ function RelaySettingsPanel({
       setRelayView("list");
       setEditingProviderId(null);
       setApiKey("");
+      clearFetchedModelsState();
     } finally {
       setSaving(false);
     }
@@ -1171,6 +1309,9 @@ function RelaySettingsPanel({
         delete next[provider.id];
         return next;
       });
+      if (expandedProviderId === provider.id) {
+        setExpandedProviderId(null);
+      }
     } finally {
       setBusyProviderId(null);
     }
@@ -1178,6 +1319,7 @@ function RelaySettingsPanel({
 
   const editingProvider = providers.find((provider) => provider.id === editingProviderId);
   const formTitle = editingProvider ? t("settings.relay.editChannel") : t("settings.relay.addChannel");
+  const selectionIncludesActive = selectedFetchedModels.some((model) => activeModelList.includes(model));
 
   return (
     <SettingsSection
@@ -1196,7 +1338,10 @@ function RelaySettingsPanel({
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", lg: "230px minmax(0, 1fr)" },
+          gridTemplateColumns: {
+            xs: "1fr",
+            lg: showFetchedModelsPanel ? "210px minmax(0, 1fr) minmax(280px, 360px)" : "230px minmax(0, 1fr)"
+          },
           minHeight: 430
         }}
       >
@@ -1315,13 +1460,54 @@ function RelaySettingsPanel({
                 />
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.supportedModels")}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  label={t("settings.relay.nativeModels")}
-                  value={nativeModels}
-                  onChange={(event) => setNativeModels(event.target.value)}
-                />
+                <Stack spacing={1}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label={t("settings.relay.activeModels")}
+                      value={nativeModels}
+                      onChange={(event) => setNativeModels(event.target.value)}
+                      helperText={t("settings.relay.activeModelsHelp")}
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={fetchingModels ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+                      onClick={() => void handleFetchModels()}
+                      disabled={!canFetchModels || fetchingModels || !sessionToken}
+                      sx={{ whiteSpace: "nowrap", minWidth: { sm: 148 } }}
+                    >
+                      {t("settings.relay.fetchModels")}
+                    </Button>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {t("settings.relay.manualModelsHint")}
+                  </Typography>
+                  {fetchModelsMessage ? (
+                    <Alert severity="success" variant="outlined" onClose={() => setFetchModelsMessage(null)}>
+                      {fetchModelsMessage}
+                    </Alert>
+                  ) : null}
+                  {fetchModelsError ? (
+                    <Alert severity="error" variant="outlined" onClose={() => setFetchModelsError(null)}>
+                      {fetchModelsError}
+                    </Alert>
+                  ) : null}
+                  {activeModelList.length > 0 ? (
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                      {activeModelList.slice(0, 12).map((model) => (
+                        <Chip
+                          key={model}
+                          size="small"
+                          label={model}
+                          onDelete={() => setNativeModels(activeModelList.filter((entry) => entry !== model).join(", "))}
+                          sx={{ maxWidth: 220, borderRadius: 1 }}
+                        />
+                      ))}
+                      {activeModelList.length > 12 ? <Chip size="small" variant="outlined" label={t("settings.relay.moreModels", { count: activeModelList.length - 12 })} /> : null}
+                    </Stack>
+                  ) : null}
+                </Stack>
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.modelAliases")}>
                 <TextField
@@ -1344,10 +1530,27 @@ function RelaySettingsPanel({
                   helperText={t("settings.relay.modelRatesDescription")}
                 />
               </RelayFormRow>
+              <RelayFormRow label={t("settings.relay.remark")}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label={t("settings.relay.remark")}
+                  placeholder={t("settings.relay.remarkPlaceholder")}
+                  value={remark}
+                  onChange={(event) => setRemark(event.target.value)}
+                  helperText={t("settings.relay.remarkHelp")}
+                  inputProps={{ "aria-label": t("settings.relay.remark") }}
+                />
+              </RelayFormRow>
               <Stack direction="row" spacing={1} justifyContent="space-between" sx={{ pt: 0.5 }}>
                 <Button
                   variant="outlined"
-                  onClick={() => setRelayView("list")}
+                  onClick={() => {
+                    setRelayView("list");
+                    clearFetchedModelsState();
+                  }}
                 >
                   {t("settings.relay.backToChannels")}
                 </Button>
@@ -1373,6 +1576,107 @@ function RelaySettingsPanel({
             </Stack>
           </Stack>
         </Box>
+
+        {showFetchedModelsPanel ? (
+          <Box
+            sx={{
+              borderLeft: { lg: "1px solid" },
+              borderTop: { xs: "1px solid", lg: 0 },
+              borderColor: "divider",
+              bgcolor: "background.default",
+              p: 1.5,
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 360,
+              maxHeight: { lg: 640 }
+            }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                {t("settings.relay.fetchedModels")}
+              </Typography>
+              <IconButton size="small" aria-label={t("settings.relay.closeFetchedPanel")} onClick={() => clearFetchedModelsState()}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder={t("settings.relay.fetchedModelsSearch")}
+              value={fetchedModelsSearch}
+              onChange={(event) => setFetchedModelsSearch(event.target.value)}
+              InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
+              sx={{ mb: 1 }}
+            />
+            <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ mb: 1 }} flexWrap="wrap" useFlexGap>
+              <FormControlLabel
+                control={<Checkbox size="small" checked={showNotAddedModelsOnly} onChange={(event) => setShowNotAddedModelsOnly(event.target.checked)} />}
+                label={<Typography variant="caption">{t("settings.relay.showNotAddedOnly")}</Typography>}
+                sx={{ mr: 0 }}
+              />
+              <Stack direction="row" spacing={0.5}>
+                <Button size="small" variant="outlined" onClick={selectAllFilteredModels} disabled={filteredFetchedModels.length === 0}>
+                  {t("settings.relay.selectAll")}
+                </Button>
+                <Button size="small" variant="outlined" onClick={deselectAllFetchedModels} disabled={selectedFetchedModels.length === 0}>
+                  {t("settings.relay.deselectAll")}
+                </Button>
+              </Stack>
+            </Stack>
+            <Box sx={{ flex: 1, overflow: "auto", minHeight: 180, pr: 0.5 }}>
+              {filteredFetchedModels.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                  {fetchedModels.length === 0 ? t("settings.relay.noModelsFetched") : t("settings.relay.noChannels")}
+                </Typography>
+              ) : (
+                <Stack spacing={0.5}>
+                  {filteredFetchedModels.map((model) => {
+                    const isAdded = activeModelList.includes(model);
+                    const isSelected = selectedFetchedModels.includes(model);
+                    return (
+                      <Box
+                        key={model}
+                        onClick={() => toggleFetchedModelSelection(model)}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                          px: 1,
+                          py: 0.75,
+                          borderRadius: 1,
+                          cursor: "pointer",
+                          border: "1px solid",
+                          borderColor: isSelected ? "primary.main" : "divider",
+                          bgcolor: isSelected ? "action.selected" : isAdded ? "action.hover" : "background.paper"
+                        }}
+                      >
+                        <Checkbox size="small" checked={isSelected} tabIndex={-1} disableRipple />
+                        <Tooltip title={model}>
+                          <Typography variant="body2" sx={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "JetBrains Mono, monospace" }}>
+                            {model}
+                          </Typography>
+                        </Tooltip>
+                        {isAdded && !isSelected ? <Chip size="small" label={t("settings.relay.alreadyAdded")} sx={{ height: 20 }} /> : null}
+                        {isAdded && isSelected ? <Chip size="small" color="error" label={t("settings.relay.willRemove")} sx={{ height: 20 }} /> : null}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Box>
+            <Stack spacing={1} sx={{ pt: 1, borderTop: "1px solid", borderColor: "divider", mt: 1 }}>
+              <Typography variant="caption" color="text.secondary">
+                {t("settings.relay.selectedCount", { count: selectedFetchedModels.length })}
+                {selectionIncludesActive ? ` · ${t("settings.relay.removeSelectedFromActive")}` : ""}
+              </Typography>
+              <Button variant="contained" size="small" onClick={applySelectedFetchedModels} disabled={selectedFetchedModels.length === 0}>
+                {selectionIncludesActive
+                  ? t("settings.relay.confirmSelection")
+                  : t("settings.relay.addSelected", { count: selectedFetchedModels.length })}
+              </Button>
+            </Stack>
+          </Box>
+        ) : null}
       </Box>
       ) : null}
 
@@ -1488,7 +1792,7 @@ function RelaySettingsPanel({
                   <TableCell>{t("settings.relay.status")}</TableCell>
                   <TableCell>{t("settings.relay.tags")}</TableCell>
                   <TableCell>{t("settings.relay.supportedModels")}</TableCell>
-                  <TableCell>{t("settings.relay.proxy")}</TableCell>
+                  <TableCell>{t("settings.relay.remark")}</TableCell>
                   <TableCell align="center">{t("settings.relay.health")}</TableCell>
                   <TableCell align="center">{t("settings.relay.orderingWeight")}</TableCell>
                   <TableCell align="center">{t("settings.relay.createdAt")}</TableCell>
@@ -1511,147 +1815,238 @@ function RelaySettingsPanel({
                     const selectedProviderModel = providerModels[provider.id] ?? provider.defaultModel ?? modelOptions[0]?.value ?? "";
                     const visibleModels = modelOptions.slice(0, 3);
                     const testStatus = testStatuses[provider.id];
+                    const expanded = expandedProviderId === provider.id;
                     return (
-                      <TableRow
-                        key={provider.id}
-                        hover
-                        sx={{
-                          bgcolor: active ? "action.selected" : "transparent",
-                          "& td": { borderColor: "divider", py: 1.25 }
-                        }}
-                      >
-                        <TableCell>
-                          <IconButton size="small" aria-label={t("settings.relay.expandProvider", { name: provider.name })}>
-                            <KeyboardArrowRightIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                        <TableCell padding="checkbox">
-                          <Checkbox size="small" checked={active} onChange={() => void activateChannel(provider, selectedProviderModel)} />
-                        </TableCell>
-                        <TableCell sx={{ minWidth: 190 }}>
-                          <Stack spacing={0.35} sx={{ minWidth: 0 }}>
-                            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
-                              <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
-                                {provider.name}
+                      <Fragment key={provider.id}>
+                        <TableRow
+                          hover
+                          sx={{
+                            bgcolor: active ? "action.selected" : "transparent",
+                            "& td": { borderColor: "divider", py: 1.25 }
+                          }}
+                        >
+                          <TableCell>
+                            <IconButton
+                              size="small"
+                              aria-label={t("settings.relay.expandProvider", { name: provider.name })}
+                              onClick={() => setExpandedProviderId(expanded ? null : provider.id)}
+                            >
+                              {expanded ? <KeyboardArrowDownIcon fontSize="small" /> : <KeyboardArrowRightIcon fontSize="small" />}
+                            </IconButton>
+                          </TableCell>
+                          <TableCell padding="checkbox">
+                            <Checkbox size="small" checked={active} onChange={() => void activateChannel(provider, selectedProviderModel)} />
+                          </TableCell>
+                          <TableCell sx={{ minWidth: 190 }}>
+                            <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+                              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
+                                  {provider.name}
+                                </Typography>
+                                {active ? <Chip size="small" color="primary" label={t("settings.relay.active")} sx={{ height: 20, borderRadius: 1 }} /> : null}
+                              </Stack>
+                              <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", color: "text.secondary" }}>
+                                {providerTableId(provider, index)}
                               </Typography>
-                              {active ? <Chip size="small" color="primary" label={t("settings.relay.active")} sx={{ height: 20, borderRadius: 1 }} /> : null}
+                              <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere", display: "block" }}>
+                                {provider.baseUrl || t("settings.relay.managedProvider")} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
+                              </Typography>
                             </Stack>
-                            <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", color: "text.secondary" }}>
-                              {providerTableId(provider, index)}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere", display: "block" }}>
-                              {provider.baseUrl || t("settings.relay.managedProvider")} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={providerKindLabel(provider.kind)}
-                            avatar={<Box component="span">{providerKindInitial(provider.kind)}</Box>}
-                            variant="outlined"
-                            sx={{ bgcolor: "background.paper", borderRadius: 999 }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Switch size="small" checked={active} onChange={() => void activateChannel(provider, selectedProviderModel)} />
-                        </TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ minWidth: 150 }}>
-                            {providerTags(provider, active).map((tag) => (
-                              <Chip key={tag} size="small" label={translateProviderTag(tag, t)} variant="outlined" sx={{ height: 22, borderRadius: 1 }} />
-                            ))}
-                          </Stack>
-                        </TableCell>
-                        <TableCell sx={{ maxWidth: 320 }}>
-                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
-                            {visibleModels.map((option) => (
-                              <Chip key={option.value} size="small" label={option.value} sx={{ maxWidth: 160, borderRadius: 1 }} />
-                            ))}
-                            {modelOptions.length > visibleModels.length && <Chip size="small" label={`+${modelOptions.length - visibleModels.length}`} variant="outlined" />}
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Typography variant="caption" color="text.secondary">
-                            -
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Stack spacing={0.5} alignItems="center">
-                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: active ? "primary.main" : "success.main", mx: "auto", boxShadow: "0 0 8px rgba(34,197,94,0.42)" }} />
-                            <Typography variant="caption" color="text.secondary">
-                              {active ? t("settings.relay.activeHealth") : t("settings.relay.readyHealth")}
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Typography variant="body2" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
-                            {provider.modelRates?.[0]?.multiplier?.toFixed(4) ?? "1.0000"}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="center">
-                          <Typography variant="body2" color="text.secondary">
-                            {formatProviderCreatedAt(provider.createdAt)}
-                          </Typography>
-                        </TableCell>
-                        <TableCell align="right" sx={{ minWidth: 238 }}>
-                          <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
-                            <FormControl size="small" sx={{ minWidth: 112 }}>
-                              <InputLabel>{t("settings.relay.model")}</InputLabel>
-                              <Select
-                                value={selectedProviderModel}
-                                label={t("settings.relay.model")}
-                                onChange={(event) => setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))}
-                              >
-                                {modelOptions.map((option) => (
-                                  <MenuItem key={option.value} value={option.value}>
-                                    {option.label}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                            <ProviderCodeLaunchHint t={t} needsCodeLaunch={relayLikelyNeedsCodeLaunch(provider)} />
-                            <Button
+                          </TableCell>
+                          <TableCell>
+                            <Chip
                               size="small"
-                              variant={active ? "outlined" : "contained"}
-                              startIcon={<PlayArrowIcon />}
-                              onClick={() => void activateChannel(provider, selectedProviderModel)}
-                              disabled={busyProviderId === provider.id}
-                              sx={{ minWidth: 104 }}
-                            >
-                              {t("settings.relay.activate")}
-                            </Button>
-                            <Button
-                              size="small"
+                              label={providerKindLabel(provider.kind)}
+                              avatar={<Box component="span">{providerKindInitial(provider.kind)}</Box>}
                               variant="outlined"
-                              startIcon={busyProviderId === provider.id ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />}
-                              onClick={() => void testChannel(provider, selectedProviderModel)}
-                              disabled={busyProviderId === provider.id}
-                            >
-                              {t("settings.relay.test")}
-                            </Button>
-                            {canManage ? (
-                              <>
-                                <IconButton size="small" aria-label={t("settings.relay.editProvider", { name: provider.name })} onClick={() => startEditChannel(provider)}>
-                                  <EditIcon fontSize="small" />
-                                </IconButton>
-                                <IconButton size="small" color="error" aria-label={t("settings.relay.deleteProvider", { name: provider.name })} onClick={() => void deleteChannel(provider)} disabled={busyProviderId === provider.id}>
-                                  <DeleteOutlineIcon fontSize="small" />
-                                </IconButton>
-                              </>
-                            ) : null}
-                          </Stack>
-                          {testStatus ? (
-                            <Typography
-                              variant="caption"
-                              color={testStatus.state === "failed" ? "error.main" : "success.main"}
-                              sx={{ display: "block", mt: 0.75, maxWidth: 360, overflowWrap: "anywhere" }}
-                            >
-                              {testStatus.message}
+                              sx={{ bgcolor: "background.paper", borderRadius: 999 }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Switch size="small" checked={active} onChange={() => void activateChannel(provider, selectedProviderModel)} />
+                          </TableCell>
+                          <TableCell>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ minWidth: 150 }}>
+                              {providerTags(provider, active).map((tag) => (
+                                <Chip key={tag} size="small" label={translateProviderTag(tag, t)} variant="outlined" sx={{ height: 22, borderRadius: 1 }} />
+                              ))}
+                            </Stack>
+                          </TableCell>
+                          <TableCell sx={{ maxWidth: 320 }}>
+                            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                              {visibleModels.map((option) => (
+                                <Chip key={option.value} size="small" label={option.value} sx={{ maxWidth: 160, borderRadius: 1 }} />
+                              ))}
+                              {modelOptions.length > visibleModels.length && <Chip size="small" label={`+${modelOptions.length - visibleModels.length}`} variant="outlined" />}
+                            </Stack>
+                          </TableCell>
+                          <TableCell sx={{ maxWidth: 180 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={provider.remark || undefined}>
+                              {provider.remark?.trim() || t("settings.relay.noRemark")}
                             </Typography>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Stack spacing={0.5} alignItems="center">
+                              <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: active ? "primary.main" : "success.main", mx: "auto", boxShadow: "0 0 8px rgba(34,197,94,0.42)" }} />
+                              <Typography variant="caption" color="text.secondary">
+                                {active ? t("settings.relay.activeHealth") : t("settings.relay.readyHealth")}
+                              </Typography>
+                            </Stack>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
+                              {provider.modelRates?.[0]?.multiplier?.toFixed(4) ?? "1.0000"}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" color="text.secondary">
+                              {formatProviderCreatedAt(provider.createdAt)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ minWidth: 238 }}>
+                            <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
+                              <FormControl size="small" sx={{ minWidth: 112 }}>
+                                <InputLabel>{t("settings.relay.model")}</InputLabel>
+                                <Select
+                                  value={selectedProviderModel}
+                                  label={t("settings.relay.model")}
+                                  onChange={(event) => setProviderModels((current) => ({ ...current, [provider.id]: event.target.value }))}
+                                >
+                                  {modelOptions.map((option) => (
+                                    <MenuItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                              <ProviderCodeLaunchHint t={t} needsCodeLaunch={relayLikelyNeedsCodeLaunch(provider)} />
+                              <Button
+                                size="small"
+                                variant={active ? "outlined" : "contained"}
+                                startIcon={<PlayArrowIcon />}
+                                onClick={() => void activateChannel(provider, selectedProviderModel)}
+                                disabled={busyProviderId === provider.id}
+                                sx={{ minWidth: 104 }}
+                              >
+                                {t("settings.relay.activate")}
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={busyProviderId === provider.id ? <CircularProgress size={14} color="inherit" /> : <PlayArrowIcon />}
+                                onClick={() => void testChannel(provider, selectedProviderModel)}
+                                disabled={busyProviderId === provider.id}
+                              >
+                                {t("settings.relay.test")}
+                              </Button>
+                              {canManage ? (
+                                <>
+                                  <IconButton size="small" aria-label={t("settings.relay.editProvider", { name: provider.name })} onClick={() => startEditChannel(provider)}>
+                                    <EditIcon fontSize="small" />
+                                  </IconButton>
+                                  <IconButton size="small" color="error" aria-label={t("settings.relay.deleteProvider", { name: provider.name })} onClick={() => void deleteChannel(provider)} disabled={busyProviderId === provider.id}>
+                                    <DeleteOutlineIcon fontSize="small" />
+                                  </IconButton>
+                                </>
+                              ) : null}
+                            </Stack>
+                            {testStatus ? (
+                              <Typography
+                                variant="caption"
+                                color={testStatus.state === "failed" ? "error.main" : "success.main"}
+                                sx={{ display: "block", mt: 0.75, maxWidth: 360, overflowWrap: "anywhere" }}
+                              >
+                                {testStatus.message}
+                              </Typography>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                        {expanded ? (
+                          <TableRow key={`${provider.id}-expanded`}>
+                            <TableCell colSpan={12} sx={{ bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(15,23,42,0.55)" : "rgba(248,250,252,0.92)", py: 2 }}>
+                              <Box sx={{ px: { xs: 0.5, sm: 1.5 } }}>
+                                <Stack spacing={2}>
+                                  <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                                        {t("settings.relay.basicInfo")}
+                                      </Typography>
+                                      <Stack spacing={0.75}>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.baseUrl")}</Typography>
+                                          <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", textAlign: "right", overflowWrap: "anywhere", maxWidth: "70%" }}>
+                                            {provider.baseUrl || t("settings.relay.managedProvider")}
+                                          </Typography>
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.apiFormat")}</Typography>
+                                          <Typography variant="caption">{providerKindLabel(provider.kind)}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.createdAt")}</Typography>
+                                          <Typography variant="caption">{formatProviderDateTime(provider.createdAt)}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.updatedAt")}</Typography>
+                                          <Typography variant="caption">{formatProviderDateTime(provider.updatedAt)}</Typography>
+                                        </Stack>
+                                      </Stack>
+                                    </Box>
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                                        {t("settings.relay.additionalInfo")}
+                                      </Typography>
+                                      <Stack spacing={0.75}>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.orderingWeight")}</Typography>
+                                          <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
+                                            {provider.modelRates?.[0]?.multiplier?.toFixed(4) ?? "1.0000"}
+                                          </Typography>
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.remark")}</Typography>
+                                          <Typography variant="caption" sx={{ textAlign: "right", maxWidth: "70%", overflowWrap: "anywhere" }} title={provider.remark || undefined}>
+                                            {provider.remark?.trim() || t("settings.relay.noRemark")}
+                                          </Typography>
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.keyStorage")}</Typography>
+                                          <Typography variant="caption">{provider.apiKeyStorage ?? "none"}</Typography>
+                                        </Stack>
+                                        <Stack direction="row" spacing={1} justifyContent="space-between" alignItems="flex-start">
+                                          <Typography variant="caption" color="text.secondary">{t("settings.relay.tags")}</Typography>
+                                          <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap justifyContent="flex-end">
+                                            {providerTags(provider, active).map((tag) => (
+                                              <Chip key={tag} size="small" label={translateProviderTag(tag, t)} variant="outlined" sx={{ height: 20 }} />
+                                            ))}
+                                          </Stack>
+                                        </Stack>
+                                      </Stack>
+                                    </Box>
+                                  </Stack>
+                                  {provider.nativeModels.length > 0 ? (
+                                    <Box>
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
+                                        {t("settings.relay.supportedModels")}
+                                      </Typography>
+                                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                                        {provider.nativeModels.slice(0, 8).map((model) => (
+                                          <Chip key={model} size="small" label={model} sx={{ fontFamily: "JetBrains Mono, monospace", borderRadius: 1 }} />
+                                        ))}
+                                        {provider.nativeModels.length > 8 ? (
+                                          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: "center" }}>
+                                            {t("settings.relay.moreModels", { count: provider.nativeModels.length - 8 })}
+                                          </Typography>
+                                        ) : null}
+                                      </Stack>
+                                    </Box>
+                                  ) : null}
+                                </Stack>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </Fragment>
                     );
                   })
                 )}
@@ -1797,6 +2192,18 @@ function formatProviderCreatedAt(createdAt?: number): string {
     return "-";
   }
   return date.toISOString().slice(0, 10);
+}
+
+function formatProviderDateTime(value?: number): string {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function parseCsv(value: string): string[] {

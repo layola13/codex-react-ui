@@ -6,6 +6,29 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Completed Slice
 
+Implemented AxonHub-style Relay channel model fetching, active-model selection, remarks, and documentation.
+
+1. Channel model fetching:
+   - Added server-side `/api/provider/fetch-models`, so model discovery runs through the local trusted server and can reuse a saved in-memory/keyring API key for existing channels.
+   - Added upstream model-list parsing for OpenAI-compatible, Anthropic-like, Gemini, Zhipu/bigmodel, and common relay URL shapes.
+   - Settings -> Relay Add/Edit now exposes **Fetch models** beside **Active models**.
+   - Fetched models open in a searchable side panel with not-added filtering, select all, deselect all, and add/remove toggle semantics.
+2. Channel configuration and list:
+   - The editable supported-model field is now treated as the channel's active model list and still supports manual comma-separated IDs.
+   - Added free-form channel **Remark** metadata to shared types, provider persistence, profile import preservation, Relay form editing, search, table display, and expanded detail display.
+   - The channel list shows active status, model chips, remarks, timestamps, key storage, model selectors, test, activate, edit, delete, and expandable details.
+   - Members remain view-only for channel management and can only activate assigned relays.
+3. Documentation and localization:
+   - Updated all bundled locale JSON files for the new Relay labels.
+   - Updated README's Provider Switching section with the AxonHub-style channel workflow: create channel, choose API format, fetch models, activate models, save, activate, member ACL, and code-launch boundary.
+4. Verification:
+   - `bun run typecheck` passed.
+   - `bun run build` passed.
+   - Locale JSON parse check passed.
+   - Production-style launch was attempted; the sandbox reported `EADDRINUSE` on `43110`, `43111`, and `45110`, so runtime URL verification remains unavailable in this environment.
+
+## Previous Completed Slice
+
 Reduced command audit output to a one-line collapsed preview by default.
 
 1. Command rows:
@@ -366,4 +389,3 @@ Rules of engagement:
 - **Reference only** for Orca: UX patterns (parallel status, notify when done) — not runtime code.
 
 Out of scope for v1 arena: full VS Code editor, mobile companion, SSH remote worktrees (Orca desktop features).
-

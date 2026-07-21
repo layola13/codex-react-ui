@@ -806,6 +806,40 @@ export async function fetchProviders(token: string): Promise<ProviderConfig[]> {
   return body.data ?? [];
 }
 
+export type FetchProviderModelsResponse = {
+  models: Array<{ id: string }>;
+  error?: string | null;
+  endpoint?: string;
+};
+
+/** Fetch upstream model IDs for a relay (OpenAI-compatible /v1/models). Mirrors axonhub fetchModels. */
+export async function fetchProviderModels(
+  token: string,
+  input: { baseUrl: string; apiKey?: string; kind?: string; providerId?: string }
+): Promise<FetchProviderModelsResponse> {
+  const response = await fetch("/api/provider/fetch-models", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as FetchProviderModelsResponse & { error?: string };
+  if (!response.ok) {
+    return {
+      models: Array.isArray(body.models) ? body.models : [],
+      error: typeof body.error === "string" && body.error ? body.error : `Failed to fetch models (${response.status})`,
+      endpoint: body.endpoint
+    };
+  }
+  return {
+    models: Array.isArray(body.models) ? body.models : [],
+    error: body.error ?? null,
+    endpoint: body.endpoint
+  };
+}
+
 export async function exportProfile(token: string): Promise<UiProfile> {
   const response = await fetch("/api/profile/export", {
     headers: { "x-codex-ui-token": token }

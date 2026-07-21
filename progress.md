@@ -1,5 +1,22 @@
 # Progress
 
+## 2026-07-21
+
+- AxonHub-style Relay channels slice:
+  - Added a server-side `POST /api/provider/fetch-models` endpoint that fetches upstream model IDs through the local Bun server instead of from the browser.
+  - Added provider model fetching support for OpenAI-compatible `/v1/models`, Anthropic-like `/v1/models`, Gemini `/v1beta/models`, Zhipu/bigmodel variants, and raw `#` Base URL handling.
+  - Extended Settings -> Relay Add/Edit with **Fetch models**, searchable fetched-model selection, "not added only" filtering, select/deselect all, and toggle semantics that can add or remove selected active models.
+  - Renamed the editable model field to **Active models** and kept comma-separated manual entry for relays that do not expose a model-list endpoint.
+  - Added free-form channel **Remark** storage, profile import preservation, form editing, channel-list search, table column display, and expanded-row detail display.
+  - Expanded the channel list with row expansion, model chips, key storage, timestamps, remarks, active/test actions, and per-channel model selectors.
+  - Updated all bundled locale JSON files for the new Relay labels, including English and Chinese.
+  - Updated `README.md` from the AxonHub channel-management reference so the Provider Switching section now documents create channel, fetch models, active models, remarks, activate, ACL, and code-launch boundaries.
+  - Verification passed:
+    - `bun run typecheck`
+    - `bun run build`
+    - locale JSON parse check
+  - Production-style launch was attempted, but the available sandbox reported `EADDRINUSE` on `43110`, `43111`, and `45110`; build/typecheck validation is green.
+
 ## 2026-07-20
 
 - Command audit one-line preview slice:
@@ -556,4 +573,3 @@
 - Product decision: add **竞技场** later for parallel multi-engine (or multi-Codex) compare.
 - UX inspiration from Orca-style orchestration; implementation stays in codex-react-ui Web stack.
 - Sequencing: multi-engine chat first → Arena shell → billing/ACL wiring.
-

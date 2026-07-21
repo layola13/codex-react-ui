@@ -40,6 +40,7 @@ import {
   listEngineHistory,
   type EngineId
 } from "./engineHistory.js";
+import { fetchProviderModels } from "./providerModels.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -369,6 +370,48 @@ async function handleApiRequest(
         return jsonResponse(await providerStore.importProfile(await request.json()), 200, headers);
       } catch (error) {
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/provider/fetch-models": {
+      // Mirror axonhub fetchModels: admin-only when membership is on.
+      if (user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: fetch provider models" }, 403, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const baseUrl = stringValue(body.baseUrl) ?? stringValue(body.baseURL) ?? "";
+        const apiKey = stringValue(body.apiKey) ?? "";
+        const kind = stringValue(body.kind) ?? stringValue(body.channelType) ?? "responsesRelay";
+        const providerId = stringValue(body.providerId) ?? stringValue(body.channelID);
+
+        let resolvedKey = apiKey;
+        if (!resolvedKey && providerId) {
+          const existing = await providerStore.get(providerId);
+          if (existing) {
+            const envKey = existing.apiKeyRef?.startsWith("env:") ? existing.apiKeyRef.slice(4) : null;
+            const runtime = providerStore.runtimeEnv();
+            if (envKey && runtime[envKey]) {
+              resolvedKey = runtime[envKey] ?? "";
+            }
+          }
+        }
+
+        const result = await fetchProviderModels({
+          baseUrl,
+          apiKey: resolvedKey || undefined,
+          kind
+        });
+        return jsonResponse(
+          {
+            models: result.models.map((id) => ({ id })),
+            error: result.error ?? null,
+            endpoint: result.endpoint
+          },
+          result.error && result.models.length === 0 ? 400 : 200,
+          headers
+        );
+      } catch (error) {
+        return jsonResponse({ models: [], error: errorToMessage(error) }, 400, headers);
       }
     }
     case "GET /api/audit/events": {

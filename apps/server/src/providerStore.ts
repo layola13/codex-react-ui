@@ -262,6 +262,7 @@ function normalizeProfileProvider(value: unknown, existing?: ProviderConfig): Pr
     nativeModels: stringArray(record.nativeModels),
     modelAliases: aliasArray(record.modelAliases),
     modelRates: modelRateArray(record.modelRates),
+    remark: stringValue(record.remark) ?? existing?.remark,
     createdAt: numberValue(record.createdAt) ?? existing?.createdAt ?? now,
     updatedAt: now
   };
