@@ -98,7 +98,7 @@ import {
   type SkillEntry,
   type TerminalSession
 } from "./state/codexClient";
-import { HistorySidebar, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
+import { HistorySidebar, type HistoryPane, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
 import {
   ChatPanel,
   type GoalBannerState,
@@ -328,6 +328,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [threadTokenUsage, setThreadTokenUsage] = useState<Record<string, ThreadTokenUsageState>>({});
   const [turnTokenUsage, setTurnTokenUsage] = useState<Record<string, TokenUsageBreakdown>>({});
   const [historySearchTerm, setHistorySearchTerm] = useState("");
+  const [historyPane, setHistoryPane] = useState<HistoryPane>("web");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [officialLoginOpen, setOfficialLoginOpen] = useState(false);
@@ -382,7 +383,17 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [mcpResourceContents, setMcpResourceContents] = useState<Record<string, McpResourceContentEntry[]>>({});
   const [mcpOauthUrls, setMcpOauthUrls] = useState<Record<string, string>>({});
   const allHistoryThreadsRef = useRef<ClientState["threads"]>([]);
+  const historySearchTermRef = useRef(historySearchTerm);
+  const historyLoadRequestRef = useRef(0);
+  const loadBasicsInFlightRef = useRef<Promise<void> | null>(null);
+  const providerRefreshRef = useRef<{ token: string; promise: Promise<ProviderConfig[]> } | null>(null);
+  const providerRefreshCacheRef = useRef<{ token: string; refreshedAt: number; providers: ProviderConfig[] } | null>(null);
+  const activeThreadIdRef = useRef(state.activeThreadId);
+  const authSessionRef = useRef(authSession);
   const clientRef = useRef<CodexSocketClient | null>(null);
+  historySearchTermRef.current = historySearchTerm;
+  activeThreadIdRef.current = state.activeThreadId;
+  authSessionRef.current = authSession;
   const desktopLayout = useMediaQuery("(min-width:900px)");
   const { locale, setLocale, t } = useI18n();
 
@@ -696,7 +707,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }, [activeProviderId, state.models, state.providers]);
 
   const loadHistory = useCallback(
-    async (searchTerm = historySearchTerm) => {
+    async (searchTerm = historySearchTermRef.current) => {
+      const requestId = ++historyLoadRequestRef.current;
       setHistoryLoading(true);
       try {
         const trimmedSearch = searchTerm.trim();
@@ -705,6 +717,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           cachedThreads.length > 0 && trimmedSearch ? Promise.resolve(cachedThreads) : loadAllThreads(client),
           trimmedSearch ? loadAllThreads(client, { searchTerm: trimmedSearch }) : Promise.resolve<ClientState["threads"]>([])
         ]);
+        if (requestId !== historyLoadRequestRef.current) return;
         if (!trimmedSearch) {
           allHistoryThreadsRef.current = allThreads;
           dispatch({ type: "threads", threads: allThreads });
@@ -713,42 +726,83 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         allHistoryThreadsRef.current = allThreads;
         dispatch({ type: "threads", threads: mergeThreadLists(searchedThreads, filterHistoryThreads(allThreads, trimmedSearch)) });
       } finally {
-        setHistoryLoading(false);
+        if (requestId === historyLoadRequestRef.current) setHistoryLoading(false);
       }
     },
-    [client, historySearchTerm]
+    [client]
   );
 
-  const loadBasics = useCallback(async () => {
-    const [account, modelResult, threadResult] = await Promise.all([
-      client.rpc("account/read", { refreshToken: false }),
-      client.rpc("model/list", {}),
-      loadAllThreads(client)
-    ]);
-    dispatch({ type: "account", account });
-    const models = asRecord(modelResult).data ?? asRecord(modelResult).models;
-    dispatch({ type: "models", models: Array.isArray(models) ? (models as ClientState["models"]) : [] });
-    allHistoryThreadsRef.current = threadResult;
-    dispatch({ type: "threads", threads: historySearchTerm.trim() ? filterHistoryThreads(threadResult, historySearchTerm) : threadResult });
-  }, [client, historySearchTerm]);
+  const loadBasics = useCallback((): Promise<void> => {
+    const inFlight = loadBasicsInFlightRef.current;
+    if (inFlight) return inFlight;
 
-  const applyHistoryThreads = useCallback(
-    (threads: ClientState["threads"]) => {
-      allHistoryThreadsRef.current = threads;
-      dispatch({ type: "threads", threads: historySearchTerm.trim() ? filterHistoryThreads(threads, historySearchTerm) : threads });
-    },
-    [historySearchTerm]
-  );
+    const task = (async () => {
+      const [account, modelResult, threadResult] = await Promise.all([
+        client.rpc("account/read", { refreshToken: false }),
+        client.rpc("model/list", {}),
+        loadAllThreads(client)
+      ]);
+      dispatch({ type: "account", account });
+      const models = asRecord(modelResult).data ?? asRecord(modelResult).models;
+      dispatch({ type: "models", models: Array.isArray(models) ? (models as ClientState["models"]) : [] });
+      allHistoryThreadsRef.current = threadResult;
+      const searchTerm = historySearchTermRef.current;
+      dispatch({ type: "threads", threads: searchTerm.trim() ? filterHistoryThreads(threadResult, searchTerm) : threadResult });
+    })();
+    const tracked = task.finally(() => {
+      if (loadBasicsInFlightRef.current === tracked) loadBasicsInFlightRef.current = null;
+    });
+    loadBasicsInFlightRef.current = tracked;
+    return tracked;
+  }, [client]);
+
+  const applyHistoryThreads = useCallback((threads: ClientState["threads"]) => {
+    allHistoryThreadsRef.current = threads;
+    const searchTerm = historySearchTermRef.current;
+    dispatch({ type: "threads", threads: searchTerm.trim() ? filterHistoryThreads(threads, searchTerm) : threads });
+  }, []);
+
+  const refreshProviders = useCallback((token: string, session: AuthSession | null): Promise<ProviderConfig[]> => {
+    const cached = providerRefreshCacheRef.current;
+    if (cached && cached.token === token && Date.now() - cached.refreshedAt < 1_500) {
+      return Promise.resolve(cached.providers);
+    }
+    const inFlight = providerRefreshRef.current;
+    if (inFlight?.token === token) return inFlight.promise;
+
+    const task = fetchProviders(token).then((providers) => {
+      writeCachedProviders(session, providers);
+      dispatch({ type: "providers", providers });
+      providerRefreshCacheRef.current = { token, refreshedAt: Date.now(), providers };
+      return providers;
+    });
+    const tracked = task.finally(() => {
+      if (providerRefreshRef.current?.promise === tracked) providerRefreshRef.current = null;
+    });
+    providerRefreshRef.current = { token, promise: tracked };
+    return tracked;
+  }, []);
 
   useEffect(() => {
-    if (!state.connected || !state.token) {
+    if (!state.connected || !state.token || historyPane !== "web") {
+      return;
+    }
+    const trimmedSearch = historySearchTerm.trim();
+    if (!trimmedSearch) {
+      historyLoadRequestRef.current += 1;
+      setHistoryLoading(false);
+      if (allHistoryThreadsRef.current.length > 0) {
+        dispatch({ type: "threads", threads: allHistoryThreadsRef.current });
+      }
       return;
     }
     const timeout = window.setTimeout(() => {
-      void loadHistory(historySearchTerm);
+      void loadHistory(trimmedSearch).catch((error) => {
+        dispatch({ type: "error", message: errorMessage("History search", error) });
+      });
     }, 240);
     return () => window.clearTimeout(timeout);
-  }, [historySearchTerm, loadHistory, state.connected, state.token]);
+  }, [historyPane, historySearchTerm, loadHistory, state.connected, state.token]);
 
   const loadCodexConfig = useCallback(async () => {
     setCodexConfigLoading(true);
@@ -1086,10 +1140,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           dispatch({ type: "providers", providers });
         }
         try {
-          providers = await fetchProviders(session.token);
+          providers = await refreshProviders(session.token, session);
           if (!mounted) return;
-          writeCachedProviders(session, providers);
-          dispatch({ type: "providers", providers });
         } catch (error) {
           if (error instanceof LoginRequiredError) {
             throw error;
@@ -1126,7 +1178,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return () => {
       mounted = false;
     };
-  }, [client, loadBasics]);
+  }, [client, loadBasics, refreshProviders]);
 
   useEffect(() => {
     if (state.connected) {
@@ -1216,7 +1268,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const result = await client.rpc("thread/read", { threadId, includeTurns: true });
         const loaded = threadReadToTurns(result);
-        if (threadId === state.activeThreadId) {
+        if (threadId === activeThreadIdRef.current) {
           syncWorkspaceFromThread(loaded.thread, setCwd, setWorkspaceSelectionPending);
         }
         dispatch({ type: "threadMerged", thread: loaded.thread, turns: loaded.turns });
@@ -1224,7 +1276,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
-    [client, state.activeThreadId]
+    [client]
   );
 
   const openExistingThread = useCallback(
@@ -1260,14 +1312,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     let cancelled = false;
     void (async () => {
       try {
-        const providers = await fetchProviders(token);
+        await refreshProviders(token, authSessionRef.current);
         if (cancelled) return;
-        writeCachedProviders(authSession, providers);
-        dispatch({ type: "providers", providers });
         await loadBasics();
         if (cancelled) return;
-        if (state.activeThreadId) {
-          await loadThreadIntoCache(state.activeThreadId);
+        const activeThreadId = activeThreadIdRef.current;
+        if (activeThreadId) {
+          await loadThreadIntoCache(activeThreadId);
         }
       } catch (error) {
         if (!cancelled) {
@@ -1278,7 +1329,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return () => {
       cancelled = true;
     };
-  }, [authSession, loadBasics, loadThreadIntoCache, state.activeThreadId, state.connected, state.token]);
+  }, [loadBasics, loadThreadIntoCache, refreshProviders, state.connected, state.token]);
 
   const selectTaskTab = useCallback(
     (threadId: string | null) => {
@@ -2727,13 +2778,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           console.warn("[auth] WebSocket connect failed, workbench remains usable", error);
         }
         try {
-          const providers = await withTimeout(fetchProviders(session.token), 8000, "Provider fetch timeout");
-          writeCachedProviders(session, providers);
-          dispatch({ type: "providers", providers });
-        } catch (error) {
-          console.warn("[auth] provider fetch failed", error);
-        }
-        try {
           const configResult = await withTimeout(client.rpc("config/read", { includeLayers: false }), 8000, "Config read timeout");
           const view = parseConfigReadResponse(configResult);
           setCodexConfig(view);
@@ -2747,14 +2791,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         } catch {
           /* optional */
         }
-        try {
-          await withTimeout(loadBasics(), 12000, "loadBasics timeout");
-        } catch (error) {
-          console.warn("[auth] loadBasics failed, workbench remains usable", error);
-        }
       })();
     },
-    [client, loadBasics, state.providers]
+    [client, state.providers]
   );
 
   const handleLogin = useCallback(
@@ -3201,7 +3240,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       backgroundImage={historyBackgroundImage}
                       sessionToken={state.token}
                       showLaunchHistory={showLaunchHistory}
+                      historyPane={historyPane}
                       t={t}
+                      onHistoryPaneChange={setHistoryPane}
                       onSearchChange={setHistorySearchTerm}
                       onRefresh={() => void loadHistory(historySearchTerm)}
                       onSelect={(threadId) => selectTaskTab(threadId)}
@@ -3247,7 +3288,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 backgroundImage={historyBackgroundImage}
                 sessionToken={state.token}
                 showLaunchHistory={showLaunchHistory}
+                historyPane={historyPane}
                 t={t}
+                onHistoryPaneChange={setHistoryPane}
                 onSearchChange={setHistorySearchTerm}
                 onRefresh={() => void loadHistory(historySearchTerm)}
                 onSelect={(threadId) => selectTaskTab(threadId)}
@@ -4254,7 +4297,7 @@ function legacyReviewDecision(decision: "accept" | "acceptForSession" | "decline
   }
 }
 
-type ConversationStatus = "working" | "idle" | "disconnect" | "retrying";
+type ConversationStatus = "working" | "idle" | "disconnect" | "retrying" | "engine-error";
 
 function getConversationStatus(connected: boolean, enginePhase: string, hasRunningTurn: boolean): ConversationStatus {
   if (!connected) {
@@ -4264,7 +4307,7 @@ function getConversationStatus(connected: boolean, enginePhase: string, hasRunni
     return "retrying";
   }
   if (enginePhase !== "ready") {
-    return enginePhase === "error" ? "disconnect" : "retrying";
+    return enginePhase === "error" ? "engine-error" : "retrying";
   }
   return hasRunningTurn ? "working" : "idle";
 }
@@ -4276,6 +4319,7 @@ function conversationStatusColorFor(status: ConversationStatus): "success" | "er
     case "idle":
       return "success";
     case "disconnect":
+    case "engine-error":
       return "error";
     case "retrying":
       return "warning";

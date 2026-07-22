@@ -63,7 +63,9 @@ type Props = {
   sessionToken?: string | null;
   /** Load host CLI history tabs beside Codex app-server threads. */
   showLaunchHistory?: boolean;
+  historyPane: HistoryPane;
   t: TranslateFn;
+  onHistoryPaneChange: (pane: HistoryPane) => void;
   onSearchChange: (value: string) => void;
   onRefresh: () => void;
   onSelect: (threadId: string) => void;
@@ -74,7 +76,7 @@ type Props = {
   onOpenSettings: () => void;
 };
 
-type HistoryPane = "web" | "tui";
+export type HistoryPane = "web" | "tui";
 
 export function HistorySidebar({
   threads,
@@ -87,7 +89,9 @@ export function HistorySidebar({
   backgroundImage,
   sessionToken = null,
   showLaunchHistory = true,
+  historyPane,
   t,
+  onHistoryPaneChange,
   onSearchChange,
   onRefresh,
   onSelect,
@@ -100,7 +104,6 @@ export function HistorySidebar({
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
-  const [historyPane, setHistoryPane] = useState<HistoryPane>("web");
   const [engines, setEngines] = useState<EngineMeta[]>([]);
   const [engineItems, setEngineItems] = useState<EngineHistoryItem[]>([]);
   const [engineLoading, setEngineLoading] = useState(false);
@@ -117,7 +120,7 @@ export function HistorySidebar({
       setEngineItems([]);
       setEngineError(null);
       setEngineLoading(false);
-      setHistoryPane("web");
+      onHistoryPaneChange("web");
       setTranscript(null);
       setTranscriptError(null);
       setTranscriptLoading(false);
@@ -179,7 +182,7 @@ export function HistorySidebar({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [sessionToken, historyPane, searchTerm, showLaunchHistory]);
+  }, [sessionToken, historyPane, searchTerm, showLaunchHistory, onHistoryPaneChange]);
 
   const engineMetaById = useMemo(() => {
     const map = new Map<string, EngineMeta>();
@@ -208,6 +211,7 @@ export function HistorySidebar({
     setTranscript(null);
     try {
       const data = await fetchEngineTranscript(sessionToken, item.engine, item.id, {
+        historyKind: item.historyKind,
         timeoutMs: 12_000
       });
       if (requestId !== transcriptRequestRef.current) return;
@@ -230,8 +234,11 @@ export function HistorySidebar({
   };
 
   const handleRefreshAll = () => {
-    onRefresh();
-    if (!showLaunchHistory || !sessionToken || historyPane !== "tui") return;
+    if (!showLaunchHistory || historyPane !== "tui") {
+      onRefresh();
+      return;
+    }
+    if (!sessionToken) return;
     // Nudge reload by reusing current dependencies; force-loading then re-running effect via tab noop is fragile,
     // so bump request and re-fetch with the current filter immediately.
     const requestId = ++engineRequestRef.current;
@@ -351,7 +358,7 @@ export function HistorySidebar({
         <Box sx={{ px: 0.5, pt: 0.5 }}>
           <Tabs
             value={historyPane}
-            onChange={(_, v) => setHistoryPane(v as HistoryPane)}
+            onChange={(_, v) => onHistoryPaneChange(v as HistoryPane)}
             variant="fullWidth"
             sx={{
               minHeight: 36,

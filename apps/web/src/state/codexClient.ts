@@ -380,11 +380,41 @@ export class CodexSocketClient extends EventTarget {
     this.socket = socket;
     let opened = false;
     return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const rejectOnce = (message: string) => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(message));
+      };
+      const failHandshake = (message: string) => {
+        if (opened || this.socket !== socket) return;
+        window.clearTimeout(handshakeTimer);
+        this.socket = null;
+        this.connectPromise = null;
+        rejectOnce(message);
+        this.dispatch("connected", false);
+        try {
+          socket.close();
+        } catch {
+          // The browser may already have discarded the failed socket.
+        }
+        if (!this.closedByClient) this.scheduleReconnect();
+      };
+      const handshakeTimer = window.setTimeout(
+        () => failHandshake("WebSocket connection timed out"),
+        10_000
+      );
+
       socket.addEventListener("open", () => {
         if (this.socket !== socket) {
+          window.clearTimeout(handshakeTimer);
+          rejectOnce("WebSocket connection was superseded");
+          socket.close();
           return;
         }
+        window.clearTimeout(handshakeTimer);
         opened = true;
+        settled = true;
         this.connectPromise = null;
         this.reconnectAttempt = 0;
         this.clearReconnectTimer();
@@ -392,22 +422,24 @@ export class CodexSocketClient extends EventTarget {
         resolve();
       });
       socket.addEventListener("error", () => {
-        if (!opened) {
-          reject(new Error("WebSocket connection failed"));
-        }
+        failHandshake("WebSocket connection failed");
       }, { once: true });
       socket.addEventListener("close", () => {
-        if (this.socket === socket) {
-          this.socket = null;
-        }
+        if (this.socket !== socket) return;
+        window.clearTimeout(handshakeTimer);
+        this.socket = null;
         this.connectPromise = null;
+        if (!opened) rejectOnce("WebSocket closed before connecting");
         this.dispatch("connected", false);
         this.rejectPending("WebSocket disconnected");
         if (!this.closedByClient) {
           this.scheduleReconnect();
         }
       });
-      socket.addEventListener("message", (event) => this.handleMessage(event.data));
+      socket.addEventListener("message", (event) => {
+        if (this.socket !== socket) return;
+        this.handleMessage(event.data);
+      });
     });
   }
 
@@ -2221,7 +2253,7 @@ export async function fetchEngineTranscript(
   token: string,
   engine: EngineId,
   id: string,
-  opts: { signal?: AbortSignal; timeoutMs?: number } = {}
+  opts: { historyKind?: EngineHistoryItem["historyKind"]; signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<EngineTranscript> {
   const controller = new AbortController();
   const timeoutMs = opts.timeoutMs ?? 12_000;
@@ -2229,7 +2261,10 @@ export async function fetchEngineTranscript(
   const onAbort = () => controller.abort();
   opts.signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    const response = await fetch(`/api/engine-history/${encodeURIComponent(engine)}/${encodeURIComponent(id)}`, {
+    const params = new URLSearchParams();
+    if (opts.historyKind) params.set("kind", opts.historyKind);
+    const qs = params.toString();
+    const response = await fetch(`/api/engine-history/${encodeURIComponent(engine)}/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`, {
       headers: { "x-codex-ui-token": token },
       signal: controller.signal
     });

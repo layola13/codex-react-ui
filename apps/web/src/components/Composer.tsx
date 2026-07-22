@@ -221,7 +221,7 @@ export function Composer({
         <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.5}>
           <Chip
             size="small"
-            color={running ? "primary" : statusLabel === "idle" ? "success" : statusLabel === "disconnect" ? "error" : statusLabel === "retrying" ? "warning" : "default"}
+            color={running ? "primary" : statusLabel === "idle" ? "success" : statusLabel === "disconnect" || statusLabel === "engine-error" ? "error" : statusLabel === "retrying" ? "warning" : "default"}
             variant={running ? "filled" : "outlined"}
             label={statusLabel ?? (running ? t("composer.running") : t("composer.ready"))}
             data-testid="composer-turn-status"
