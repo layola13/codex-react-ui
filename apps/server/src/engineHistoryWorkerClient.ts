@@ -4,7 +4,9 @@ import type {
   EngineTranscript
 } from "./engineHistory.js";
 import type {
+  EngineHistoryWorkerData,
   EngineHistoryListResult,
+  EngineHistoryWorkerPayload,
   EngineHistoryWorkerRequest,
   EngineHistoryWorkerResponse
 } from "./engineHistoryWorkerProtocol.js";
@@ -13,7 +15,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 const RESPONSE_CACHE_TTL_MS = 750;
 
 type PendingRequest = {
-  resolve: (data: EngineHistoryWorkerResponse extends { ok: true; data: infer T } ? T : never) => void;
+  resolve: (data: EngineHistoryWorkerData) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
   worker: Worker;
@@ -74,8 +76,8 @@ export class EngineHistoryWorkerClient {
   }
 
   private request(
-    payload: Omit<EngineHistoryWorkerRequest, "requestId">
-  ): Promise<EngineHistoryListResult | EngineTranscript | null> {
+    payload: EngineHistoryWorkerPayload
+  ): Promise<EngineHistoryWorkerData> {
     let worker: Worker;
     try {
       worker = this.ensureWorker();

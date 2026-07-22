@@ -38,11 +38,10 @@ import {
 } from "./launchInstall.js";
 import {
   ENGINE_CATALOG,
-  getEngineTranscript,
   isEngineId,
-  listEngineHistory,
   type EngineId
 } from "./engineHistory.js";
+import { EngineHistoryWorkerClient } from "./engineHistoryWorkerClient.js";
 import { fetchProviderModels, testProviderChat } from "./providerModels.js";
 
 type SocketData = {
@@ -104,6 +103,7 @@ const authStore = AuthStore.fromEnv(process.env, localDatabase);
 const securityStore = new SecurityStore(localDatabase);
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
 const clients = new Set<ServerWebSocket<SocketData>>();
+const engineHistoryWorker = new EngineHistoryWorkerClient();
 const execFileAsync = promisify(execFile);
 
 await providerStore.initialize();
@@ -706,7 +706,7 @@ async function handleApiRequest(
       if (engineParam !== "all" && !isEngineId(engineParam)) {
         return jsonResponse({ error: `Unknown engine: ${engineParam}` }, 400, headers);
       }
-      const data = listEngineHistory(engineParam as EngineId | "all", {
+      const data = await engineHistoryWorker.list(engineParam as EngineId | "all", {
         q,
         limit: Number.isFinite(limit) ? limit : undefined
       });
@@ -811,7 +811,9 @@ async function handleApiRequest(
         if (!id) {
           return jsonResponse({ error: "Missing history id" }, 400, headers);
         }
-        const transcript = getEngineTranscript(engine, id);
+        const kindParam = url.searchParams.get("kind");
+        const historyKind = kindParam === "session" || kindParam === "tui" ? kindParam : undefined;
+        const transcript = await engineHistoryWorker.transcript(engine, id, historyKind);
         if (!transcript) {
           return jsonResponse({ error: "Transcript not found" }, 404, headers);
         }
