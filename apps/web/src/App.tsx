@@ -136,7 +136,8 @@ const UI_STORAGE_KEYS = {
   showLaunchHistory: "codex-react-ui.show-launch-history",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
   panelLayout: "codex-react-ui.panel-layout",
-  filesPanelLayout: "codex-react-ui.files-panel-layout"
+  filesPanelLayout: "codex-react-ui.files-panel-layout",
+  providerCachePrefix: "codex-react-ui.providers-cache"
 } as const;
 
 const DEFAULT_NEW_CHAT_CWD = "~/";
@@ -983,15 +984,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "serverRequest", message: message.message });
       }
       if (message.type === "provider.saved") {
+        const providers = [message.provider, ...state.providers.filter((provider) => provider.id !== message.provider.id)];
+        writeCachedProviders(authSession, providers);
         dispatch({
           type: "providers",
-          providers: [message.provider, ...state.providers.filter((provider) => provider.id !== message.provider.id)]
+          providers
         });
       }
       if (message.type === "provider.deleted") {
+        const providers = state.providers.filter((provider) => provider.id !== message.providerId);
+        writeCachedProviders(authSession, providers);
         dispatch({
           type: "providers",
-          providers: state.providers.filter((provider) => provider.id !== message.providerId)
+          providers
         });
         if (message.providerId === activeProviderId) {
           setActiveProviderId(null);
@@ -1007,7 +1012,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       client.removeEventListener("connected", onConnected);
       client.removeEventListener("server-message", onMessage);
     };
-  }, [activeProviderId, appendTerminalOutput, client, loadTooling, selectedModel, state.providers]);
+  }, [activeProviderId, appendTerminalOutput, authSession, client, loadTooling, selectedModel, state.providers]);
 
   useEffect(() => {
     let mounted = true;
@@ -1026,9 +1031,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setAuthStatus("authenticated");
         dispatch({ type: "token", token: session.token });
         await client.connect(session.token);
-        const providers = await fetchProviders(session.token);
-        if (!mounted) return;
-        dispatch({ type: "providers", providers });
+        let providers = readCachedProviders(session) ?? [];
+        if (providers.length > 0) {
+          dispatch({ type: "providers", providers });
+        }
+        try {
+          providers = await fetchProviders(session.token);
+          if (!mounted) return;
+          writeCachedProviders(session, providers);
+          dispatch({ type: "providers", providers });
+        } catch (error) {
+          if (error instanceof LoginRequiredError) {
+            throw error;
+          }
+          console.warn("[auth] provider fetch failed; preserving current relay list", error);
+        }
         try {
           const configResult = await client.rpc("config/read", { includeLayers: false });
           if (!mounted) return;
@@ -1195,6 +1212,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const providers = await fetchProviders(token);
         if (cancelled) return;
+        writeCachedProviders(authSession, providers);
         dispatch({ type: "providers", providers });
         await loadBasics();
         if (cancelled) return;
@@ -1210,7 +1228,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return () => {
       cancelled = true;
     };
-  }, [loadBasics, loadThreadIntoCache, state.activeThreadId, state.connected, state.token]);
+  }, [authSession, loadBasics, loadThreadIntoCache, state.activeThreadId, state.connected, state.token]);
 
   const selectTaskTab = useCallback(
     (threadId: string | null) => {
@@ -1921,16 +1939,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
       try {
         const saved = await client.saveProvider(provider, apiKey);
+        const providers = [saved, ...state.providers.filter((entry) => entry.id !== saved.id)];
+        writeCachedProviders(authSession, providers);
         dispatch({
           type: "providers",
-          providers: [saved, ...state.providers.filter((entry) => entry.id !== saved.id)]
+          providers
         });
       } catch (error) {
         dispatch({ type: "error", message: formatErrorText(error) });
         throw error;
       }
     },
-    [client, state.providers]
+    [authSession, client, state.providers]
   );
 
   const activateProvider = useCallback(
@@ -1957,9 +1977,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
       try {
         const deletedProviderId = await client.deleteProvider(providerId);
+        const providers = state.providers.filter((entry) => entry.id !== deletedProviderId);
+        writeCachedProviders(authSession, providers);
         dispatch({
           type: "providers",
-          providers: state.providers.filter((entry) => entry.id !== deletedProviderId)
+          providers
         });
         if (activeProviderId === deletedProviderId) {
           setActiveProviderId(null);
@@ -1969,7 +1991,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         throw error;
       }
     },
-    [activeProviderId, client, state.providers]
+    [activeProviderId, authSession, client, state.providers]
   );
 
   const downloadProfile = useCallback(async () => {
@@ -2003,6 +2025,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const profile = JSON.parse(await file.text());
         const result = await importProfile(state.token, profile);
+        writeCachedProviders(authSession, result.providers);
         dispatch({ type: "providers", providers: result.providers });
         return result.importedProviders;
       } catch (error) {
@@ -2010,7 +2033,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         throw error;
       }
     },
-    [state.token]
+    [authSession, state.token]
   );
 
   const reloadMcp = useCallback(async () => {
@@ -2568,6 +2591,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       // Mark authenticated immediately so UI enters the workbench even if
       // the WebSocket or subsequent RPCs are slow/failing.
       setAuthStatus("authenticated");
+      const cachedProviders = readCachedProviders(session);
+      if (cachedProviders?.length) {
+        dispatch({ type: "providers", providers: cachedProviders });
+      }
       // Best-effort post-login setup: never block the workbench.
       void (async () => {
         try {
@@ -2577,6 +2604,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         }
         try {
           const providers = await withTimeout(fetchProviders(session.token), 8000, "Provider fetch timeout");
+          writeCachedProviders(session, providers);
           dispatch({ type: "providers", providers });
         } catch (error) {
           console.warn("[auth] provider fetch failed", error);
@@ -3713,6 +3741,65 @@ function readStoredBoolean(key: string, fallback: boolean): boolean {
   } catch {
     return fallback;
   }
+}
+
+function readStoredString(key: string, fallback: string): string {
+  const raw = localStorage.getItem(key);
+  return raw == null ? fallback : raw;
+}
+
+function providerCacheKey(session: AuthSession | null): string | null {
+  if (!session?.token) {
+    return null;
+  }
+  const userScope = session.user?.id ?? session.user?.email ?? "local";
+  return `${UI_STORAGE_KEYS.providerCachePrefix}.${userScope}`;
+}
+
+function readCachedProviders(session: AuthSession | null): ProviderConfig[] | null {
+  const key = providerCacheKey(session);
+  if (!key) {
+    return null;
+  }
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { providers?: unknown };
+    if (!Array.isArray(parsed.providers)) {
+      return null;
+    }
+    const providers = parsed.providers.filter(isProviderConfigLike);
+    return providers.length === parsed.providers.length ? providers : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedProviders(session: AuthSession | null, providers: ProviderConfig[]): void {
+  const key = providerCacheKey(session);
+  if (!key) {
+    return;
+  }
+  try {
+    localStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), providers }));
+  } catch {
+    /* Storage quota or privacy settings should not block the authoritative SQLite store. */
+  }
+}
+
+function isProviderConfigLike(value: unknown): value is ProviderConfig {
+  const record = asRecord(value);
+  return (
+    typeof record.id === "string" &&
+    typeof record.kind === "string" &&
+    typeof record.name === "string" &&
+    Array.isArray(record.nativeModels) &&
+    Array.isArray(record.modelAliases) &&
+    typeof record.createdAt === "number" &&
+    typeof record.updatedAt === "number"
+  );
 }
 
 function readInstalledThemes(): ThemeId[] {

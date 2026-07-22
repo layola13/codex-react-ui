@@ -1,23 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { Database } from "bun:sqlite";
 import { AsyncEntry } from "@napi-rs/keyring";
 import type { ProviderConfig, UiProfile, UiProfileImportResult } from "@codex-ui/shared";
-import { LocalDatabase } from "./localDatabase.js";
+import { codexUiDataDir, LocalDatabase } from "./localDatabase.js";
 
 type StoreShape = {
   providers: ProviderConfig[];
 };
 
 export class ProviderStore {
-  private readonly dir = join(homedir(), ".codex-react-ui");
+  private readonly dir = codexUiDataDir();
   private readonly file = join(this.dir, "providers.json");
   private readonly db: Database;
   private memorySecrets = new Map<string, string>();
 
-  public constructor(database = new LocalDatabase()) {
+  public constructor(database: Pick<LocalDatabase, "connection"> = new LocalDatabase()) {
     this.db = database.connection;
   }
 

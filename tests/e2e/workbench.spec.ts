@@ -2732,6 +2732,43 @@ test("creates relay channels with fetched active models, remarks, and model acti
   await expect(page.getByRole("row").filter({ hasText: "HubProxy Grok" })).toHaveCount(0);
 });
 
+test("keeps cached relay channels visible when provider reload temporarily fails", async ({ page }) => {
+  await page.unroute("/api/providers");
+  await page.route("/api/providers", (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: "rebuilding" }
+    })
+  );
+  await page.addInitScript((provider) => {
+    localStorage.setItem(
+      "codex-react-ui.providers-cache.local",
+      JSON.stringify({
+        cachedAt: Date.now(),
+        providers: [provider]
+      })
+    );
+  }, {
+    id: "cached-relay",
+    kind: "responsesRelay",
+    name: "Cached Relay",
+    baseUrl: "https://cached.example/v1",
+    apiKeyStorage: "none",
+    defaultModel: "cached-model",
+    nativeModels: ["cached-model"],
+    modelAliases: [],
+    createdAt: 10,
+    updatedAt: 11
+  });
+
+  await page.goto("/");
+  await page.getByLabel("Open settings").click();
+  await page.getByLabel("Open Relay settings").click();
+
+  await expect(page.getByRole("row").filter({ hasText: "Cached Relay" }).first()).toBeVisible();
+  await expect(page.getByText("https://cached.example/v1")).toBeVisible();
+});
+
 test("resolves chained provider aliases before starting a turn", async ({ page }) => {
   await page.goto("/");
   await confirmWorkspace(page);

@@ -800,10 +800,17 @@ export async function fetchProviders(token: string): Promise<ProviderConfig[]> {
     headers: { "x-codex-ui-token": token }
   });
   if (!response.ok) {
-    return [];
+    const body = await response.json().catch(() => ({})) as { error?: string; loginRequired?: boolean };
+    if (response.status === 401 && body.loginRequired) {
+      throw new LoginRequiredError();
+    }
+    throw new Error(typeof body.error === "string" && body.error ? body.error : `Failed to load relay channels: ${response.status}`);
   }
   const body = (await response.json()) as { data?: ProviderConfig[] };
-  return body.data ?? [];
+  if (!Array.isArray(body.data)) {
+    throw new Error("Failed to load relay channels: malformed response");
+  }
+  return body.data;
 }
 
 export type FetchProviderModelsResponse = {

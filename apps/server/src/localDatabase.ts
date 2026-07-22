@@ -1,11 +1,25 @@
 import { mkdirSync } from "node:fs";
 import { chmod } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 
+export function codexUiDataDir(): string {
+  const configured = process.env.CODEX_UI_DATA_DIR?.trim();
+  if (!configured) {
+    return join(homedir(), ".codex-react-ui");
+  }
+  if (configured === "~") {
+    return homedir();
+  }
+  if (configured.startsWith("~/")) {
+    return join(homedir(), configured.slice(2));
+  }
+  return resolve(configured);
+}
+
 export class LocalDatabase {
-  public readonly dir = join(homedir(), ".codex-react-ui");
+  public readonly dir = codexUiDataDir();
   public readonly file = join(this.dir, "codex-ui.sqlite3");
   private readonly db: Database;
 

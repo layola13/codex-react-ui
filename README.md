@@ -108,7 +108,7 @@ The watcher only stages `README.md`, writes its pid/log files under `.codex-main
 
 ## Provider Switching (Relay channels)
 
-Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. API keys are kept only in the current Bun process memory / OS keyring and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
+Saved provider metadata is stored in `~/.codex-react-ui/codex-ui.sqlite3` with SQLite tables and file mode `0600`. Set `CODEX_UI_DATA_DIR=/path/to/persistent/data` to pin this database to a durable directory or Docker volume; recompiling the web UI and refreshing the PWA cache must not delete relay channels. API keys are kept only in the current Bun process memory / OS keyring and exposed to Codex through generated env vars such as `CODEX_UI_PROVIDER_RESPONSES_RELAY_API_KEY`; keys are not written to `config.toml`.
 
 Admins manage channels under **Settings → Relay**. Members only see relays listed in their `allowedProviderIds` (configured under **Settings → Members** when creating or editing a user). The UI follows an AxonHub-style channel workflow:
 
