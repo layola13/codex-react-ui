@@ -7,6 +7,7 @@ const outDir = join(webRoot, "dist");
 const publicDir = join(webRoot, "public");
 const entryPoint = join(webRoot, "src/main.tsx");
 const templatePath = join(webRoot, "index.html");
+const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
@@ -35,6 +36,7 @@ if (!result.success) {
 }
 
 await cp(publicDir, outDir, { recursive: true, force: true });
+await refreshServiceWorkerBuildId(buildId);
 
 const outputs = result.outputs.map((output) => toRootPath(relative(outDir, output.path)));
 const scripts = outputs.filter((path) => path.endsWith(".js")).sort();
@@ -50,15 +52,21 @@ const headAssets = stylesheets.map((path) => `    <link rel="stylesheet" href="$
 const scriptAssets = scripts.map((path) => `    <script type="module" src="${path}"></script>`).join("\n");
 const html = template
   .replace(/\s*<script type="module" src="\/src\/main\.tsx"><\/script>\s*/, `\n${scriptAssets}\n`)
-  .replace("</head>", `${headAssets ? `${headAssets}\n` : ""}  </head>`);
+  .replace("</head>", `    <meta name="codex-react-ui-build" content="${buildId}" />\n${headAssets ? `${headAssets}\n` : ""}  </head>`);
 
 await writeFile(join(outDir, "index.html"), html);
 
 const totalBytes = result.outputs.reduce((sum, output) => sum + output.size, 0);
-console.log(`Bun web build wrote ${result.outputs.length} outputs (${formatBytes(totalBytes)}) to ${relative(process.cwd(), outDir) || basename(outDir)}`);
+console.log(`Bun web build ${buildId} wrote ${result.outputs.length} outputs (${formatBytes(totalBytes)}) to ${relative(process.cwd(), outDir) || basename(outDir)}`);
 
 function toRootPath(path: string): string {
   return `/${path.split(sep).join("/")}`;
+}
+
+async function refreshServiceWorkerBuildId(id: string): Promise<void> {
+  const swPath = join(outDir, "sw.js");
+  const sw = await readFile(swPath, "utf8");
+  await writeFile(swPath, sw.replaceAll("__BUILD_ID__", id));
 }
 
 function formatBytes(value: number): string {

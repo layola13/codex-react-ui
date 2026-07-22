@@ -17,6 +17,13 @@ export type FetchProviderModelsResult = {
 };
 
 const FETCH_TIMEOUT_MS = 12_000;
+const CHAT_TEST_TIMEOUT_MS = 60_000;
+const DEFAULT_CHAT_TEST_PROMPT = "Reply with exactly: pong";
+const CHAT_TEST_PROMPTS = [
+  DEFAULT_CHAT_TEST_PROMPT,
+  "Say only the word ready.",
+  "Answer with one short word: ok."
+];
 
 export async function fetchProviderModels(input: FetchProviderModelsInput): Promise<FetchProviderModelsResult> {
   const baseUrl = (input.baseUrl ?? "").trim();
@@ -30,16 +37,7 @@ export async function fetchProviderModels(input: FetchProviderModelsInput): Prom
   const { endpoint, headers } = prepareModelsEndpoint(kind, baseUrl);
 
   if (apiKey) {
-    if (kindLooksAnthropic(kind, baseUrl)) {
-      headers.set("X-Api-Key", apiKey);
-      // Keep Bearer as a fallback for OpenAI-compatible Anthropic relays.
-      headers.set("Authorization", `Bearer ${apiKey}`);
-    } else if (kindLooksGemini(kind, baseUrl)) {
-      headers.set("X-Goog-Api-Key", apiKey);
-      headers.set("Authorization", `Bearer ${apiKey}`);
-    } else {
-      headers.set("Authorization", `Bearer ${apiKey}`);
-    }
+    applyProviderAuthHeaders(headers, kind, baseUrl, apiKey);
   }
 
   try {
@@ -78,6 +76,86 @@ export async function fetchProviderModels(input: FetchProviderModelsInput): Prom
       endpoint,
       error: timedOut ? `Timed out fetching models from ${endpoint}` : `Failed to fetch models: ${message}`
     };
+  }
+}
+
+export type TestProviderChatInput = FetchProviderModelsInput & {
+  model?: string;
+  timeoutMs?: number;
+};
+
+export type TestProviderChatResult = {
+  ok: boolean;
+  model: string;
+  prompt: string;
+  message: string;
+  endpoint?: string;
+  statusCode?: number;
+  elapsedMs: number;
+};
+
+export async function testProviderChat(input: TestProviderChatInput): Promise<TestProviderChatResult> {
+  const startedAt = Date.now();
+  const baseUrl = (input.baseUrl ?? "").trim();
+  const apiKey = (input.apiKey ?? "").trim();
+  const kind = (input.kind ?? "responsesRelay").trim();
+  const prompt = CHAT_TEST_PROMPTS[Math.floor(Math.random() * CHAT_TEST_PROMPTS.length)] ?? DEFAULT_CHAT_TEST_PROMPT;
+  const requestedModel = (input.model ?? "").trim();
+  const timeoutMs = normalizeTimeout(input.timeoutMs, CHAT_TEST_TIMEOUT_MS);
+
+  if (!baseUrl) {
+    return chatTestResult(false, requestedModel, prompt, "Base URL is required", startedAt);
+  }
+
+  const model = requestedModel || (await firstProviderModel({ baseUrl, apiKey, kind })) || "gpt-4o-mini";
+  const { endpoint, headers } = prepareChatCompletionsEndpoint(kind, baseUrl);
+  applyProviderAuthHeaders(headers, kind, baseUrl, apiKey);
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 24,
+        temperature: 0
+      }),
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeout));
+
+    const bodyText = await response.text().catch(() => "");
+    if (!response.ok) {
+      return chatTestResult(
+        false,
+        model,
+        prompt,
+        `Chat test failed: HTTP ${response.status}${bodyText ? ` - ${extractErrorMessage(bodyText)}` : ""}`,
+        startedAt,
+        endpoint,
+        response.status
+      );
+    }
+
+    const content = extractChatContent(bodyText);
+    if (!content) {
+      return chatTestResult(false, model, prompt, "Chat test returned no assistant content", startedAt, endpoint, response.status);
+    }
+
+    return chatTestResult(true, model, prompt, `Chat test passed in ${Date.now() - startedAt}ms with model ${model}: ${content.slice(0, 120)}`, startedAt, endpoint, response.status);
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    const message = error instanceof Error ? error.message : String(error);
+    return chatTestResult(
+      false,
+      model,
+      prompt,
+      timedOut ? `Chat test timed out after ${Math.round(timeoutMs / 1000)}s with no response` : `Chat test failed: ${message}`,
+      startedAt,
+      endpoint
+    );
   }
 }
 
@@ -206,4 +284,104 @@ function kindLooksAnthropic(kind: string, baseUrl: string): boolean {
 
 function kindLooksGemini(kind: string, baseUrl: string): boolean {
   return kind.toLowerCase().includes("gemini") || /generativelanguage\.googleapis\.com|gemini/i.test(baseUrl);
+}
+
+function prepareChatCompletionsEndpoint(kind: string, rawBaseUrl: string): { endpoint: string; headers: Headers } {
+  const headers = new Headers({ Accept: "application/json", "Content-Type": "application/json" });
+  let baseURL = rawBaseUrl.replace(/\/+$/, "");
+  if (baseURL.endsWith("#")) {
+    baseURL = baseURL.slice(0, -1).replace(/\/+$/, "");
+  }
+  if (baseURL.endsWith("/chat/completions")) {
+    return { endpoint: baseURL, headers };
+  }
+  if (/\/v1(\/|$)/i.test(baseURL) || /\/v\d+(\/|$)/i.test(baseURL)) {
+    return { endpoint: `${baseURL}/chat/completions`, headers };
+  }
+  if (kindLooksAnthropic(kind, baseURL)) {
+    baseURL = baseURL.replace(/\/anthropic$/i, "").replace(/\/claude$/i, "");
+  }
+  return { endpoint: `${baseURL}/v1/chat/completions`, headers };
+}
+
+function applyProviderAuthHeaders(headers: Headers, kind: string, baseUrl: string, apiKey: string): void {
+  if (!apiKey) {
+    return;
+  }
+  if (kindLooksAnthropic(kind, baseUrl)) {
+    headers.set("X-Api-Key", apiKey);
+    headers.set("Authorization", `Bearer ${apiKey}`);
+    headers.set("Anthropic-Version", "2023-06-01");
+    return;
+  }
+  if (kindLooksGemini(kind, baseUrl)) {
+    headers.set("X-Goog-Api-Key", apiKey);
+    headers.set("Authorization", `Bearer ${apiKey}`);
+    return;
+  }
+  headers.set("Authorization", `Bearer ${apiKey}`);
+}
+
+async function firstProviderModel(input: FetchProviderModelsInput): Promise<string | null> {
+  const result = await fetchProviderModels(input);
+  return result.models[0] ?? null;
+}
+
+function normalizeTimeout(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value) || !value) {
+    return fallback;
+  }
+  return Math.max(1_000, Math.min(120_000, value));
+}
+
+function chatTestResult(ok: boolean, model: string, prompt: string, message: string, startedAt: number, endpoint?: string, statusCode?: number): TestProviderChatResult {
+  return {
+    ok,
+    model,
+    prompt,
+    message,
+    endpoint,
+    statusCode,
+    elapsedMs: Date.now() - startedAt
+  };
+}
+
+function extractChatContent(bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+    const choices = parsed.choices;
+    if (Array.isArray(choices)) {
+      for (const choice of choices) {
+        if (!choice || typeof choice !== "object") continue;
+        const record = choice as Record<string, unknown>;
+        const message = record.message;
+        if (message && typeof message === "object") {
+          const content = (message as Record<string, unknown>).content;
+          if (typeof content === "string" && content.trim()) return content.trim();
+        }
+        const text = record.text;
+        if (typeof text === "string" && text.trim()) return text.trim();
+      }
+    }
+    const outputText = parsed.output_text;
+    if (typeof outputText === "string" && outputText.trim()) return outputText.trim();
+  } catch {
+    return bodyText.trim();
+  }
+  return bodyText.trim();
+}
+
+function extractErrorMessage(bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+    const error = parsed.error;
+    if (typeof error === "string") return error.slice(0, 240);
+    if (error && typeof error === "object") {
+      const message = (error as Record<string, unknown>).message;
+      if (typeof message === "string") return message.slice(0, 240);
+    }
+  } catch {
+    return bodyText.slice(0, 240);
+  }
+  return bodyText.slice(0, 240);
 }

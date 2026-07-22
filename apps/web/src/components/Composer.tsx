@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -16,6 +16,8 @@ import AddIcon from "@mui/icons-material/Add";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ImageIcon from "@mui/icons-material/Image";
 import CloseIcon from "@mui/icons-material/Close";
+import DescriptionIcon from "@mui/icons-material/Description";
+import StopIcon from "@mui/icons-material/Stop";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import BoltIcon from "@mui/icons-material/Bolt";
 import ChecklistIcon from "@mui/icons-material/Checklist";
@@ -41,6 +43,7 @@ type Props = {
   activeThemePlugin?: ThemePlugin | null;
   backgroundImage?: string;
   sendBlockedReason?: string;
+  sessionToken?: string | null;
   t: TranslateFn;
   modeBadges?: {
     fast: boolean;
@@ -48,15 +51,36 @@ type Props = {
     goalActive: boolean;
   };
   dangerBypassConfirmed: boolean;
+  running?: boolean;
+  statusLabel?: string;
   onMentionConsumed: () => void;
   onUserActivity?: () => void;
   onSuggestedPromptConsumed?: () => void;
+  onStop?: () => void;
   onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
 };
 
 const MAX_COMPOSER_IMAGE_BYTES = 64 * 1024 * 1024;
 const MAX_COMPOSER_IMAGE_TOTAL_BYTES = 128 * 1024 * 1024;
+const MAX_COMPOSER_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_COMPOSER_FILE_TOTAL_BYTES = 192 * 1024 * 1024;
 const SUPPORTED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+const SUPPORTED_FILE_EXTENSIONS = new Set([
+  ...SUPPORTED_IMAGE_EXTENSIONS,
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "csv",
+  "ppt",
+  "pptx",
+  "txt",
+  "md",
+  "json"
+]);
+const COMPOSER_HISTORY_STORAGE_KEY = "codex-react-ui.composer-input-history";
+const MAX_COMPOSER_HISTORY = 100;
 
 export function Composer({
   cwd,
@@ -67,12 +91,16 @@ export function Composer({
   activeThemePlugin,
   backgroundImage,
   sendBlockedReason,
+  sessionToken,
   t,
   modeBadges = { fast: false, plan: false, goalActive: false },
   dangerBypassConfirmed,
+  running = false,
+  statusLabel,
   onMentionConsumed,
   onUserActivity,
   onSuggestedPromptConsumed,
+  onStop,
   onSend
 }: Props) {
   const [text, setText] = useState("");
@@ -81,11 +109,15 @@ export function Composer({
   const [imageError, setImageError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const [inputHistory, setInputHistory] = useState<string[]>(() => loadComposerInputHistory());
+  const [historyCursor, setHistoryCursor] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const draftBeforeHistoryRef = useRef("");
   const dragDepthRef = useRef(0);
   const selectedPreset = useMemo(() => permissionPresets.find((preset) => preset.id === permission), [permission]);
   const dangerBlocked = permission === "dangerBypass" && !dangerBypassConfirmed;
-  const sendBlocked = disabled || Boolean(sendBlockedReason) || dangerBlocked;
+  const slashCommandDraft = text.trim().startsWith("/") && !text.trim().startsWith("//") && images.length === 0 && mentions.length === 0;
+  const sendBlocked = disabled || dangerBlocked || (Boolean(sendBlockedReason) && !slashCommandDraft);
   const dangerNotice =
     selectedPreset?.severity === "critical"
       ? t("composer.fullAutoNotice")
@@ -111,6 +143,8 @@ export function Composer({
       return;
     }
     setText(suggestedPrompt.text);
+    setHistoryCursor(null);
+    draftBeforeHistoryRef.current = "";
     onUserActivity?.();
     onSuggestedPromptConsumed?.();
   }, [onSuggestedPromptConsumed, onUserActivity, suggestedPrompt]);
@@ -123,7 +157,7 @@ export function Composer({
   return (
     <Box
       onDragEnter={(event) => {
-        if (disabled || !hasImageFiles(event.dataTransfer)) {
+        if (disabled || !hasSupportedFiles(event.dataTransfer)) {
           return;
         }
         event.preventDefault();
@@ -131,14 +165,14 @@ export function Composer({
         setDragActive(true);
       }}
       onDragOver={(event) => {
-        if (disabled || !hasImageFiles(event.dataTransfer)) {
+        if (disabled || !hasSupportedFiles(event.dataTransfer)) {
           return;
         }
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
       }}
       onDragLeave={(event) => {
-        if (disabled || !hasImageFiles(event.dataTransfer)) {
+        if (disabled || !hasSupportedFiles(event.dataTransfer)) {
           return;
         }
         event.preventDefault();
@@ -148,13 +182,13 @@ export function Composer({
         }
       }}
       onDrop={(event) => {
-        if (disabled || !hasImageFiles(event.dataTransfer)) {
+        if (disabled || !hasSupportedFiles(event.dataTransfer)) {
           return;
         }
         event.preventDefault();
         dragDepthRef.current = 0;
         setDragActive(false);
-        void addImages(event.dataTransfer.files);
+        void addAttachments(event.dataTransfer.files);
       }}
       sx={{
         p: { xs: 1.25, sm: 1.5 },
@@ -177,6 +211,14 @@ export function Composer({
     >
       <Stack spacing={1.25}>
         <Stack direction="row" justifyContent="flex-end" spacing={0.5}>
+          <Chip
+            size="small"
+            color={running ? "primary" : statusLabel === "idle" ? "success" : statusLabel === "disconnect" ? "error" : statusLabel === "retrying" ? "warning" : "default"}
+            variant={running ? "filled" : "outlined"}
+            label={statusLabel ?? (running ? t("composer.running") : t("composer.ready"))}
+            data-testid="composer-turn-status"
+            sx={{ height: 28, fontWeight: 800 }}
+          />
           <Tooltip
             arrow
             placement="top-end"
@@ -193,6 +235,12 @@ export function Composer({
                 </Typography>
                 <Typography variant="caption" sx={{ display: "block", mt: 0.5, opacity: 0.82 }}>
                   {t("composer.setupDescription")}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block", mt: 0.75, fontWeight: 800 }}>
+                  {t("composer.shortcuts")}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block", opacity: 0.82 }}>
+                  {t("composer.shortcutsDescription")}
                 </Typography>
               </Box>
             }
@@ -247,10 +295,13 @@ export function Composer({
             value={text}
             onChange={(event) => {
               setText(event.target.value);
+              setHistoryCursor(null);
+              draftBeforeHistoryRef.current = "";
               if (event.target.value.length > 0) {
                 onUserActivity?.();
               }
             }}
+            onKeyDown={handleTextFieldKeyDown}
             sx={{
               width: "100%",
               "& .MuiOutlinedInput-root": {
@@ -297,7 +348,7 @@ export function Composer({
             sx={{
               position: "absolute",
               left: 58,
-              right: 118,
+              right: running ? 164 : 118,
               bottom: 10,
               height: 36,
               display: "flex",
@@ -324,7 +375,9 @@ export function Composer({
           </Box>
           <Tooltip
             title={
-              images.length > 0
+              running
+                ? t("composer.append")
+                : images.length > 0
                 ? t("composer.imageSummary", {
                     count: images.length,
                     imageLabel: t(images.length === 1 ? "composer.imageOne" : "composer.imageOther"),
@@ -336,14 +389,11 @@ export function Composer({
             <span>
               <IconButton
                 color="primary"
-                aria-label={t("composer.send")}
+                aria-label={running ? t("composer.append") : t("composer.send")}
                 disabled={sendBlocked || !hasContent}
                 onClick={() => {
                   onUserActivity?.();
-                  onSend(text, images, mentions);
-                  setText("");
-                  setImages([]);
-                  setMentions([]);
+                  submitComposer(text, images, mentions);
                 }}
                 sx={{
                   position: "absolute",
@@ -367,6 +417,34 @@ export function Composer({
               </IconButton>
             </span>
           </Tooltip>
+          {running && (
+            <Tooltip title={t("composer.stop")}>
+              <span>
+                <IconButton
+                  color="error"
+                  aria-label={t("composer.stop")}
+                  disabled={!onStop}
+                  onClick={() => onStop?.()}
+                  sx={{
+                    position: "absolute",
+                    right: 58,
+                    bottom: 12,
+                    width: 36,
+                    height: 36,
+                    bgcolor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === "dark" ? 0.24 : 0.12),
+                    color: "error.main",
+                    border: "1px solid",
+                    borderColor: (theme) => alpha(theme.palette.error.main, 0.38),
+                    "&:hover": {
+                      bgcolor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === "dark" ? 0.32 : 0.18)
+                    }
+                  }}
+                >
+                  <StopIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
         </Box>
         {images.length > 0 && (
           <Stack direction="row" spacing={1} sx={{ overflowX: "auto", pb: 0.5 }}>
@@ -383,13 +461,17 @@ export function Composer({
                   bgcolor: "background.default"
                 }}
               >
-                <Box sx={{ position: "relative", aspectRatio: "4 / 3" }}>
-                  <Box
-                    component="img"
-                    src={image.url}
-                    alt={image.name}
-                    sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                  />
+                <Box sx={{ position: "relative", aspectRatio: "4 / 3", display: "grid", placeItems: "center" }}>
+                  {(image.kind ?? "image") === "image" ? (
+                    <Box
+                      component="img"
+                      src={image.url}
+                      alt={image.name}
+                      sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <DescriptionIcon color="action" sx={{ fontSize: 36 }} />
+                  )}
                   <IconButton
                     size="small"
                     aria-label={`Remove ${image.name}`}
@@ -419,11 +501,11 @@ export function Composer({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md,.json"
           multiple
           hidden
           onChange={(event) => {
-            void addImages(event.currentTarget.files);
+            void addAttachments(event.currentTarget.files);
             event.currentTarget.value = "";
           }}
         />
@@ -482,35 +564,124 @@ export function Composer({
   function runSlashCommandShortcut(command: string): void {
     setMenuAnchorEl(null);
     onUserActivity?.();
+    rememberComposerInput(command);
     onSend(command, [], []);
+  }
+
+  function submitComposer(value: string, nextImages: ComposerImageAttachment[], nextMentions: ComposerMention[]): void {
+    rememberComposerInput(value);
+    onSend(value, nextImages, nextMentions);
+    setText("");
+    setImages([]);
+    setMentions([]);
+    setHistoryCursor(null);
+    draftBeforeHistoryRef.current = "";
+  }
+
+  function rememberComposerInput(value: string): void {
+    const normalized = value.trim();
+    if (!normalized) {
+      return;
+    }
+    setInputHistory((current) => {
+      const withoutDuplicateTail = current[current.length - 1] === normalized ? current.slice(0, -1) : current;
+      const next = [...withoutDuplicateTail, normalized].slice(-MAX_COMPOSER_HISTORY);
+      saveComposerInputHistory(next);
+      return next;
+    });
+  }
+
+  function handleTextFieldKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    const target = event.target as HTMLTextAreaElement | null;
+    if (!target || target.tagName !== "TEXTAREA") {
+      return;
+    }
+    if (event.key === "Escape" && running && onStop) {
+      event.preventDefault();
+      onStop();
+      return;
+    }
+    const nativeEvent = event.nativeEvent as { isComposing?: boolean };
+    if (event.key === "Enter" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && !nativeEvent.isComposing) {
+      if (!sendBlocked && hasContent) {
+        event.preventDefault();
+        onUserActivity?.();
+        submitComposer(text, images, mentions);
+      }
+      return;
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+      return;
+    }
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+    const direction = event.key === "ArrowUp" ? -1 : 1;
+    if (!shouldUseHistoryNavigation(target, direction, historyCursor !== null)) {
+      return;
+    }
+    navigateComposerHistory(direction, target, event);
+  }
+
+  function navigateComposerHistory(direction: -1 | 1, target: HTMLTextAreaElement, event: KeyboardEvent<HTMLDivElement>): void {
+    if (inputHistory.length === 0) {
+      return;
+    }
+    if (direction === 1 && historyCursor === null) {
+      return;
+    }
+    event.preventDefault();
+    if (historyCursor === null) {
+      draftBeforeHistoryRef.current = text;
+    }
+    const nextCursor =
+      direction === -1
+        ? historyCursor === null
+          ? inputHistory.length - 1
+          : Math.max(0, historyCursor - 1)
+        : historyCursor === null
+        ? null
+        : historyCursor >= inputHistory.length - 1
+        ? null
+        : historyCursor + 1;
+    const nextText = nextCursor === null ? draftBeforeHistoryRef.current : inputHistory[nextCursor] ?? "";
+    setHistoryCursor(nextCursor);
+    setText(nextText);
+    setTimeout(() => {
+      target.setSelectionRange(nextText.length, nextText.length);
+    }, 0);
   }
 
   function setSlashTemplate(command: string): void {
     setMenuAnchorEl(null);
     onUserActivity?.();
+    setHistoryCursor(null);
+    draftBeforeHistoryRef.current = "";
     setText((current) => (current.trim().length === 0 || current.trim().startsWith("/") ? command : `${current.trimEnd()}\n${command}`));
   }
 
-  async function addImages(fileList: FileList | File[] | null): Promise<void> {
+  async function addAttachments(fileList: FileList | File[] | null): Promise<void> {
     if (!fileList) {
       return;
     }
     const files = Array.from(fileList);
     const rejected: string[] = [];
     const accepted: File[] = [];
-    let nextTotalBytes = imageTotalBytes;
+    let nextTotalBytes = images.reduce((total, image) => total + image.size, 0);
 
     for (const file of files) {
-      if (!isSupportedImageFile(file)) {
-        rejected.push(`${file.name || "file"}: unsupported image type`);
+      if (!isSupportedAttachmentFile(file)) {
+        rejected.push(`${file.name || "file"}: unsupported file type`);
         continue;
       }
-      if (file.size > MAX_COMPOSER_IMAGE_BYTES) {
-        rejected.push(`${file.name || "image"}: ${formatBytes(file.size)} exceeds ${formatBytes(MAX_COMPOSER_IMAGE_BYTES)}`);
+      const isImage = isSupportedImageFile(file);
+      const maxBytes = isImage ? MAX_COMPOSER_IMAGE_BYTES : MAX_COMPOSER_FILE_BYTES;
+      if (file.size > maxBytes) {
+        rejected.push(`${file.name || "file"}: ${formatBytes(file.size)} exceeds ${formatBytes(maxBytes)}`);
         continue;
       }
-      if (nextTotalBytes + file.size > MAX_COMPOSER_IMAGE_TOTAL_BYTES) {
-        rejected.push(`${file.name || "image"}: selected images would exceed ${formatBytes(MAX_COMPOSER_IMAGE_TOTAL_BYTES)}`);
+      if (nextTotalBytes + file.size > MAX_COMPOSER_FILE_TOTAL_BYTES) {
+        rejected.push(`${file.name || "file"}: selected attachments would exceed ${formatBytes(MAX_COMPOSER_FILE_TOTAL_BYTES)}`);
         continue;
       }
       nextTotalBytes += file.size;
@@ -522,7 +693,7 @@ export function Composer({
     } else {
       setImageError("");
     }
-    const next = await Promise.all(accepted.map(readImageFile));
+    const next = await Promise.all(accepted.map((file) => readAttachmentFile(file, sessionToken, cwd)));
     if (next.length > 0) {
       onUserActivity?.();
     }
@@ -560,6 +731,22 @@ function ComposerMenuItem({
   );
 }
 
+async function readAttachmentFile(file: File, sessionToken: string | null | undefined, cwd: string): Promise<ComposerImageAttachment> {
+  if (isSupportedImageFile(file)) {
+    return readImageFile(file);
+  }
+  const uploaded = sessionToken ? await uploadAttachmentFile(file, sessionToken, cwd) : null;
+  return {
+    id: typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${file.name}-${Date.now()}-${Math.random()}`,
+    name: file.name,
+    url: uploaded?.path ?? "",
+    path: uploaded?.path,
+    size: file.size,
+    mediaType: uploaded?.mediaType ?? fileMediaType(file),
+    kind: "file"
+  };
+}
+
 async function readImageFile(file: File): Promise<ComposerImageAttachment> {
   const mediaType = imageMediaType(file);
   const url = await new Promise<string>((resolve, reject) => {
@@ -581,15 +768,46 @@ async function readImageFile(file: File): Promise<ComposerImageAttachment> {
     name: file.name,
     url,
     size: file.size,
-    mediaType
+    mediaType,
+    kind: "image"
   };
 }
 
-function hasImageFiles(dataTransfer: DataTransfer): boolean {
-  if (dataTransfer.items.length > 0) {
-    return Array.from(dataTransfer.items).some((item) => item.kind === "file" && (item.type.startsWith("image/") || item.type === ""));
+async function uploadAttachmentFile(file: File, sessionToken: string, cwd: string): Promise<{ path: string; mediaType: string; size: number } | null> {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("cwd", cwd);
+  const response = await fetch("/api/attachments/upload", {
+    method: "POST",
+    headers: {
+      "x-codex-ui-token": sessionToken
+    },
+    body: form
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `Attachment upload failed (${response.status})`);
   }
-  return Array.from(dataTransfer.files).some(isSupportedImageFile);
+  const body = await response.json() as { path?: string; mediaType?: string; size?: number };
+  if (!body.path) {
+    throw new Error("Attachment upload failed: missing saved path");
+  }
+  return {
+    path: body.path,
+    mediaType: body.mediaType ?? fileMediaType(file),
+    size: body.size ?? file.size
+  };
+}
+
+function hasSupportedFiles(dataTransfer: DataTransfer): boolean {
+  if (dataTransfer.items.length > 0) {
+    return Array.from(dataTransfer.items).some((item) => item.kind === "file");
+  }
+  return Array.from(dataTransfer.files).some(isSupportedAttachmentFile);
+}
+
+function isSupportedAttachmentFile(file: File): boolean {
+  return isSupportedImageFile(file) || SUPPORTED_FILE_EXTENSIONS.has(fileExtension(file.name));
 }
 
 function isSupportedImageFile(file: File): boolean {
@@ -608,6 +826,38 @@ function imageMediaType(file: File): string {
     return `image/${extension}`;
   }
   return "image/*";
+}
+
+function fileMediaType(file: File): string {
+  if (file.type) {
+    return file.type;
+  }
+  switch (fileExtension(file.name)) {
+    case "pdf":
+      return "application/pdf";
+    case "doc":
+      return "application/msword";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    case "xls":
+      return "application/vnd.ms-excel";
+    case "xlsx":
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    case "ppt":
+      return "application/vnd.ms-powerpoint";
+    case "pptx":
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "csv":
+      return "text/csv";
+    case "md":
+      return "text/markdown";
+    case "json":
+      return "application/json";
+    case "txt":
+      return "text/plain";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 function fileExtension(name: string): string {
@@ -638,4 +888,46 @@ function safeThemeAssetUrl(value?: string): string | undefined {
     return trimmed;
   }
   return undefined;
+}
+
+function loadComposerInputHistory(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COMPOSER_HISTORY_STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).slice(-MAX_COMPOSER_HISTORY);
+  } catch {
+    return [];
+  }
+}
+
+function saveComposerInputHistory(history: string[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(COMPOSER_HISTORY_STORAGE_KEY, JSON.stringify(history.slice(-MAX_COMPOSER_HISTORY)));
+  } catch {
+    // Ignore storage quota/private-mode failures; in-memory history still works for this session.
+  }
+}
+
+function shouldUseHistoryNavigation(textarea: HTMLTextAreaElement, direction: -1 | 1, browsingHistory: boolean): boolean {
+  if (browsingHistory) {
+    return true;
+  }
+  const selectionStart = textarea.selectionStart ?? 0;
+  const selectionEnd = textarea.selectionEnd ?? selectionStart;
+  if (selectionStart !== selectionEnd) {
+    return false;
+  }
+  const value = textarea.value;
+  if (direction === -1) {
+    return !value.slice(0, selectionStart).includes("\n");
+  }
+  return !value.slice(selectionStart).includes("\n");
 }

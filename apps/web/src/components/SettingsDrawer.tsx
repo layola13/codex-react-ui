@@ -107,7 +107,7 @@ import type {
   SkillEntry,
   ToolingState
 } from "../state/codexClient";
-import { fetchProviderModels } from "../state/codexClient";
+import { fetchProviderModels, testProviderChat } from "../state/codexClient";
 import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
@@ -125,6 +125,7 @@ export type ReasoningOption = {
 };
 
 export type SettingsSectionId =
+  | "assistant"
   | "codex"
   | "appearance"
   | "layout"
@@ -156,6 +157,10 @@ type Props = {
   providers: ProviderConfig[];
   activeProviderId: string | null;
   selectedModel: string;
+  settingAssistantProviderId: string;
+  settingAssistantModel: string;
+  settingAssistantReady: boolean;
+  settingAssistantEffectiveModel: string;
   reasoningEffort: string;
   reasoningOptions: ReasoningOption[];
   codexConfig: CodexUserConfigView | null;
@@ -195,6 +200,9 @@ type Props = {
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
   onReasoningEffortChange: (effort: string) => void;
+  onSettingAssistantProviderChange: (providerId: string) => void;
+  onSettingAssistantModelChange: (model: string) => void;
+  onOpenOfficialLogin: () => void;
   onReloadCodexConfig: () => void;
   onCodexConfigFieldChange: (field: CodexConfigFieldKey, value: string) => void;
   onCodexConfigValueChange: (keyPath: string, value: JsonValue) => void;
@@ -244,6 +252,7 @@ type Props = {
 };
 
 const NAV_ITEMS: Array<{ id: SettingsSectionId; labelKey: TranslationKey; icon: ReactNode }> = [
+  { id: "assistant", labelKey: "settings.nav.assistant", icon: <SettingsSuggestIcon fontSize="small" /> },
   { id: "codex", labelKey: "settings.nav.codex", icon: <StorageIcon fontSize="small" /> },
   { id: "appearance", labelKey: "settings.nav.appearance", icon: <ColorLensIcon fontSize="small" /> },
   { id: "layout", labelKey: "settings.nav.layout", icon: <DashboardCustomizeIcon fontSize="small" /> },
@@ -276,6 +285,10 @@ export function SettingsDrawer({
   providers,
   activeProviderId,
   selectedModel,
+  settingAssistantProviderId,
+  settingAssistantModel,
+  settingAssistantReady,
+  settingAssistantEffectiveModel,
   reasoningEffort,
   reasoningOptions,
   codexConfig,
@@ -316,6 +329,9 @@ export function SettingsDrawer({
   onCwdChange,
   onPermissionChange,
   onReasoningEffortChange,
+  onSettingAssistantProviderChange,
+  onSettingAssistantModelChange,
+  onOpenOfficialLogin,
   onReloadCodexConfig,
   onCodexConfigFieldChange,
   onCodexConfigValueChange,
@@ -354,6 +370,8 @@ export function SettingsDrawer({
   const [codexConfigSearch, setCodexConfigSearch] = useState("");
   const [editingThemePlugin, setEditingThemePlugin] = useState<ThemePlugin | null>(null);
   const activeProvider = providers.find((provider) => provider.id === activeProviderId);
+  const settingAssistantProvider = providers.find((provider) => provider.id === settingAssistantProviderId) ?? null;
+  const settingAssistantModelOptions = settingAssistantProvider ? providerModelOptions(settingAssistantProvider) : [];
   const selectedReasoning = reasoningOptions.find((option) => option.value === reasoningEffort);
   const visibleNavItems = useMemo(
     () => NAV_ITEMS.filter((item) => item.id !== "members" || currentUser?.role === "admin"),
@@ -498,6 +516,36 @@ export function SettingsDrawer({
           </Box>
 
           <Box sx={{ overflow: "auto", px: { xs: 1.5, sm: 2.5 }, py: 2, bgcolor: "background.default" }}>
+            <SettingAssistantSetupBanner
+              providers={providers}
+              ready={settingAssistantReady}
+              provider={settingAssistantProvider}
+              model={settingAssistantEffectiveModel}
+              t={t}
+              onOpenAssistant={() => setSection("assistant")}
+              onOpenSession={() => setSection("session")}
+              onOpenRelay={() => setSection("relay")}
+              onOpenOfficialLogin={onOpenOfficialLogin}
+            />
+            {section === "assistant" && (
+              <SettingsSection icon={<AutoAwesomeIcon fontSize="small" />} title={t("settings.section.assistant")} subtitle={t("settings.assistant.modelDescription")}>
+                <Stack spacing={1.25}>
+                  <Alert severity={settingAssistantReady ? "success" : "warning"} variant="outlined">
+                    {settingAssistantReady
+                      ? t("settings.assistant.readyDescription", { provider: settingAssistantProvider?.name ?? "-", model: settingAssistantEffectiveModel || "-" })
+                      : t("settings.assistant.chooseModelDescription")}
+                  </Alert>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Button size="small" variant="contained" startIcon={<TuneIcon />} onClick={() => setSection("session")}>
+                      {t("settings.assistant.configureModel")}
+                    </Button>
+                    <Button size="small" variant="outlined" startIcon={<MemoryIcon />} onClick={() => setSection("relay")}>
+                      {t("settings.assistant.setupRelay")}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </SettingsSection>
+            )}
             {section === "codex" && (
               <SettingsSection icon={<StorageIcon fontSize="small" />} title={t("settings.section.codex")} subtitle={t("settings.codex.subtitle")}>
                 {!canEditCodexConfig ? (
@@ -757,6 +805,43 @@ export function SettingsDrawer({
                       ))}
                     </Select>
                   </FormControl>
+                </SettingRow>
+                <SettingRow title={t("settings.assistant.modelTitle")} description={t("settings.assistant.modelDescription")}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ minWidth: { xs: "100%", sm: 420 } }}>
+                    <FormControl size="small" sx={{ minWidth: 220 }}>
+                      <InputLabel>{t("settings.assistant.provider")}</InputLabel>
+                      <Select
+                        value={settingAssistantProviderId}
+                        label={t("settings.assistant.provider")}
+                        onChange={(event) => {
+                          onSettingAssistantProviderChange(event.target.value);
+                          onSettingAssistantModelChange("");
+                        }}
+                      >
+                        <MenuItem value="">{t("settings.assistant.selectProvider")}</MenuItem>
+                        {providers.map((provider) => (
+                          <MenuItem key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl size="small" sx={{ minWidth: 180 }} disabled={!settingAssistantProvider}>
+                      <InputLabel>{t("settings.assistant.model")}</InputLabel>
+                      <Select
+                        value={settingAssistantModel}
+                        label={t("settings.assistant.model")}
+                        onChange={(event) => onSettingAssistantModelChange(event.target.value)}
+                      >
+                        <MenuItem value="">{t("settings.assistant.defaultModel")}</MenuItem>
+                        {settingAssistantModelOptions.map((option) => (
+                          <MenuItem key={option.value} value={option.value}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
                 </SettingRow>
                 <SettingRow title={t("settings.session.permissionPreset")} description={t("settings.session.permissionPresetDescription")}>
                   <FormControl size="small" sx={{ minWidth: 220 }}>
@@ -1716,10 +1801,24 @@ function RelaySettingsPanel({
 
   const testChannel = async (provider: ProviderConfig, model?: string) => {
     setBusyProviderId(provider.id);
-    setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: t("settings.relay.testing") } }));
+    setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: t("settings.relay.testingChat") } }));
     try {
-      await onActivateProvider(provider.id, model || undefined);
-      setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: t("settings.relay.testPassed") } }));
+      if (!sessionToken) {
+        throw new Error(t("settings.relay.testChatFailed"));
+      }
+      const result = await testProviderChat(sessionToken, {
+        baseUrl: provider.baseUrl ?? "",
+        kind: provider.kind,
+        providerId: provider.id,
+        model: model || provider.defaultModel || provider.nativeModels[0]
+      });
+      setTestStatuses((current) => ({
+        ...current,
+        [provider.id]: {
+          state: result.ok ? "passed" : "failed",
+          message: result.ok ? t("settings.relay.testChatPassed", { model: result.model ?? model ?? "-", ms: result.elapsedMs ?? 0 }) : result.message
+        }
+      }));
     } catch (error) {
       setTestStatuses((current) => ({
         ...current,
@@ -5398,6 +5497,66 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 function removeEmptyThemeAssets(assets: NonNullable<ThemePlugin["assets"]>): ThemePlugin["assets"] | undefined {
   const entries = Object.entries(assets).filter(([, value]) => typeof value === "string" && value.length > 0);
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function SettingAssistantSetupBanner({
+  providers,
+  ready,
+  provider,
+  model,
+  t,
+  onOpenAssistant,
+  onOpenSession,
+  onOpenRelay,
+  onOpenOfficialLogin
+}: {
+  providers: ProviderConfig[];
+  ready: boolean;
+  provider: ProviderConfig | null;
+  model: string;
+  t: TranslateFn;
+  onOpenAssistant: () => void;
+  onOpenSession: () => void;
+  onOpenRelay: () => void;
+  onOpenOfficialLogin: () => void;
+}) {
+  const hasProviders = providers.length > 0;
+  return (
+    <Paper variant="outlined" sx={{ mb: 1.5, p: 1.25, borderRadius: 2, bgcolor: ready ? "background.paper" : "background.default" }}>
+      <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} alignItems={{ xs: "stretch", md: "center" }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
+            <SettingsSuggestIcon color={ready ? "success" : "warning"} fontSize="small" />
+            <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+              {t("settings.assistant.title")}
+            </Typography>
+            <Chip size="small" color={ready ? "success" : "warning"} label={ready ? t("settings.assistant.ready") : t("settings.assistant.needsSetup")} />
+          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            {ready
+              ? t("settings.assistant.readyDescription", { provider: provider?.name ?? "-", model: model || "-" })
+              : hasProviders
+              ? t("settings.assistant.chooseModelDescription")
+              : t("settings.assistant.noProviderDescription")}
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          <Button size="small" variant={ready ? "contained" : "outlined"} startIcon={<AutoAwesomeIcon />} onClick={onOpenAssistant}>
+            {t("settings.assistant.open")}
+          </Button>
+          <Button size="small" variant={ready ? "outlined" : "contained"} startIcon={<TuneIcon />} onClick={onOpenSession}>
+            {t("settings.assistant.configureModel")}
+          </Button>
+          <Button size="small" variant="outlined" startIcon={<MemoryIcon />} onClick={onOpenRelay}>
+            {t("settings.assistant.setupRelay")}
+          </Button>
+          <Button size="small" variant="outlined" startIcon={<HubIcon />} onClick={onOpenOfficialLogin}>
+            {t("settings.assistant.loginOfficial")}
+          </Button>
+        </Stack>
+      </Stack>
+    </Paper>
+  );
 }
 
 function SettingRow({

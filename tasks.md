@@ -106,6 +106,12 @@
 - [x] Verify the dynamic config UI with Playwright screenshot coverage and full e2e tests.
 - [x] Rebuild `/root/projects/codex` code-index for faster Codex source lookup.
 - [x] Support drag-and-drop image attachments in the main composer, matching Codex's data URL image input path without imposing a 5-image count cap.
+- [x] Prevent image attachments from rendering raw base64 in chat; show image previews instead.
+- [x] Support PDF, Office, CSV, Markdown, JSON, and text attachments through server upload plus file mentions/cards.
+- [x] Compact chat waterfall command/tool/file rows into one-line activity rows with pulsing status dots and theme-colored labels.
+- [x] Make `Bash`, `Read`, `Edit`, `New`, and related activity rows clickable to expand details while preserving code snippets and diffs.
+- [x] Keep composer Send available as append while a model turn is running; keep Stop separate and support `Esc` stop plus `Enter` send/append.
+- [x] Add SSH workspace mode for new conversations with SSH key setup help, remote folder browsing, and `thread/start` / `turn/start` remote workspace metadata.
 - [x] Move third-party relay/channel configuration from the right inspector into Settings -> Relay, matching the Add Channel and saved-channel references.
 - [x] Add VS Code-like System/Light/Dark theme mode cards in Settings -> Appearance while preserving theme plugin switching.
 - [x] Replace the right inspector relay setup surface with a QQ-style Codex buddy/contacts/status sidebar.

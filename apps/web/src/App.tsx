@@ -17,6 +17,8 @@ import {
   MenuItem,
   Popover,
   Select,
+  ToggleButton,
+  ToggleButtonGroup,
   Slider,
   Snackbar,
   Stack,
@@ -132,15 +134,18 @@ const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
   leftPanelVisible: "codex-react-ui.left-panel-visible",
   showAssistantUsageDetails: "codex-react-ui.show-assistant-usage-details",
-  /** Temporarily hide non-Codex *-launch history until multi-engine history is stable. Default: false. */
   showLaunchHistory: "codex-react-ui.show-launch-history",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
   panelLayout: "codex-react-ui.panel-layout",
   filesPanelLayout: "codex-react-ui.files-panel-layout",
+  settingAssistantProviderId: "codex-react-ui.setting-assistant-provider-id",
+  settingAssistantModel: "codex-react-ui.setting-assistant-model",
   providerCachePrefix: "codex-react-ui.providers-cache"
 } as const;
 
 const DEFAULT_NEW_CHAT_CWD = "~/";
+const DEFAULT_SSH_WORKSPACE_COMMAND = "ssh user@192.168.11.1";
+const DEFAULT_SSH_WORKSPACE_CWD = "/home/user";
 const DEFAULT_MODEL_RATES: NonNullable<ProviderConfig["modelRates"]> = [
   { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
   { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
@@ -158,6 +163,8 @@ type DangerDialogIntent = {
   source: "new-chat" | "permission";
   nextPermission: PermissionPresetId;
 };
+
+type WorkspaceMode = "local" | "ssh";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -206,7 +213,7 @@ type SlashCommandNotice = {
 
 type Action =
   | { type: "connected"; connected: boolean }
-  | { type: "token"; token: string }
+  | { type: "token"; token: string | null }
   | { type: "engine"; status: ClientState["engine"] }
   | { type: "account"; account: JsonValue }
   | { type: "models"; models: ClientState["models"] }
@@ -312,6 +319,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [selectedModel, setSelectedModel] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("medium");
   const [activeProviderId, setActiveProviderId] = useState<string | null>(null);
+  const [settingAssistantProviderId, setSettingAssistantProviderId] = useState<string>(() => readStoredString(UI_STORAGE_KEYS.settingAssistantProviderId, ""));
+  const [settingAssistantModel, setSettingAssistantModel] = useState<string>(() => readStoredString(UI_STORAGE_KEYS.settingAssistantModel, ""));
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("local");
+  const [sshCommand, setSshCommand] = useState(DEFAULT_SSH_WORKSPACE_COMMAND);
+  const [sshCwd, setSshCwd] = useState(DEFAULT_SSH_WORKSPACE_CWD);
   const [cwd, setCwd] = useState(DEFAULT_NEW_CHAT_CWD);
   const [workspaceSelectionPending, setWorkspaceSelectionPending] = useState(true);
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
@@ -332,7 +344,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
   const [showAssistantUsageDetails, setShowAssistantUsageDetails] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showAssistantUsageDetails, false));
-  const [showLaunchHistory, setShowLaunchHistory] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showLaunchHistory, false));
+  const [showLaunchHistory, setShowLaunchHistory] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showLaunchHistory, true));
   const [rightWorkspaceVisible, setRightWorkspaceVisible] = useState(false);
   const [rightWorkspaceTab, setRightWorkspaceTab] = useState<RightWorkspaceTab>("sidechat");
   const [sideChatTabs, setSideChatTabs] = useState<SideChatTab[]>(() => [
@@ -544,9 +556,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           return threadCwd;
         }
       }
-      return normalizeWorkspaceCwd(cwd);
+      return workspaceMode === "ssh" ? normalizeSshWorkspaceCwd(sshCwd) || normalizeSshWorkspaceCwd(cwd) : normalizeWorkspaceCwd(cwd);
     },
-    [cwd, threadCwdById]
+    [cwd, sshCwd, threadCwdById, workspaceMode]
   );
 
   useEffect(() => {
@@ -606,6 +618,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.petDockEnabled, JSON.stringify(petDockEnabled));
   }, [petDockEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.settingAssistantProviderId, settingAssistantProviderId);
+  }, [settingAssistantProviderId]);
+
+  useEffect(() => {
+    localStorage.setItem(UI_STORAGE_KEYS.settingAssistantModel, settingAssistantModel);
+  }, [settingAssistantModel]);
 
   const installThemePlugin = useCallback(
     (id: ThemeId) => {
@@ -921,9 +941,40 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [client, cwd, skillExtraRoots, state.activeThreadId]
   );
 
+  const handleSessionExpired = useCallback(() => {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    client.disconnect();
+    dispatch({ type: "connected", connected: false });
+    dispatch({ type: "token", token: null });
+    setAuthSession(null);
+    setAuthStatus("loginRequired");
+  }, [client]);
+
+  const verifySessionAfterDisconnect = useCallback(async () => {
+    const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+    if (!token) {
+      handleSessionExpired();
+      return;
+    }
+    try {
+      const session = await fetchSessionToken(token);
+      if (session.authenticated === false || session.loginRequired || !session.token) {
+        handleSessionExpired();
+      }
+    } catch (error) {
+      if (error instanceof LoginRequiredError) {
+        handleSessionExpired();
+      }
+    }
+  }, [handleSessionExpired]);
+
   useEffect(() => {
     const onConnected = (event: Event) => {
-      dispatch({ type: "connected", connected: Boolean((event as CustomEvent<boolean>).detail) });
+      const connected = Boolean((event as CustomEvent<boolean>).detail);
+      dispatch({ type: "connected", connected });
+      if (!connected && authStatus === "authenticated") {
+        void verifySessionAfterDisconnect();
+      }
     };
     const onMessage = (event: Event) => {
       const message = (event as CustomEvent<ServerToClientMessage>).detail;
@@ -1012,7 +1063,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       client.removeEventListener("connected", onConnected);
       client.removeEventListener("server-message", onMessage);
     };
-  }, [activeProviderId, appendTerminalOutput, authSession, client, loadTooling, selectedModel, state.providers]);
+  }, [activeProviderId, appendTerminalOutput, authSession, authStatus, client, loadTooling, selectedModel, state.providers, verifySessionAfterDisconnect]);
 
   useEffect(() => {
     let mounted = true;
@@ -1233,12 +1284,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const selectTaskTab = useCallback(
     (threadId: string | null) => {
       if (!threadId) {
+        setWorkspaceMode("local");
         setCwd(DEFAULT_NEW_CHAT_CWD);
         setWorkspaceSelectionPending(true);
         setWelcomeDismissed(false);
         dispatch({ type: "newConversation" });
         return;
       }
+      setWorkspaceMode("local");
       setWorkspaceSelectionPending(false);
       void openExistingThread(threadId);
     },
@@ -1248,6 +1301,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const beginNewSession = useCallback((nextPermission: PermissionPresetId) => {
     setPermission(nextPermission);
     setDangerBypassConfirmed(nextPermission === "dangerBypass");
+    setWorkspaceMode("local");
     setCwd(DEFAULT_NEW_CHAT_CWD);
     setWorkspaceSelectionPending(true);
     setWelcomeDismissed(false);
@@ -1257,6 +1311,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const requestNewSession = useCallback(
     (nextPermission: PermissionPresetId) => {
       if (nextPermission === "dangerBypass") {
+        setWorkspaceMode("local");
         setCwd(DEFAULT_NEW_CHAT_CWD);
         setWorkspaceSelectionPending(true);
         setWelcomeDismissed(false);
@@ -1286,6 +1341,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   );
 
   const confirmWorkspaceSelection = useCallback(() => {
+    if (workspaceMode === "ssh") {
+      const normalizedRemoteCwd = normalizeSshWorkspaceCwd(sshCwd);
+      if (!normalizedRemoteCwd || !isSshWorkspaceCommand(sshCommand)) {
+        dispatch({ type: "error", message: t("workspace.required") });
+        return;
+      }
+      setSshCommand(sshCommand.trim());
+      setSshCwd(normalizedRemoteCwd);
+      setCwd(normalizedRemoteCwd);
+      setWorkspaceSelectionPending(false);
+      return;
+    }
     const normalized = normalizeWorkspaceCwd(cwd);
     if (!normalized) {
       dispatch({ type: "error", message: t("workspace.required") });
@@ -1293,7 +1360,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     setCwd(normalized);
     setWorkspaceSelectionPending(false);
-  }, [cwd, t]);
+  }, [cwd, sshCommand, sshCwd, t, workspaceMode]);
 
   const closeDangerDialog = useCallback(() => {
     setDangerDialogIntent(null);
@@ -1357,6 +1424,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       approvalPolicy: permissionOverrides.approvalPolicy,
       sessionStartSource: "startup"
     };
+    addWorkspaceRpcMetadata(startParams, workspaceMode, sshCommand, startCwd);
     if (effectiveModel) {
       startParams.model = effectiveModel;
     }
@@ -1368,7 +1436,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     dispatch({ type: "activeThread", threadId });
     return threadId;
-  }, [activeProviderId, client, cwdForThread, permission, selectedModel, state.activeThreadId, state.providers, t, workspaceSelectionPending]);
+  }, [activeProviderId, client, cwdForThread, permission, selectedModel, sshCommand, state.activeThreadId, state.providers, t, workspaceMode, workspaceSelectionPending]);
 
   const startCodexTurn = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[], options: { preserveText?: boolean; forceEffort?: string } = {}) => {
@@ -1394,6 +1462,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           approvalPolicy: permissionOverrides.approvalPolicy,
           effort: options.forceEffort ?? (fastModeEnabled ? fastReasoningEffort(reasoningOptions, reasoningEffort) : reasoningEffort)
         };
+        addWorkspaceRpcMetadata(turnParams, workspaceMode, sshCommand, turnCwd);
         if (effectiveModel) {
           turnParams.model = effectiveModel;
         }
@@ -1417,7 +1486,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       reasoningEffort,
       reasoningOptions,
       selectedModel,
-      state.providers
+      sshCommand,
+      state.providers,
+      workspaceMode
     ]
   );
 
@@ -1641,11 +1712,18 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const resumeThreadFromSlash = useCallback(
     async (threadId?: string) => {
-      const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((value): value is string => Boolean(value)));
-      const fallbackThreadId = state.threads.find((thread) => !sideChatThreadIds.has(thread.id))?.id;
-      const targetThreadId = threadId?.trim() || state.activeThreadId || fallbackThreadId;
+      const targetThreadId = threadId?.trim();
       if (!targetThreadId) {
-        dispatch({ type: "error", message: "Usage: /resume <thread-id>" });
+        setLeftPanelVisible(true);
+        setShowLaunchHistory(true);
+        setHistorySearchTerm("");
+        await loadHistory("");
+        setSlashNotice({
+          id: `resume-history-${Date.now()}`,
+          title: "Resume history opened",
+          message: "Select a Codex thread from the left history rail to resume it.",
+          severity: "info"
+        });
         return;
       }
       try {
@@ -1673,7 +1751,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: errorMessage("Resume thread", error) });
       }
     },
-    [activeProviderId, client, cwdForThread, loadThread, permission, selectedModel, sideChatTabs, state.activeThreadId, state.providers, state.threads]
+    [activeProviderId, client, cwdForThread, loadHistory, loadThread, permission, selectedModel, state.providers]
   );
 
   const handleComposerSlashCommand = useCallback(
@@ -1866,6 +1944,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             approvalPolicy: permissionOverrides.approvalPolicy,
             sessionStartSource: "startup"
           };
+          addWorkspaceRpcMetadata(startParams, workspaceMode, sshCommand, turnCwd);
           if (effectiveModel) {
             startParams.model = effectiveModel;
           }
@@ -1889,6 +1968,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           approvalPolicy: permissionOverrides.approvalPolicy,
           effort: reasoningEffort
         };
+        addWorkspaceRpcMetadata(turnParams, workspaceMode, sshCommand, turnCwd);
         if (effectiveModel) {
           turnParams.model = effectiveModel;
         }
@@ -1920,7 +2000,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       reasoningEffort,
       selectedModel,
       sideChatTabs,
-      state.providers
+      sshCommand,
+      state.providers,
+      workspaceMode
     ]
   );
 
@@ -2175,29 +2257,38 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const readDirectory = useCallback(
     async (path: string) => {
       try {
+        const cacheKey = workspaceDirectoryCacheKey(workspaceMode, sshCommand, path);
+        if (workspaceMode === "ssh") {
+          if (!state.token) {
+            throw new Error("Missing session token");
+          }
+          const result = await fetchSshDirectory(state.token, sshCommand, path);
+          setFileDirectories((current) => ({ ...current, [cacheKey]: parseFsDirectory(result, path) }));
+          return;
+        }
         const result = await client.rpc("fs/readDirectory", { path });
-        setFileDirectories((current) => ({ ...current, [path]: parseFsDirectory(result, path) }));
+        setFileDirectories((current) => ({ ...current, [cacheKey]: parseFsDirectory(result, path) }));
       } catch (error) {
         dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
-    [client]
+    [client, sshCommand, state.token, workspaceMode]
   );
 
   useEffect(() => {
     if (!workspacePickerOpen) {
       return;
     }
-    if (!fileDirectories[workspacePickerPath]) {
+    if (!fileDirectories[workspaceDirectoryCacheKey(workspaceMode, sshCommand, workspacePickerPath)]) {
       void readDirectory(workspacePickerPath);
     }
-  }, [fileDirectories, readDirectory, workspacePickerOpen, workspacePickerPath]);
+  }, [fileDirectories, readDirectory, sshCommand, workspaceMode, workspacePickerOpen, workspacePickerPath]);
 
   const openWorkspacePicker = useCallback(() => {
-    const normalized = normalizeWorkspaceCwd(cwd) || "/root";
+    const normalized = workspaceMode === "ssh" ? normalizeSshWorkspaceCwd(sshCwd) || DEFAULT_SSH_WORKSPACE_CWD : normalizeWorkspaceCwd(cwd) || "/root";
     setWorkspacePickerPath(normalized);
     setWorkspacePickerOpen(true);
-  }, [cwd]);
+  }, [cwd, sshCwd, workspaceMode]);
 
   const readFile = useCallback(
     async (path: string) => {
@@ -2388,6 +2479,20 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const themeTuning = themeVisualTuning(activeThemePlugin);
   const petImage = safeThemeAssetUrl(activeThemePlugin?.assets?.petImage);
   const showThemePet = Boolean(petImage && activeThemePlugin?.layout?.petEnabled !== false);
+  const activeRunningTurn = state.activeThreadId
+    ? [...state.turns].reverse().find((turn) => turn.threadId === state.activeThreadId && isRunningTurnStatus(turn.status)) ?? null
+    : null;
+
+  const stopActiveTurn = useCallback(async () => {
+    if (!activeRunningTurn) {
+      return;
+    }
+    try {
+      await client.rpc("turn/interrupt", { threadId: activeRunningTurn.threadId, turnId: activeRunningTurn.id });
+    } catch (error) {
+      dispatch({ type: "error", message: errorMessage("Stop turn", error) });
+    }
+  }, [activeRunningTurn, client]);
 
   const usePromptSuggestion = useCallback((text: string) => {
     setWelcomeDismissed(true);
@@ -2441,11 +2546,41 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                   </Typography>
                 </Box>
               </Stack>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={workspaceMode}
+                onChange={(_event, value) => {
+                  if (value !== "local" && value !== "ssh") {
+                    return;
+                  }
+                  setWorkspaceMode(value);
+                  setWorkspacePickerPath(value === "ssh" ? normalizeSshWorkspaceCwd(sshCwd) || DEFAULT_SSH_WORKSPACE_CWD : normalizeWorkspaceCwd(cwd) || "/root");
+                }}
+                aria-label={t("workspace.mode")}
+              >
+                <ToggleButton value="local" aria-label={t("workspace.local")}>
+                  {t("workspace.local")}
+                </ToggleButton>
+                <ToggleButton value="ssh" aria-label={t("workspace.ssh")}>
+                  SSH
+                </ToggleButton>
+              </ToggleButtonGroup>
+              {workspaceMode === "ssh" && (
+                <TextField
+                  size="small"
+                  label={t("workspace.sshCommand")}
+                  value={sshCommand}
+                  onChange={(event) => setSshCommand(event.target.value)}
+                  sx={{ minWidth: { xs: "100%", md: 320 } }}
+                  inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
+                />
+              )}
               <TextField
                 size="small"
-                label={t("workspace.label")}
-                value={cwd}
-                onChange={(event) => setCwd(event.target.value)}
+                label={workspaceMode === "ssh" ? t("workspace.remoteFolder") : t("workspace.label")}
+                value={workspaceMode === "ssh" ? sshCwd : cwd}
+                onChange={(event) => (workspaceMode === "ssh" ? setSshCwd(event.target.value) : setCwd(event.target.value))}
                 sx={{ minWidth: { xs: "100%", md: 320 } }}
               />
               <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={openWorkspacePicker}>
@@ -2455,6 +2590,22 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 {t("workspace.use")}
               </Button>
             </Stack>
+            {workspaceMode === "ssh" && (
+              <Alert severity="info" sx={{ mt: 1.25 }}>
+                <Typography variant="body2" sx={{ fontWeight: 750 }}>
+                  {t("workspace.sshHelpTitle")}
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", mt: 0.35 }}>
+                  ssh-keygen -t ed25519 -C "codex-ui"
+                </Typography>
+                <Typography variant="caption" sx={{ display: "block", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                  ssh-copy-id user@192.168.11.1
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.35 }}>
+                  {t("workspace.sshHelp")}
+                </Typography>
+              </Alert>
+            )}
           </Box>
         )}
         <ChatPanel
@@ -2526,6 +2677,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                   ? t("engine.notReady")
                   : undefined
             }
+            sessionToken={state.token}
             pendingMention={pendingMention}
             suggestedPrompt={composerSuggestion}
             activeThemePlugin={activeThemePlugin}
@@ -2533,6 +2685,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             t={t}
             modeBadges={modeState}
             dangerBypassConfirmed={dangerBypassConfirmed}
+            running={Boolean(activeRunningTurn)}
+            statusLabel={conversationStatus}
+            onStop={() => void stopActiveTurn()}
             onMentionConsumed={() => setPendingMention(null)}
             onUserActivity={() => setWelcomeDismissed(true)}
             onSuggestedPromptConsumed={() => setComposerSuggestion(null)}
@@ -2710,8 +2865,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }
 
   const currentUserLabel = authSession?.user?.email ?? "Local session";
-  const statusColor =
-    state.engine.phase === "ready" ? "success" : state.engine.phase === "error" ? "error" : "warning";
   const sideChatThreadIds = new Set(sideChatTabs.map((tab) => tab.threadId).filter((threadId): threadId is string => Boolean(threadId)));
   const historyThreads = state.threads;
   const mainThreads = historyThreads.filter((thread) => !sideChatThreadIds.has(thread.id) && !thread.parentThreadId);
@@ -2722,6 +2875,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     plan: planModeEnabled,
     goalActive: Boolean(activeGoal)
   };
+  const conversationStatus = getConversationStatus(state.connected, state.engine.phase, Boolean(activeRunningTurn));
+  const conversationStatusColor = conversationStatusColorFor(conversationStatus);
+  const settingAssistantProvider = state.providers.find((provider) => provider.id === settingAssistantProviderId) ?? null;
+  const settingAssistantEffectiveModel = settingAssistantModel || settingAssistantProvider?.defaultModel || settingAssistantProvider?.nativeModels[0] || "";
+  const settingAssistantReady = Boolean(settingAssistantProvider && settingAssistantEffectiveModel);
   const taskTabs = mainThreads.slice(0, 12);
   const reasoningIndex = Math.max(0, reasoningOptions.findIndex((option) => option.value === reasoningEffort));
   const selectedReasoning = reasoningOptions[reasoningIndex] ?? reasoningOptions[0];
@@ -2755,7 +2913,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   };
   const dangerBackendPreview = buildDangerBackendPreview(cwd, effectiveSelectedModel, reasoningEffort);
   const dangerDialogPreset = permissionPresets.find((preset) => preset.id === dangerDialogIntent?.nextPermission);
-  const workspacePickerEntries = fileDirectories[workspacePickerPath] ?? [];
+  const workspacePickerCacheKey = workspaceDirectoryCacheKey(workspaceMode, sshCommand, workspacePickerPath);
+  const workspacePickerEntries = fileDirectories[workspacePickerCacheKey] ?? [];
   const workspacePickerFolders = workspacePickerEntries.filter((entry) => entry.isDirectory);
   const workspacePickerParent = parentWorkspacePath(workspacePickerPath);
   void currentUserLabel;
@@ -2943,7 +3102,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               ))}
             </Select>
           </FormControl>
-          <Chip size="small" color={statusColor} label={state.engine.phase} sx={{ display: { xs: "none", sm: "inline-flex" } }} />
+          <Chip
+            size="small"
+            color={conversationStatusColor}
+            label={conversationStatus}
+            data-testid="topbar-conversation-status"
+            sx={{ display: { xs: "inline-flex", sm: "inline-flex" }, fontWeight: 850 }}
+          />
           <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", lg: "block" } }}>
             {state.engine.codexVersion ?? state.engine.message ?? t("app.initializing")}
           </Typography>
@@ -3215,11 +3380,22 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               fullWidth
               inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
             />
+            {workspaceMode === "ssh" && (
+              <TextField
+                size="small"
+                label={t("workspace.sshCommand")}
+                value={sshCommand}
+                onChange={(event) => setSshCommand(event.target.value)}
+                helperText={t("workspace.sshPickerHelp")}
+                fullWidth
+                inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
+              />
+            )}
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Button size="small" variant="outlined" onClick={() => setWorkspacePickerPath("/root")}>
+              <Button size="small" variant="outlined" onClick={() => setWorkspacePickerPath(workspaceMode === "ssh" ? DEFAULT_SSH_WORKSPACE_CWD : "/root")}>
                 {t("workspace.home")}
               </Button>
-              <Button size="small" variant="outlined" onClick={() => setWorkspacePickerPath("/root/projects")}>
+              <Button size="small" variant="outlined" onClick={() => setWorkspacePickerPath(workspaceMode === "ssh" ? `${DEFAULT_SSH_WORKSPACE_CWD}/projects` : "/root/projects")}>
                 {t("workspace.projects")}
               </Button>
               <Button size="small" variant="outlined" disabled={!workspacePickerParent} onClick={() => workspacePickerParent && setWorkspacePickerPath(workspacePickerParent)}>
@@ -3281,7 +3457,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           <Button
             variant="contained"
             onClick={() => {
-              setCwd(workspacePickerPath);
+              if (workspaceMode === "ssh") {
+                setSshCwd(normalizeSshWorkspaceCwd(workspacePickerPath) || workspacePickerPath);
+              } else {
+                setCwd(workspacePickerPath);
+              }
               setWorkspacePickerOpen(false);
             }}
           >
@@ -3437,6 +3617,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         providers={state.providers}
         activeProviderId={activeProviderId}
         selectedModel={selectedModel}
+        settingAssistantProviderId={settingAssistantProviderId}
+        settingAssistantModel={settingAssistantModel}
+        settingAssistantReady={settingAssistantReady}
+        settingAssistantEffectiveModel={settingAssistantEffectiveModel}
         reasoningEffort={reasoningEffort}
         reasoningOptions={reasoningOptions}
         codexConfig={codexConfig}
@@ -3476,6 +3660,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onCwdChange={setCwd}
         onPermissionChange={requestPermissionChange}
         onReasoningEffortChange={setReasoningEffort}
+        onSettingAssistantProviderChange={setSettingAssistantProviderId}
+        onSettingAssistantModelChange={setSettingAssistantModel}
+        onOpenOfficialLogin={() => setOfficialLoginOpen(true)}
         onReloadCodexConfig={() => void loadCodexConfig()}
         onCodexConfigFieldChange={(field, value) => void writeCodexConfigField(field, value)}
         onCodexConfigValueChange={(keyPath, value) => void writeCodexConfigValue(keyPath, value)}
@@ -4105,6 +4292,38 @@ function mergeTurns(current: ClientState["turns"], loaded: ClientState["turns"])
   return [...current.filter((turn) => !loadedIds.has(turn.id)), ...loaded];
 }
 
+function isRunningTurnStatus(status?: string): boolean {
+  return status === "inProgress" || status === "pending" || status === "pendingInit" || status === "started";
+}
+
+type ConversationStatus = "working" | "idle" | "disconnect" | "retrying";
+
+function getConversationStatus(connected: boolean, enginePhase: string, hasRunningTurn: boolean): ConversationStatus {
+  if (!connected) {
+    return "disconnect";
+  }
+  if (enginePhase === "starting" || enginePhase === "idle") {
+    return "retrying";
+  }
+  if (enginePhase !== "ready") {
+    return enginePhase === "error" ? "disconnect" : "retrying";
+  }
+  return hasRunningTurn ? "working" : "idle";
+}
+
+function conversationStatusColorFor(status: ConversationStatus): "success" | "error" | "warning" | "primary" | "default" {
+  switch (status) {
+    case "working":
+      return "primary";
+    case "idle":
+      return "success";
+    case "disconnect":
+      return "error";
+    case "retrying":
+      return "warning";
+  }
+}
+
 function errorMessage(scope: string, error: unknown): string {
   return `${scope}: ${formatErrorText(error)}`;
 }
@@ -4201,6 +4420,50 @@ function normalizeWorkspaceCwd(value: string): string {
     return `/root/${trimmed.slice(2)}`;
   }
   return trimmed;
+}
+
+function normalizeSshWorkspaceCwd(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.replace(/\/+$/, "") || "/";
+}
+
+function isSshWorkspaceCommand(value: string): boolean {
+  return value.trim().startsWith("ssh ") || value.trim() === "ssh";
+}
+
+function workspaceDirectoryCacheKey(mode: WorkspaceMode, sshCommand: string, path: string): string {
+  return mode === "ssh" ? `ssh:${sshCommand.trim()}:${path}` : path;
+}
+
+function addWorkspaceRpcMetadata(params: Record<string, JsonValue>, mode: WorkspaceMode, sshCommand: string, cwd: string): void {
+  if (mode !== "ssh") {
+    return;
+  }
+  params.workspace = {
+    type: "ssh",
+    command: sshCommand.trim(),
+    cwd
+  };
+  params.remoteWorkspace = params.workspace;
+}
+
+async function fetchSshDirectory(token: string, command: string, path: string): Promise<JsonValue> {
+  const response = await fetch("/api/ssh/list-directory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify({ command, path })
+  });
+  const body = (await response.json().catch(() => ({}))) as JsonValue;
+  if (!response.ok) {
+    throw new Error(stringValue(asRecord(body).error) ?? `SSH directory read failed: ${response.status}`);
+  }
+  return body;
 }
 
 function syncWorkspaceFromThread(

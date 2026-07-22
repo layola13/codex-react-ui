@@ -61,10 +61,7 @@ type Props = {
   backgroundImage?: string;
   /** Session token for host multi-engine history scanners */
   sessionToken?: string | null;
-  /**
-   * When false (default), hide non-Codex *-launch history tabs and do not fetch them.
-   * Feature kept for later re-enable from Settings → Launch adapters.
-   */
+  /** Load host CLI history tabs beside Codex app-server threads. */
   showLaunchHistory?: boolean;
   t: TranslateFn;
   onSearchChange: (value: string) => void;
@@ -89,7 +86,7 @@ export function HistorySidebar({
   installAvailable = false,
   backgroundImage,
   sessionToken = null,
-  showLaunchHistory = false,
+  showLaunchHistory = true,
   t,
   onSearchChange,
   onRefresh,
@@ -115,8 +112,6 @@ export function HistorySidebar({
   const transcriptRequestRef = useRef(0);
 
   useEffect(() => {
-    // Temporarily hide all non-Codex *-launch history (including host CLI scans).
-    // Flip showLaunchHistory from Settings → Launch adapters to re-enable.
     if (!showLaunchHistory) {
       engineRequestRef.current += 1;
       setEngineItems([]);
@@ -189,7 +184,7 @@ export function HistorySidebar({
   const filteredEngineItems = useMemo(() => {
     if (!showLaunchHistory) return [] as EngineHistoryItem[];
     if (engineTab === "codex") return [] as EngineHistoryItem[];
-    if (engineTab === "all") return engineItems.filter((i) => i.engine !== "codex");
+    if (engineTab === "all") return engineItems;
     return engineItems.filter((i) => i.engine === engineTab);
   }, [engineItems, engineTab, showLaunchHistory]);
 
@@ -608,7 +603,7 @@ export function HistorySidebar({
                 secondary={
                   <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5, flexWrap: "wrap" }}>
                     <Chip size="small" label={meta?.label ?? item.engine} sx={{ bgcolor: alpha(color, 0.15), color, borderColor: alpha(color, 0.35) }} variant="outlined" />
-                    <Chip size="small" label={t("history.readOnly")} variant="outlined" />
+                    <Chip size="small" label={item.engine === "codex" && item.canResume ? t("history.resumable") : t("history.readOnly")} variant="outlined" />
                     {item.messageCount != null ? (
                       <Chip size="small" label={t("history.messageCount", { count: String(item.messageCount) })} variant="outlined" />
                     ) : null}

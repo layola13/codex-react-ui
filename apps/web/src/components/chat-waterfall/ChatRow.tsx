@@ -2,12 +2,10 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Alert, Box, Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PersonIcon from "@mui/icons-material/Person";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
-import TerminalIcon from "@mui/icons-material/Terminal";
 import type { TranslateFn } from "../../i18n";
 import { MarkdownMessage } from "../MarkdownMessage";
 import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./types";
@@ -63,6 +61,7 @@ function UserMessageRow({ row }: { row: ChatWaterfallRow }) {
         </Stack>
         {row.text && <MarkdownMessage text={row.text} />}
         <ImageAttachments row={row} />
+        <FileAttachments row={row} />
       </Paper>
     </Box>
   );
@@ -199,6 +198,7 @@ function AssistantMessageRow({
         >
           {row.text && <MarkdownMessage text={row.text} />}
           <ImageAttachments row={row} />
+          <FileAttachments row={row} />
           {assistantUsageDisplay === "details" && <AssistantUsageDetails row={row} />}
         </Box>
       </Box>
@@ -284,25 +284,30 @@ function ReasoningPreviewRow({ row, t }: { row: ChatWaterfallRow; t: TranslateFn
 function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
   const [copied, setCopied] = useState(false);
   const commandOutput = commandOutputPreview(row.text, expanded);
+  const summary = activitySummary(row);
   async function copyOutput() {
     await navigator.clipboard.writeText(row.text.trimEnd());
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }
   return (
-    <AuditRow
+    <ActivityRow
       row={row}
-      icon={<TerminalIcon fontSize="small" />}
+      label={summary.label}
+      detail={summary.detail}
+      expandable={commandOutput.collapsible}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
       action={
         <Stack direction="row" spacing={0.5} alignItems="center">
           {commandOutput.collapsible && (
-            <Button size="small" variant="text" onClick={onToggleExpanded} sx={{ borderRadius: 1 }}>
-              {expanded ? "Collapse" : `Show full (${commandOutput.totalLines} lines)`}
+            <Button size="small" variant="text" onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={{ borderRadius: 1, minWidth: 0, px: 0.75 }}>
+              {expanded ? "collapse" : "ctrl+o to expand"}
             </Button>
           )}
           {row.text ? (
             <Tooltip title={copied ? "Copied" : "Copy output"}>
-              <IconButton size="small" aria-label="Copy command output" onClick={() => void copyOutput()}>
+              <IconButton size="small" aria-label="Copy command output" onClick={(event) => { event.stopPropagation(); void copyOutput(); }}>
                 <ContentCopyIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -310,7 +315,7 @@ function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWat
         </Stack>
       }
     >
-      {row.text && (
+      {row.text && expanded && (
         <Box sx={{ position: "relative", mt: 1, pt: 1 }}>
           <Typography
             component="pre"
@@ -334,32 +339,31 @@ function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWat
           )}
         </Box>
       )}
-    </AuditRow>
+    </ActivityRow>
   );
 }
 
 function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
   const hasDetails = Boolean(row.text.trim()) || Boolean(isRecord(row.item.payload));
+  const summary = activitySummary(row);
   return (
-    <AuditRow
+    <ActivityRow
       row={row}
-      icon={<AccountTreeIcon fontSize="small" />}
+      label={summary.label}
+      detail={summary.detail}
+      expandable={hasDetails}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
       action={
         hasDetails ? (
-          <Button size="small" variant="text" aria-label={expanded ? "Collapse tool details" : "Expand tool details"} onClick={onToggleExpanded} sx={{ borderRadius: 1 }}>
-            {expanded ? "Collapse" : "Details"}
+          <Button size="small" variant="text" aria-label={expanded ? "Collapse tool details" : "Expand tool details"} onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={{ borderRadius: 1, minWidth: 0, px: 0.75 }}>
+            {expanded ? "collapse" : "ctrl+o to expand"}
           </Button>
         ) : null
       }
     >
-      <ToolAuditSummary row={row} />
       {hasDetails && expanded && <Box data-testid="tool-audit-details">{renderToolPayload(row)}</Box>}
-      {hasDetails && !expanded && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-          Tool details hidden. Expand to inspect arguments, results, and raw payload context.
-        </Typography>
-      )}
-    </AuditRow>
+    </ActivityRow>
   );
 }
 
@@ -378,19 +382,23 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
   }
 
   return (
-    <AuditRow
+    <ActivityRow
       row={row}
-      icon={<InsertDriveFileIcon fontSize="small" />}
+      label={activitySummary(row).label}
+      detail={summary.primaryPath ?? activitySummary(row).detail}
+      expandable={hasDetails}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
       action={
         <Stack direction="row" spacing={0.5} alignItems="center">
           {hasDetails && (
-            <Button size="small" variant="text" aria-label={expanded ? "Collapse file details" : "Expand file details"} onClick={onToggleExpanded} sx={{ borderRadius: 1 }}>
-              {expanded ? "Collapse" : "Details"}
+            <Button size="small" variant="text" aria-label={expanded ? "Collapse file details" : "Expand file details"} onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={{ borderRadius: 1, minWidth: 0, px: 0.75 }}>
+              {expanded ? "collapse" : "ctrl+o to expand"}
             </Button>
           )}
           {summary.primaryPath && (
             <Tooltip title={copied ? "Copied" : "Copy file path"}>
-              <IconButton size="small" aria-label="Copy file path" onClick={() => void copyPath()}>
+              <IconButton size="small" aria-label="Copy file path" onClick={(event) => { event.stopPropagation(); void copyPath(); }}>
                 <ContentCopyIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -398,11 +406,6 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
         </Stack>
       }
     >
-      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-        {summary.primaryPath && <Chip size="small" label={summary.primaryPath} />}
-        <StatusChip status={summary.status} />
-        {summary.changes.length > 1 && <Chip size="small" label={`${summary.changes.length} files`} />}
-      </Stack>
       {hasDetails && expanded && (
         <Box data-testid="file-audit-details" sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
           {summary.changes.length > 0 && (
@@ -420,12 +423,99 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
           {row.text && <MarkdownMessage text={row.text} />}
         </Box>
       )}
-      {hasDetails && !expanded && (
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-          File details hidden. Expand to inspect changed paths and diff output.
-        </Typography>
-      )}
-    </AuditRow>
+    </ActivityRow>
+  );
+}
+
+function ActivityRow({
+  row,
+  label,
+  detail,
+  action,
+  children,
+  expandable = false,
+  expanded = false,
+  onToggleExpanded
+}: {
+  row: ChatWaterfallRow;
+  label: string;
+  detail?: string;
+  action?: ReactNode;
+  children?: ReactNode;
+  expandable?: boolean;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
+}) {
+  const status = activityStatus(row.status);
+  return (
+    <Box data-testid={`workbench-item-${sanitizeTestId(row.item.type)}`} sx={{ display: "flex", justifyContent: "flex-start", width: "100%" }}>
+      <Box
+        sx={{
+          width: "100%",
+          maxWidth: { xs: "100%", xl: "min(86vw, 1600px)" },
+          mx: row.width === "wide" ? 0 : "auto",
+          py: 0.18
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={0.75}
+          onClick={expandable ? onToggleExpanded : undefined}
+          sx={{
+            minHeight: 28,
+            px: 0.5,
+            borderRadius: 1,
+            cursor: expandable ? "pointer" : "default",
+            "&:hover": {
+              bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.045 : 0.035)
+            }
+          }}
+        >
+          <Box
+            aria-label={status.label}
+            sx={{
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              flex: "0 0 auto",
+              bgcolor: status.color,
+              boxShadow: status.live ? (theme) => `0 0 0 0 ${alpha(theme.palette.warning.main, 0.48)}` : "none",
+              animation: status.live ? "activityPulse 1350ms ease-in-out infinite" : "none",
+              "@keyframes activityPulse": {
+                "0%": { transform: "scale(0.92)", boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.warning.main, 0.45)}` },
+                "55%": { transform: "scale(1.14)", boxShadow: (theme) => `0 0 0 7px ${alpha(theme.palette.warning.main, 0)}` },
+                "100%": { transform: "scale(0.92)", boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.warning.main, 0)}` }
+              }
+            }}
+          />
+          <Typography component="span" variant="body2" sx={{ color: "primary.main", fontWeight: 850, flex: "0 0 auto" }}>
+            {label}
+          </Typography>
+          <Typography
+            component="span"
+            variant="body2"
+            sx={{
+              minWidth: 0,
+              flex: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontFamily: label === "Bash" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : "inherit",
+              color: "text.primary"
+            }}
+            title={detail}
+          >
+            {detail ? `(${detail})` : ""}
+          </Typography>
+          {row.item.agentName && <Chip size="small" label={row.item.agentName} sx={{ height: 20, borderRadius: 1 }} />}
+          {action}
+        </Stack>
+        {children}
+        <ImageAttachments row={row} />
+        <FileAttachments row={row} />
+      </Box>
+    </Box>
   );
 }
 
@@ -456,6 +546,7 @@ function AuditRow({ row, icon, action, children }: { row: ChatWaterfallRow; icon
         </Stack>
         {children ?? (row.text ? <MarkdownMessage text={row.text} /> : null)}
         <ImageAttachments row={row} />
+        <FileAttachments row={row} />
       </Paper>
     </Box>
   );
@@ -516,23 +607,54 @@ function ImageAttachments({ row }: { row: ChatWaterfallRow }) {
   );
 }
 
-function ToolAuditSummary({ row }: { row: ChatWaterfallRow }) {
-  const payload = isRecord(row.item.payload) ? row.item.payload : {};
-  const server = stringValue(payload.server);
-  const tool = stringValue(payload.tool);
-  const status = stringValue(payload.status) ?? row.status;
-  const durationMs = typeof payload.durationMs === "number" ? payload.durationMs : undefined;
-  if (!server && !tool && !status && durationMs == null) {
+function FileAttachments({ row }: { row: ChatWaterfallRow }) {
+  const files = row.item.files ?? [];
+  if (files.length === 0) {
     return null;
   }
   return (
-    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-      {server && <Chip size="small" label={server} />}
-      {tool && <Chip size="small" label={tool} />}
-      <StatusChip status={status} />
-      {durationMs != null && <Chip size="small" label={`${durationMs}ms`} />}
+    <Stack spacing={0.75} sx={{ mt: 1 }}>
+      {files.map((file, index) => (
+        <Paper
+          key={`${file.path ?? file.url ?? file.name}-${index}`}
+          variant="outlined"
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 1,
+            maxWidth: 520,
+            p: 1,
+            borderRadius: 1,
+            bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.36 : 0.72)
+          }}
+        >
+          <InsertDriveFileIcon color="action" />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 750, overflowWrap: "anywhere" }}>
+              {file.name}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+              {[file.mediaType, file.size != null ? formatBytes(file.size) : null, file.path ?? file.url].filter(Boolean).join(" · ")}
+            </Typography>
+          </Box>
+        </Paper>
+      ))}
     </Stack>
   );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KiB", "MiB", "GiB"];
+  let value = bytes / 1024;
+  let unit = units[0]!;
+  for (let index = 1; index < units.length && value >= 1024; index += 1) {
+    value /= 1024;
+    unit = units[index]!;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
 }
 
 function fileChangeSummary(row: ChatWaterfallRow): { primaryPath?: string; status?: string; changes: Array<{ path: string; status?: string }> } {
@@ -610,6 +732,101 @@ function StatusChip({ status }: { status?: string }) {
     return null;
   }
   return <Chip size="small" label={status} />;
+}
+
+function activityStatus(status?: string): { label: string; color: string; live: boolean } {
+  const normalized = status?.trim().toLowerCase() ?? "";
+  if (["inprogress", "in_progress", "running", "pending", "started", "pendinginit"].includes(normalized)) {
+    return { label: "running", color: "#f59e0b", live: true };
+  }
+  if (["failed", "error", "cancelled", "canceled", "interrupted"].includes(normalized)) {
+    return { label: normalized || "failed", color: "#ef4444", live: false };
+  }
+  return { label: normalized || "completed", color: "#22c55e", live: false };
+}
+
+function activitySummary(row: ChatWaterfallRow): { label: string; detail?: string } {
+  const payload = isRecord(row.item.payload) ? row.item.payload : {};
+  if (row.kind === "commandExecution") {
+    return { label: "Bash", detail: commandSummary(payload, row) };
+  }
+  if (row.kind === "fileChange") {
+    const summary = fileChangeSummary(row);
+    const label = fileActivityLabel(row, payload);
+    return { label, detail: summary.primaryPath ?? firstStringValue(payload, ["path", "filePath", "name"]) ?? compactText(row.text) };
+  }
+  const label = toolActivityLabel(row, payload);
+  return { label, detail: toolActivityDetail(payload, row) };
+}
+
+function commandSummary(payload: Record<string, unknown>, row: ChatWaterfallRow): string | undefined {
+  const command = firstStringValue(payload, ["command", "cmd"]);
+  if (command) {
+    return command;
+  }
+  const action = isRecord(payload.action) ? payload.action : {};
+  const actionCommand = firstStringValue(action, ["command", "cmd"]);
+  if (actionCommand) {
+    return actionCommand;
+  }
+  if (Array.isArray(payload.command)) {
+    return payload.command.map(String).join(" ");
+  }
+  return compactText(row.text) || row.title;
+}
+
+function fileActivityLabel(row: ChatWaterfallRow, payload: Record<string, unknown>): string {
+  const type = [row.title, row.status, firstStringValue(payload, ["type", "kind", "status"])].join(" ").toLowerCase();
+  if (type.includes("edit") || type.includes("update") || type.includes("patch") || type.includes("modif") || type.includes("changed")) return "Edit";
+  if (type.includes("new") || type.includes("create")) return "New";
+  if (type.includes("write")) return "Write";
+  if (type.includes("read")) return "Read";
+  return "File";
+}
+
+function toolActivityLabel(row: ChatWaterfallRow, payload: Record<string, unknown>): string {
+  const raw = firstStringValue(payload, ["tool", "name", "method", "namespace"]) ?? row.title;
+  const normalized = raw.toLowerCase();
+  if (normalized.includes("search") || normalized.includes("grep") || normalized.includes("rg")) return "Search";
+  if (normalized.includes("read")) return "Read";
+  if (normalized.includes("write")) return "Write";
+  if (normalized.includes("edit") || normalized.includes("patch")) return "Edit";
+  if (normalized.includes("task") || normalized.includes("agent")) return "ManageTask";
+  return toPascalLabel(raw || "Tool");
+}
+
+function toolActivityDetail(payload: Record<string, unknown>, row: ChatWaterfallRow): string | undefined {
+  const direct = firstStringValue(payload, ["query", "pattern", "path", "filePath", "name"]);
+  if (direct) {
+    return direct;
+  }
+  const args = isRecord(payload.arguments) ? payload.arguments : {};
+  return firstStringValue(args, ["query", "pattern", "path", "filePath", "cmd", "command", "prompt"]) ?? firstStringValue(payload, ["tool", "method"]) ?? compactText(row.text) ?? row.title;
+}
+
+function firstStringValue(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function compactText(value: string): string | undefined {
+  const compact = value.trim().split(/\r?\n/).find((line) => line.trim())?.trim();
+  return compact || undefined;
+}
+
+function toPascalLabel(value: string): string {
+  return value
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join("") || "Tool";
 }
 
 function isSilentStatus(status: string): boolean {

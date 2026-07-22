@@ -250,6 +250,7 @@ export type WorkbenchItem = {
   title: string;
   text: string;
   images?: WorkbenchImage[];
+  files?: WorkbenchFile[];
   status?: string;
   firstTokenAt?: number;
   agentId?: string;
@@ -264,6 +265,14 @@ export type WorkbenchImage = {
   url: string;
   name?: string;
   detail?: string;
+};
+
+export type WorkbenchFile = {
+  name: string;
+  path?: string;
+  url?: string;
+  mediaType?: string;
+  size?: number;
 };
 
 export type WorkbenchTurn = {
@@ -297,6 +306,8 @@ export type ComposerImageAttachment = {
   url: string;
   size: number;
   mediaType: string;
+  kind?: "image" | "file";
+  path?: string;
 };
 
 export const initialClientState: ClientState = {
@@ -847,6 +858,51 @@ export async function fetchProviderModels(
   };
 }
 
+export type TestProviderChatResponse = {
+  ok: boolean;
+  model?: string;
+  prompt?: string;
+  message: string;
+  endpoint?: string;
+  statusCode?: number;
+  elapsedMs?: number;
+};
+
+export async function testProviderChat(
+  token: string,
+  input: { baseUrl: string; apiKey?: string; kind?: string; providerId?: string; model?: string }
+): Promise<TestProviderChatResponse> {
+  const response = await fetch("/api/provider/test-chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as Partial<TestProviderChatResponse> & { error?: string };
+  if (!response.ok) {
+    return {
+      ok: false,
+      message: body.message || body.error || `Chat test failed (${response.status})`,
+      model: body.model,
+      prompt: body.prompt,
+      endpoint: body.endpoint,
+      statusCode: body.statusCode,
+      elapsedMs: body.elapsedMs
+    };
+  }
+  return {
+    ok: Boolean(body.ok),
+    message: body.message || "Chat test passed",
+    model: body.model,
+    prompt: body.prompt,
+    endpoint: body.endpoint,
+    statusCode: body.statusCode,
+    elapsedMs: body.elapsedMs
+  };
+}
+
 export async function exportProfile(token: string): Promise<UiProfile> {
   const response = await fetch("/api/profile/export", {
     headers: { "x-codex-ui-token": token }
@@ -977,6 +1033,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       title: itemTitle(item),
       text: itemText(item),
       images: itemImages(item),
+      files: itemFiles(item),
       status: stringValue(item.status) ?? (method === "item/completed" ? "completed" : undefined),
       firstTokenAt: state.turns.find((turn) => turn.id === turnId)?.items.find((existing) => existing.id === itemId)?.firstTokenAt,
       ...agentItemMetadata(item, params, method === "item/completed"),
@@ -1022,17 +1079,18 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
       })
     };
   }
-  if (method === "turn/completed") {
+  if (method === "turn/completed" || method === "turn/failed" || method === "turn/interrupted") {
     const turn = asRecord(params.turn);
-    const id = stringValue(turn.id);
+    const id = stringValue(turn.id) ?? stringValue(params.turnId);
     if (!id) {
       return state;
     }
+    const fallbackStatus = method === "turn/completed" ? "completed" : method === "turn/interrupted" ? "interrupted" : "failed";
     return {
       ...state,
       turns: state.turns.map((entry) =>
         entry.id === id
-          ? { ...entry, status: stringValue(turn.status) ?? "completed", completedAt: numberValue(turn.completedAt) ?? Math.floor(Date.now() / 1000) }
+          ? { ...entry, status: stringValue(turn.status) ?? fallbackStatus, completedAt: numberValue(turn.completedAt) ?? Math.floor(Date.now() / 1000) }
           : entry
       )
     };
@@ -1084,10 +1142,26 @@ export function composerInputToUserInput(
     }
   }
   for (const image of images) {
+    if ((image.kind ?? "image") === "image") {
+      input.push({
+        type: "image",
+        url: image.url,
+        detail: "auto"
+      });
+      continue;
+    }
+    if (image.path) {
+      input.push({
+        type: "mention",
+        name: image.name,
+        path: image.path
+      });
+      continue;
+    }
     input.push({
-      type: "image",
-      url: image.url,
-      detail: "auto"
+      type: "text",
+      text: `[Attached file: ${image.name} (${image.mediaType || "application/octet-stream"}, ${image.size} bytes)]`,
+      text_elements: []
     });
   }
   return input;
@@ -1544,6 +1618,7 @@ function threadItemToWorkbenchItem(item: Record<string, unknown>): WorkbenchItem
     title: itemTitle(item),
     text: itemText(item),
     images: itemImages(item),
+    files: itemFiles(item),
     status: stringValue(item.status),
     ...agentItemMetadata(item),
     payload: item as JsonValue
@@ -1635,10 +1710,10 @@ function itemText(item: Record<string, unknown>): string {
           return stringValue(block.text) ?? "";
         }
         if (block.type === "localImage") {
-          return `[image: ${stringValue(block.path) ?? "local image"}]`;
+          return "[image]";
         }
         if (block.type === "image") {
-          return `[image: ${stringValue(block.url) ?? "attached image"}]`;
+          return "[image]";
         }
         if (block.type === "skill" || block.type === "mention") {
           return `@${stringValue(block.name) ?? "mention"}`;
@@ -1670,6 +1745,38 @@ function itemImages(item: Record<string, unknown>): WorkbenchImage[] | undefined
     })
     .filter(isPresent);
   return images.length > 0 ? images : undefined;
+}
+
+function itemFiles(item: Record<string, unknown>): WorkbenchFile[] | undefined {
+  if (!Array.isArray(item.content)) {
+    return undefined;
+  }
+  const files = item.content
+    .map((entry): WorkbenchFile | null => {
+      const block = asRecord(entry);
+      if (block.type === "mention") {
+        const path = stringValue(block.path);
+        const name = stringValue(block.name) ?? path;
+        return name ? { name, path } : null;
+      }
+      if (block.type === "file" || block.type === "document") {
+        const path = stringValue(block.path);
+        const url = stringValue(block.url);
+        const name = stringValue(block.name) ?? path ?? url;
+        return name
+          ? {
+              name,
+              path,
+              url,
+              mediaType: stringValue(block.mediaType) ?? stringValue(block.mimeType),
+              size: numberValue(block.size)
+            }
+          : null;
+      }
+      return null;
+    })
+    .filter(isPresent);
+  return files.length > 0 ? files : undefined;
 }
 
 function agentItemMetadata(...recordsOrFlags: Array<Record<string, unknown> | boolean | undefined>): Partial<WorkbenchItem> {

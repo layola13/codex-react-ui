@@ -1,5 +1,24 @@
 # Progress
 
+## 2026-07-22
+
+- Chat attachments, compact activity rows, running composer append, and SSH workspace slice:
+  - Fixed composer attachment handling so image messages render preview thumbnails instead of raw base64 text.
+  - Added document attachment support for PDF, Word, Excel, PowerPoint, CSV, Markdown, JSON, and text files. Non-image files upload to the local server and are sent as file mentions with compact file cards.
+  - Added `/api/attachments/upload` with local private attachment storage and MIME inference.
+  - Reworked command/tool/file waterfall rows into compact single-line activity rows like `Bash(command)`, `Read(path)`, `Edit(path)`, and `New(path)`.
+  - Added status dots for activity rows: yellow pulsing while running, green for completed, red for failed/interrupted.
+  - Made activity rows clickable to expand details while preserving explicit expand/collapse controls, code snippets, command output, and diffs.
+  - Improved tool/file summaries so paths from tool arguments and modified file-change rows show the expected compact label/detail.
+  - Kept Send available while Codex is responding so users can append without stopping; added a separate Stop button.
+  - Added `Esc` to stop and `Enter` to send/append, with shortcut hints in the existing composer setup tooltip.
+  - Added SSH workspace mode to the new-chat workspace selector with command input, remote folder input, remote directory browsing, and SSH key setup help.
+  - Added server-side `POST /api/ssh/list-directory`, using `ssh` without shell interpolation to browse remote folders.
+  - SSH workspace metadata is sent with `thread/start` and `turn/start` as `workspace` / `remoteWorkspace`.
+  - Verification passed:
+    - `bun run typecheck`
+    - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "attachments|SSH workspaces|shows working status|virtualizes long main chat transcripts"`
+
 ## 2026-07-21
 
 - Captcha visibility/reload slice started:

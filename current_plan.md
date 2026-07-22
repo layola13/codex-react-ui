@@ -6,46 +6,44 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Active Slice
 
-Fix the animated math captcha sometimes rendering as a blank dark box on login and password-change flows.
+Current requested slice is implemented and awaiting final commit/push:
 
-1. Rendering:
-   - Keep SVG colors compatible with inline SVG attributes by using hex colors plus opacity attributes.
-   - Fit the 220x72 SVG into stable 72px captcha containers on login and security settings pages.
-   - Show a visible refresh prompt instead of an empty dark box when captcha fetch/render fails.
-2. Reload/cache:
-   - Return `/api/auth/captcha` with no-store headers because captcha challenges are one-time-use.
-   - Fetch captcha from the browser with `cache: "no-store"`.
-3. Verification:
-   - Run typecheck and build.
-   - Restart the background server on port 43110.
-   - Verify the login captcha DOM has visible SVG text in a real browser session.
-   - Commit and push after the slice is green.
+1. Chat attachments:
+   - Images render as previews without raw base64 transcript text.
+   - PDF, Office, CSV, Markdown, JSON, and text files upload to the local server and send as file mentions/cards.
+2. Chat waterfall:
+   - Command/tool/file activity rows render compactly with status dots and labels such as `Bash`, `Read`, `Edit`, and `New`.
+   - Activity rows can be clicked to expand details; explicit expand/collapse controls remain available.
+3. Composer while running:
+   - Send remains available to append while a turn is active.
+   - Stop is separate.
+   - `Esc` stops and `Enter` sends/appends; help text lives in the existing composer setup tooltip.
+4. SSH workspace:
+   - New chat workspace selection can switch between local and SSH.
+   - SSH mode shows key setup help, accepts `ssh user@192.168.11.1`-style commands, browses remote directories, and sends remote workspace metadata on `thread/start` / `turn/start`.
+5. Verification:
+   - `bun run typecheck` passed.
+   - Focused Playwright coverage for attachments, SSH workspaces, running composer append/stop, and long waterfall rows passed.
 
 ## Completed Slice
 
-Implemented AxonHub-style Relay channel model fetching, active-model selection, remarks, and documentation.
+Implemented chat attachments, compact clickable waterfall activities, running-turn append controls, and SSH workspaces.
 
-1. Channel model fetching:
-   - Added server-side `/api/provider/fetch-models`, so model discovery runs through the local trusted server and can reuse a saved in-memory/keyring API key for existing channels.
-   - Added upstream model-list parsing for OpenAI-compatible, Anthropic-like, Gemini, Zhipu/bigmodel, and common relay URL shapes.
-   - Settings -> Relay Add/Edit now exposes **Fetch models** beside **Active models**.
-   - Fetched models open in a searchable side panel with not-added filtering, select all, deselect all, and add/remove toggle semantics.
-2. Channel configuration and list:
-   - The editable supported-model field is now treated as the channel's active model list and still supports manual comma-separated IDs.
-   - Added free-form channel **Remark** metadata to shared types, provider persistence, profile import preservation, Relay form editing, search, table display, and expanded detail display.
-   - The channel list shows active status, model chips, remarks, timestamps, key storage, model selectors, test, activate, edit, delete, and expandable details.
-   - Members remain view-only for channel management and can only activate assigned relays.
-3. Documentation and localization:
-   - Updated all bundled locale JSON files for the new Relay labels.
-   - Updated README's Provider Switching section with the AxonHub-style channel workflow: create channel, choose API format, fetch models, activate models, save, activate, member ACL, and code-launch boundary.
+1. Attachments:
+   - `Composer` accepts image and document file types.
+   - Images are sent as image input and rendered as thumbnails.
+   - Documents upload through `/api/attachments/upload` and are sent as mention blocks.
+2. Waterfall:
+   - `ChatRow` now renders compact activity rows with status dots.
+   - Bash/tool/file rows keep rich expanded details while using one-line collapsed summaries.
+   - Row labels use primary theme color and support click-to-expand.
+3. SSH workspace:
+   - New chat workspace selection supports Local/SSH modes.
+   - `/api/ssh/list-directory` browses remote directories through `ssh` without shell-interpolating local command strings.
+   - SSH help explains key generation, copying the public key, and accepting the host fingerprint.
 4. Verification:
-   - Added and passed a Playwright test for the full Settings -> Relay channel workflow: create channel, fetch upstream models, select active models, save a remark, verify list/details, choose a model, and activate.
-   - Added and passed Bun tests for the server model fetcher across OpenAI-compatible, Gemini-style, Anthropic-like, and HTTP-error responses.
-   - Related provider alias/profile import Playwright coverage still passes.
-   - `bun run typecheck` passed.
-   - `bun run build` passed.
-   - Locale JSON parse check passed.
-   - Production-style launch was attempted; the sandbox reported `EADDRINUSE` on `43110`, `43111`, and `45110`, so runtime URL verification remains unavailable in this environment.
+   - `bun run typecheck`
+   - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "attachments|SSH workspaces|shows working status|virtualizes long main chat transcripts"`
 
 ## Previous Completed Slice
 

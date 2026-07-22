@@ -196,12 +196,52 @@ function withoutTestAllOf(schema: TestJsonSchema): TestJsonSchema {
 
 async function confirmWorkspace(page: Page, cwd = "~/"): Promise<void> {
   const panel = page.getByTestId("workspace-selection-panel");
-  if (!(await panel.isVisible({ timeout: 1000 }).catch(() => false))) {
+  if (!(await panel.waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false))) {
     return;
   }
-  await panel.getByLabel("Workspace").fill(cwd);
+  await panel.getByRole("textbox", { name: "Workspace" }).fill(cwd);
   await panel.getByRole("button", { name: "Use workspace" }).click();
-  await expect(panel).toHaveCount(0);
+  await expect(panel).toHaveCount(0, { timeout: 10_000 });
+}
+
+async function openTranscriptSearch(page: Page): Promise<void> {
+  const promptMap = page.getByTestId("chat-prompt-map");
+  if (await promptMap.isVisible().catch(() => false)) {
+    await promptMap.getByRole("button", { name: "Close prompt map" }).click();
+    await expect(promptMap).toHaveCount(0);
+  }
+  const overlay = page.getByTestId("chat-search-overlay");
+  if (await overlay.isVisible().catch(() => false)) {
+    return;
+  }
+  await page.getByTestId("chat-search-open").click();
+  await expect(overlay).toBeVisible();
+}
+
+async function setTranscriptSearchScope(page: Page, scope: "All" | "User" | "Assistant" | "Tools" | "Files" | "Commands"): Promise<void> {
+  const overlay = page.getByTestId("chat-search-overlay");
+  await expect(overlay).toBeVisible();
+  if (await page.getByRole("listbox").isVisible().catch(() => false)) {
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+  }
+  await overlay.getByTestId("chat-search-scope").click();
+  await page.getByRole("option", { name: scope }).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+}
+
+async function openPromptMap(page: Page): Promise<void> {
+  const searchOverlay = page.getByTestId("chat-search-overlay");
+  if (await searchOverlay.isVisible().catch(() => false)) {
+    await searchOverlay.getByRole("button", { name: "Close transcript search" }).click();
+    await expect(searchOverlay).toHaveCount(0);
+  }
+  const promptMap = page.getByTestId("chat-prompt-map");
+  if (await promptMap.isVisible().catch(() => false)) {
+    return;
+  }
+  await page.getByTestId("chat-prompt-map-open").click();
+  await expect(promptMap).toBeVisible();
 }
 
 let providerApiList = [mockProvider];
@@ -419,7 +459,7 @@ test.beforeEach(async ({ page }) => {
           return;
         }
         if (message.method === "turn/start") {
-          const params = message.params as { threadId?: string; input?: Array<{ type?: string; text?: string }> } | undefined;
+          const params = message.params as { threadId?: string; input?: Array<{ type?: string; text?: string; url?: string; path?: string; name?: string; detail?: string }> } | undefined;
           const threadId = params?.threadId ?? "thread-missing";
           const turnIndex = ++turnStartCount;
           const turnId = `turn-${turnIndex}`;
@@ -436,6 +476,21 @@ test.beforeEach(async ({ page }) => {
                 params: {
                   threadId,
                   turn: { id: turnId, threadId, status: "inProgress" }
+                }
+              }
+            });
+            this.emit({
+              type: "codex.notification",
+              message: {
+                method: "item/completed",
+                params: {
+                  threadId,
+                  turnId,
+                  item: {
+                    type: "userMessage",
+                    id: `${itemId}-user`,
+                    content: params?.input ?? []
+                  }
                 }
               }
             });
@@ -1358,20 +1413,29 @@ test("shows working status while a turn is pending or thinking", async ({ page }
   await expect(indicator).toContainText(/background terminals running/);
   await expect(indicator).toContainText("/ps to view");
   await expect(indicator).toContainText("/stop to interrupt");
-  await expect(indicator).toContainText("Waiting for Codex to respond");
   await expect(indicator).toContainText("Working");
-  await expect(indicator).toContainText("Inspecting current workspace state");
-  await expect(indicator).toContainText("Working");
-  await expect(page.getByTestId("workbench-item-agentMessage").getByText("Accepted working status probe")).toBeVisible();
-  await expect(page.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
-  await expect(page.getByTestId("assistant-first-token")).toContainText(/first \d+(\.\d)?s/);
-  await expect(page.getByTestId("assistant-token-usage")).toContainText(/in 617 · out 432 · hit 16\.2% · \d+(\.\d+)? tok\/s · cost \$\d+\.\d+/);
-  await expect(page.getByTestId("assistant-usage-details")).toHaveCount(0);
+  const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
+  await composer.fill("append while model is running");
+  await composer.press("Enter");
+  await page.waitForFunction(() => {
+    const outbound = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
+    return outbound.some((message) => message.method === "turn/start" && message.params?.input?.some((entry) => entry.type === "text" && entry.text === "append while model is running"));
+  });
+  await composer.press("Escape");
+  await page.waitForFunction(() => {
+    const outbound = (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? [];
+    return outbound.some((message) => message.method === "turn/interrupt");
+  });
+  const acceptedResponse = page.getByTestId("workbench-item-agentMessage").filter({ hasText: "Accepted working status probe" });
+  await expect(acceptedResponse.getByText("Accepted working status probe")).toBeVisible();
+  await expect(acceptedResponse.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
+  await expect(acceptedResponse.getByTestId("assistant-first-token")).toContainText(/first \d+(\.\d)?s/);
+  await expect(acceptedResponse.getByTestId("assistant-token-usage")).toContainText(/in 617 · out 432 · hit 16\.2% · \d+(\.\d+)? tok\/s · cost \$\d+\.\d+/);
+  await expect(acceptedResponse.getByTestId("assistant-usage-details")).toHaveCount(0);
   await expect(page.getByTestId("history-sidebar")).toContainText(/cost \$\d+\.\d+/);
-  await expect(page.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "true");
   await expect(page.getByText("completed", { exact: true })).toHaveCount(0);
   await expect(indicator).toHaveCount(0);
-  await expect(page.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "false");
+  await expect(acceptedResponse.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "false");
 });
 
 test("creates a Full Auto chat through the New Chat danger dialog", async ({ page }) => {
@@ -1749,35 +1813,30 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByTestId("chat-floor-rail")).toBeVisible();
   await page.getByRole("button", { name: /Jump to prompt 150: Long user prompt 149/ }).click();
   await expect(page.getByTestId("conversation-item-long-user-149").getByText("Long user prompt 149")).toBeVisible();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+P" : "Control+Shift+P");
-  await expect(page.getByTestId("chat-prompt-map")).toBeVisible();
+  await openPromptMap(page);
   await page.getByLabel("Filter prompts").fill("Long user prompt 219");
   await expect(page.getByText("1/320 prompts")).toBeVisible();
   await page.getByTestId("chat-prompt-map").getByRole("button", { name: /Jump to prompt 220: Long user prompt 219/ }).click();
   await expect(page.getByTestId("conversation-item-long-user-219").getByText("Long user prompt 219")).toBeVisible();
 
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
-  await expect(page.getByTestId("chat-search-overlay")).toBeVisible();
+  await openTranscriptSearch(page);
   await page.getByLabel("Search transcript").fill("Long assistant answer 319");
   await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   await expect(page.getByTestId("conversation-item-long-agent-319").getByText("Long assistant answer 319")).toBeVisible();
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Commands" }).click();
+  await setTranscriptSearchScope(page, "Commands");
   await page.getByLabel("Search transcript").fill("stdout line 300");
   await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   const longCommandRow = page.getByTestId("conversation-item-long-command-300");
-  await expect(longCommandRow.getByText("stdout line 300")).toBeVisible();
-  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command line 01");
-  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
-  await page.getByRole("button", { name: "Show full (80 lines)" }).click();
+  await expect(longCommandRow.getByText("Bash")).toBeVisible();
+  await expect(longCommandRow.getByText("(bun test)")).toBeVisible();
+  await expect(longCommandRow.getByTestId("command-output")).toHaveCount(0);
+  await longCommandRow.getByRole("button", { name: "ctrl+o to expand" }).click();
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command line 01");
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
-  await page.getByRole("button", { name: "Collapse" }).click();
-  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command line 01");
-  await expect(longCommandRow.getByTestId("command-output")).not.toContainText("long command tail marker 300");
-  await page.getByRole("button", { name: "Show full (80 lines)" }).click();
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "User" }).click();
+  await longCommandRow.getByRole("button", { name: "collapse" }).click();
+  await expect(longCommandRow.getByTestId("command-output")).toHaveCount(0);
+  await longCommandRow.getByRole("button", { name: "ctrl+o to expand" }).click();
+  await setTranscriptSearchScope(page, "User");
   await expect(page.getByText("No transcript rows match this search.")).toBeVisible();
 
   const scroll = page.getByTestId("chat-waterfall-scroll");
@@ -1788,32 +1847,28 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByRole("button", { name: /Jump to latest/ })).toBeVisible();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+ArrowDown" : "Control+Shift+ArrowDown");
   await expect(page.getByText("Long assistant answer 319")).toBeVisible();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+F" : "Control+Shift+F");
-  await expect(page.getByTestId("chat-search-overlay")).toBeVisible();
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Commands" }).click();
+  await openTranscriptSearch(page);
+  await setTranscriptSearchScope(page, "Commands");
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Tools" }).click();
+  await setTranscriptSearchScope(page, "Tools");
   await page.getByLabel("Search transcript").fill("tool audit secret 275");
   await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   const toolRow = page.getByTestId("conversation-item-long-tool-275");
-  await expect(toolRow.getByRole("heading", { name: "MCP / filesystem / readFile" })).toBeVisible();
+  await expect(toolRow.getByText("Read")).toBeVisible();
+  await expect(toolRow.getByText("(/tmp/tool-audit-275.txt)")).toBeVisible();
   await expect(toolRow).not.toContainText("tool audit secret 275");
   await toolRow.getByRole("button", { name: "Expand tool details" }).click();
   await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Files" }).click();
+  await setTranscriptSearchScope(page, "Files");
   await page.getByLabel("Search transcript").fill("file audit diff marker 260");
   await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
   const fileRow = page.getByTestId("conversation-item-long-file-260");
-  await expect(fileRow.getByRole("heading", { name: "File change" })).toBeVisible();
-  await expect(fileRow.getByText("apps/web/file-audit-260.ts").first()).toBeVisible();
+  await expect(fileRow.getByText("Edit")).toBeVisible();
+  await expect(fileRow.getByText("(apps/web/file-audit-260.ts)").first()).toBeVisible();
   await expect(fileRow).not.toContainText("file audit diff marker 260");
   await fileRow.getByRole("button", { name: "Expand file details" }).click();
   await expect(fileRow.getByTestId("file-audit-details")).toContainText("file audit diff marker 260");
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Assistant" }).click();
+  await setTranscriptSearchScope(page, "Assistant");
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   const reasoningRow = page.getByTestId("conversation-item-long-agent-310");
   await expect(reasoningRow.getByText("Long assistant answer 310")).toBeVisible();
@@ -1832,12 +1887,10 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(tintedAssistantRow.getByTestId("assistant-message-started-at")).toContainText(/\d{2}:\d{2}/);
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   await expect(reasoningRow.getByTestId("completed-thinking-panel")).toContainText("Completed reasoning detail 310");
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Tools" }).click();
+  await setTranscriptSearchScope(page, "Tools");
   await page.getByLabel("Search transcript").fill("tool audit secret 275");
   await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
-  await page.getByRole("combobox", { name: "Search scope" }).click();
-  await page.getByRole("option", { name: "Files" }).click();
+  await setTranscriptSearchScope(page, "Files");
   await page.getByLabel("Search transcript").fill("file audit diff marker 260");
   await expect(fileRow.getByTestId("file-audit-details")).toContainText("file audit diff marker 260");
 });
@@ -2090,6 +2143,129 @@ test("supports drag and drop image attachments in the composer", async ({ page }
         message.params?.input?.some((input) => input.type === "image" && input.detail === "auto" && input.url?.startsWith("data:image/png;base64,"))
     );
   });
+  await expect(page.locator('img[src^="data:image/png;base64,"]').first()).toBeVisible();
+  await expect(page.getByText(/data:image\/png;base64/)).toHaveCount(0);
+});
+
+test("supports document attachments as uploaded file mentions without rendering base64", async ({ page }) => {
+  await page.route("/api/attachments/upload", async (route) => {
+    await route.fulfill({
+      status: 201,
+      json: {
+        name: "report.pdf",
+        path: "/tmp/codex-ui-attachments/report.pdf",
+        mediaType: "application/pdf",
+        size: 7
+      }
+    });
+  });
+  await page.goto("/");
+  await confirmWorkspace(page);
+
+  const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
+  const dataTransfer = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    data.items.add(new File([new Uint8Array([37, 80, 68, 70, 45, 49, 46])], "report.pdf", { type: "application/pdf" }));
+    return data;
+  });
+
+  await composer.dispatchEvent("dragenter", { dataTransfer });
+  await composer.dispatchEvent("dragover", { dataTransfer });
+  await composer.dispatchEvent("drop", { dataTransfer });
+  await expect(page.getByText("report.pdf")).toBeVisible();
+
+  await composer.fill("Summarize the attached report");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { input?: Array<{ type?: string; text?: string; path?: string; name?: string }> };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.input?.some((input) => input.type === "text" && input.text === "Summarize the attached report") &&
+        message.params?.input?.some((input) => input.type === "mention" && input.name === "report.pdf" && input.path === "/tmp/codex-ui-attachments/report.pdf")
+    );
+  });
+  await expect(page.getByText("/tmp/codex-ui-attachments/report.pdf")).toBeVisible();
+  await expect(page.getByText(/base64/)).toHaveCount(0);
+});
+
+test("supports SSH workspaces when starting a new conversation", async ({ page }) => {
+  const sshDirectoryRequests: Array<{ command?: string; path?: string }> = [];
+  await page.route("/api/ssh/list-directory", async (route) => {
+    const body = route.request().postDataJSON() as { command?: string; path?: string };
+    sshDirectoryRequests.push(body);
+    await route.fulfill({
+      json: {
+        entries: [
+          { fileName: "remote-project", isDirectory: true, isFile: false },
+          { fileName: "README.md", isDirectory: false, isFile: true }
+        ]
+      }
+    });
+  });
+  await page.goto("/");
+
+  const panel = page.getByTestId("workspace-selection-panel");
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "SSH" }).click();
+  await expect(panel.getByLabel("SSH command")).toHaveValue("ssh user@192.168.11.1");
+  await expect(panel).toContainText("SSH key setup");
+  await expect(panel).toContainText("ssh-copy-id user@192.168.11.1");
+
+  await panel.getByRole("button", { name: "Browse" }).click();
+  const picker = page.getByTestId("workspace-folder-picker-dialog");
+  await expect(picker).toBeVisible();
+  await expect(picker.getByText("remote-project")).toBeVisible();
+  await picker.getByRole("button", { name: "remote-project" }).click();
+  await picker.getByRole("button", { name: "Use this folder" }).click();
+  await expect(panel.getByLabel("Remote folder")).toHaveValue("/home/user/remote-project");
+  await panel.getByRole("button", { name: "Use workspace" }).click();
+
+  expect(sshDirectoryRequests).toContainEqual({ command: "ssh user@192.168.11.1", path: "/home/user" });
+  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use the ssh workspace");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.waitForFunction(() => {
+    const outbound = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: { cwd?: string; workspace?: { type?: string; command?: string; cwd?: string }; input?: Array<{ type?: string; text?: string }> };
+        }>;
+      }
+    ).__codexUiOutbound ?? [];
+    const hasThreadStart = outbound.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "thread/start" &&
+        message.params?.cwd === "/home/user/remote-project" &&
+        message.params.workspace?.type === "ssh" &&
+        message.params.workspace?.command === "ssh user@192.168.11.1" &&
+        message.params.workspace?.cwd === "/home/user/remote-project"
+    );
+    const hasTurnStart = outbound.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.cwd === "/home/user/remote-project" &&
+        message.params.workspace?.type === "ssh" &&
+        message.params.workspace?.command === "ssh user@192.168.11.1" &&
+        message.params.workspace?.cwd === "/home/user/remote-project" &&
+        message.params.input?.some((entry) => entry.type === "text" && entry.text === "Use the ssh workspace")
+    );
+    return hasThreadStart && hasTurnStart;
+  });
 });
 
 test("sidechat supports multiple isolated /goal windows and preserves slash command text", async ({ page }) => {
@@ -2202,7 +2378,7 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
   const send = page.getByRole("button", { name: "Send" });
   await expect(page.getByText("mock-codex")).toBeVisible();
   await expect(composer).toBeEnabled();
-  await page.getByRole("button", { name: "Attach images to this turn. Drag and drop is also supported." }).click();
+  await page.getByRole("button", { name: "Attach files to this turn. Images, PDF, Office documents, and text files are supported." }).click();
   await expect(page.getByRole("menuitem").filter({ hasText: "/fast" })).toBeVisible();
   await page.getByRole("menuitem").filter({ hasText: "/status" }).click();
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Session Status");

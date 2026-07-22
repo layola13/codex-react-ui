@@ -1,4 +1,4 @@
-const CACHE_NAME = "codex-react-ui-pwa-v5";
+const CACHE_NAME = "codex-react-ui-pwa-__BUILD_ID__";
 const APP_SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {

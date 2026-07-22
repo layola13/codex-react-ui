@@ -161,9 +161,11 @@ export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDi
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
+        setPromptMapOpen(false);
         setSearchOpen(true);
       } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
         event.preventDefault();
+        setSearchOpen(false);
         setPromptMapOpen(true);
       } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "ArrowDown" || event.key === "End")) {
         event.preventDefault();
@@ -278,7 +280,10 @@ export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDi
             <ChatPromptMap
               open={promptMapOpen}
               floors={floors}
-              onOpen={() => setPromptMapOpen(true)}
+              onOpen={() => {
+                setSearchOpen(false);
+                setPromptMapOpen(true);
+              }}
               onClose={() => setPromptMapOpen(false)}
               onJump={jumpToRow}
             />
@@ -322,7 +327,10 @@ export function ChatWaterfall({ rows, t, before, workingStatus, assistantUsageDi
             scope={searchScope}
             selectedIndex={Math.min(selectedSearchIndex, Math.max(0, searchResults.length - 1))}
             results={searchResults}
-            onOpen={() => setSearchOpen(true)}
+            onOpen={() => {
+              setPromptMapOpen(false);
+              setSearchOpen(true);
+            }}
             onClose={() => setSearchOpen(false)}
             onTermChange={setSearchTerm}
             onScopeChange={setSearchScope}

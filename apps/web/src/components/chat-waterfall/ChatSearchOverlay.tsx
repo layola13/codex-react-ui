@@ -125,6 +125,7 @@ export function ChatSearchOverlay({
             inputProps={{ "aria-label": "Search transcript" }}
           />
           <Select
+            data-testid="chat-search-scope"
             size="small"
             value={scope}
             onChange={(event) => onScopeChange(event.target.value as ChatSearchScope)}

@@ -2,6 +2,9 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { Server, ServerWebSocket } from "bun";
 import {
   type AuthUser,
@@ -40,7 +43,7 @@ import {
   listEngineHistory,
   type EngineId
 } from "./engineHistory.js";
-import { fetchProviderModels } from "./providerModels.js";
+import { fetchProviderModels, testProviderChat } from "./providerModels.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -101,6 +104,7 @@ const authStore = AuthStore.fromEnv(process.env, localDatabase);
 const securityStore = new SecurityStore(localDatabase);
 const bridge = new CodexBridge(() => providerStore.runtimeEnv());
 const clients = new Set<ServerWebSocket<SocketData>>();
+const execFileAsync = promisify(execFile);
 
 await providerStore.initialize();
 await authStore?.initialize();
@@ -343,6 +347,33 @@ async function handleApiRequest(
       return jsonResponse(bridge.getStatus(), 200, headers);
     case "POST /api/engine/start":
       return jsonResponse(await bridge.start(), 200, headers);
+    case "POST /api/ssh/list-directory": {
+      if (user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: SSH workspaces" }, 403, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const command = stringValue(body.command) ?? "";
+        const path = stringValue(body.path) ?? "";
+        const data = await listSshDirectory(command, path);
+        return jsonResponse(data, 200, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/attachments/upload": {
+      try {
+        const form = await request.formData();
+        const file = form.get("file");
+        if (!(file instanceof File)) {
+          return jsonResponse({ error: "Missing attachment file" }, 400, headers);
+        }
+        const saved = await saveUploadedAttachment(file);
+        return jsonResponse(saved, 201, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
     case "GET /api/providers": {
       const data = await providerStore.list();
       if (user && user.role !== "admin") {
@@ -388,17 +419,7 @@ async function handleApiRequest(
         const kind = stringValue(body.kind) ?? stringValue(body.channelType) ?? "responsesRelay";
         const providerId = stringValue(body.providerId) ?? stringValue(body.channelID);
 
-        let resolvedKey = apiKey;
-        if (!resolvedKey && providerId) {
-          const existing = await providerStore.get(providerId);
-          if (existing) {
-            const envKey = existing.apiKeyRef?.startsWith("env:") ? existing.apiKeyRef.slice(4) : null;
-            const runtime = providerStore.runtimeEnv();
-            if (envKey && runtime[envKey]) {
-              resolvedKey = runtime[envKey] ?? "";
-            }
-          }
-        }
+        const resolvedKey = await resolveProviderApiKey(providerId, apiKey);
 
         const result = await fetchProviderModels({
           baseUrl,
@@ -416,6 +437,30 @@ async function handleApiRequest(
         );
       } catch (error) {
         return jsonResponse({ models: [], error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/provider/test-chat": {
+      if (user && user.role !== "admin") {
+        return jsonResponse({ error: "Admin only: test provider chat" }, 403, headers);
+      }
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const baseUrl = stringValue(body.baseUrl) ?? stringValue(body.baseURL) ?? "";
+        const apiKey = stringValue(body.apiKey) ?? "";
+        const kind = stringValue(body.kind) ?? stringValue(body.channelType) ?? "responsesRelay";
+        const providerId = stringValue(body.providerId) ?? stringValue(body.channelID);
+        const model = stringValue(body.model) ?? "";
+        const resolvedKey = await resolveProviderApiKey(providerId, apiKey);
+        const result = await testProviderChat({
+          baseUrl,
+          apiKey: resolvedKey || undefined,
+          kind,
+          model,
+          timeoutMs: 60_000
+        });
+        return jsonResponse(result, result.ok ? 200 : 400, headers);
+      } catch (error) {
+        return jsonResponse({ ok: false, message: errorToMessage(error), elapsedMs: 0 }, 400, headers);
       }
     }
     case "GET /api/audit/events": {
@@ -870,6 +915,15 @@ function serveStatic(request: Request, url: URL, headers: Headers): Response {
     responseHeaders.set("Content-Type", "text/html; charset=utf-8");
   }
 
+  const isIndexHtml = normalized.endsWith(`${sep}index.html`) || !existsSync(normalized);
+  if (isIndexHtml || url.pathname === "/sw.js") {
+    responseHeaders.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    responseHeaders.set("Pragma", "no-cache");
+    responseHeaders.set("Expires", "0");
+  } else if (/\/assets\/[^/]+-[a-z0-9]+\.[a-z0-9]+$/i.test(url.pathname)) {
+    responseHeaders.set("Cache-Control", "public, max-age=31536000, immutable");
+  }
+
   return new Response(request.method === "HEAD" ? null : fileToServe, { headers: responseHeaders });
 }
 
@@ -944,6 +998,142 @@ function jsonResponse(value: unknown, status = 200, headers = securityHeaders())
   const responseHeaders = new Headers(headers);
   responseHeaders.set("Content-Type", "application/json; charset=utf-8");
   return new Response(JSON.stringify(value), { status, headers: responseHeaders });
+}
+
+async function listSshDirectory(command: string, path: string): Promise<{ entries: Array<{ fileName: string; isDirectory: boolean; isFile: boolean }> }> {
+  const args = parseSshCommand(command);
+  const remotePath = normalizeRemotePath(path);
+  const remoteCommand = `find ${quoteRemoteShell(remotePath)} -mindepth 1 -maxdepth 1 -printf '%f\\t%y\\n' 2>/dev/null`;
+  const { stdout } = await execFileAsync("ssh", [...args, remoteCommand], {
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024
+  });
+  const entries = String(stdout)
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      const [fileName, kind] = line.split("\t");
+      if (!fileName) {
+        return [];
+      }
+      return [
+        {
+          fileName,
+          isDirectory: kind === "d",
+          isFile: kind === "f"
+        }
+      ];
+    });
+  return { entries };
+}
+
+function parseSshCommand(command: string): string[] {
+  const parts = splitCommandLine(command.trim());
+  if (parts[0] !== "ssh" || parts.length < 2) {
+    throw new Error("SSH command must look like: ssh user@host");
+  }
+  return parts.slice(1);
+}
+
+function splitCommandLine(command: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote: "'" | "\"" | null = null;
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]!;
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+    if (char === "'" || char === "\"") {
+      quote = char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (quote) {
+    throw new Error("Unclosed quote in SSH command");
+  }
+  if (current) {
+    parts.push(current);
+  }
+  return parts;
+}
+
+function normalizeRemotePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    throw new Error("Missing remote directory");
+  }
+  return trimmed.replace(/\0/g, "");
+}
+
+function quoteRemoteShell(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+async function saveUploadedAttachment(file: File): Promise<{ name: string; path: string; mediaType: string; size: number }> {
+  const maxBytes = 64 * 1024 * 1024;
+  if (file.size > maxBytes) {
+    throw new Error(`Attachment exceeds ${Math.round(maxBytes / 1024 / 1024)} MiB`);
+  }
+  const attachmentsDir = join(localDatabase.dir, "attachments");
+  await mkdir(attachmentsDir, { recursive: true, mode: 0o700 });
+  const name = sanitizeAttachmentName(file.name || "attachment.bin");
+  const path = join(attachmentsDir, `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}-${name}`);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  await writeFile(path, bytes, { mode: 0o600 });
+  return {
+    name,
+    path,
+    mediaType: file.type || mimeTypeForAttachmentName(name),
+    size: file.size
+  };
+}
+
+function sanitizeAttachmentName(value: string): string {
+  const base = value.split(/[\\/]/).pop() || "attachment.bin";
+  return base.replace(/[^A-Za-z0-9._ -]+/g, "_").replace(/^\.+/, "").slice(0, 120) || "attachment.bin";
+}
+
+function mimeTypeForAttachmentName(name: string): string {
+  const extension = name.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "pdf":
+      return "application/pdf";
+    case "doc":
+      return "application/msword";
+    case "docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    case "xls":
+      return "application/vnd.ms-excel";
+    case "xlsx":
+      return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    case "ppt":
+      return "application/vnd.ms-powerpoint";
+    case "pptx":
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "csv":
+      return "text/csv";
+    case "md":
+      return "text/markdown";
+    case "json":
+      return "application/json";
+    case "txt":
+      return "text/plain";
+    default:
+      return "application/octet-stream";
+  }
 }
 
 function securityHeaders(): Headers {
@@ -1150,6 +1340,24 @@ function routeCodexNotification(message: JsonRpcMessage & { method: string; para
       send(client, { type: "codex.notification", message });
     }
   }
+}
+
+async function resolveProviderApiKey(providerId: string | undefined, explicitApiKey: string): Promise<string> {
+  if (explicitApiKey) {
+    return explicitApiKey;
+  }
+  if (!providerId) {
+    return "";
+  }
+  const existing = await providerStore.get(providerId);
+  if (!existing) {
+    return "";
+  }
+  const envKey = existing.apiKeyRef?.startsWith("env:") ? existing.apiKeyRef.slice(4) : null;
+  if (!envKey) {
+    return "";
+  }
+  return providerStore.runtimeEnv()[envKey] ?? "";
 }
 
 async function activateProvider(providerId: string, model?: string): Promise<ProviderActivation> {
