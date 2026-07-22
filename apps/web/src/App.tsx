@@ -141,9 +141,9 @@ const UI_STORAGE_KEYS = {
 
 const DEFAULT_NEW_CHAT_CWD = "~/";
 const DEFAULT_MODEL_RATES: NonNullable<ProviderConfig["modelRates"]> = [
-  { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 },
-  { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1 },
-  { model: "gpt-5.6-sol", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 }
+  { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
+  { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
+  { model: "gpt-5.6-sol", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 }
 ];
 
 type AppProps = {
@@ -3863,6 +3863,11 @@ function applyTokenUsagePricing(usage: ThreadTokenUsageState, provider: Provider
   };
 }
 
+type PricedModelRate = NonNullable<ProviderConfig["modelRates"]>[number] & {
+  inputUsdPerMillion: number;
+  outputUsdPerMillion: number;
+};
+
 function priceTokenBreakdown(usage: TokenUsageBreakdown, provider: ProviderConfig | undefined, model: string): TokenUsageBreakdown {
   const rate = resolveModelRate(provider, model);
   if (!rate) {
@@ -3873,27 +3878,51 @@ function priceTokenBreakdown(usage: TokenUsageBreakdown, provider: ProviderConfi
   const standardInputTokens = Math.max(0, usage.inputTokens - cachedTokens - cacheWriteTokens);
   const cachedRate = rate.cachedInputUsdPerMillion ?? rate.inputUsdPerMillion;
   const cacheWriteRate = rate.cacheWriteUsdPerMillion ?? rate.inputUsdPerMillion;
-  const multiplier = rate.multiplier || 1;
-  const estimatedCostUsd =
-    ((standardInputTokens * rate.inputUsdPerMillion) + (cachedTokens * cachedRate) + (cacheWriteTokens * cacheWriteRate) + usage.outputTokens * rate.outputUsdPerMillion) /
-    1_000_000 *
-    multiplier;
+  const legacyMultiplier = rate.multiplier || 1;
+  const inputMultiplier = rate.inputMultiplier ?? legacyMultiplier;
+  const cacheReadMultiplier = rate.cacheReadMultiplier ?? legacyMultiplier;
+  const cacheWriteMultiplier = rate.cacheWriteMultiplier ?? legacyMultiplier;
+  const outputMultiplier = rate.outputMultiplier ?? legacyMultiplier;
+  const inputCost = (standardInputTokens * rate.inputUsdPerMillion) / 1_000_000 * inputMultiplier;
+  const cachedInputCost = (cachedTokens * cachedRate) / 1_000_000 * cacheReadMultiplier;
+  const cacheWriteCost = (cacheWriteTokens * cacheWriteRate) / 1_000_000 * cacheWriteMultiplier;
+  const outputCost = (usage.outputTokens * rate.outputUsdPerMillion) / 1_000_000 * outputMultiplier;
   return {
     ...usage,
-    estimatedCostUsd,
+    estimatedCostUsd: inputCost + cachedInputCost + cacheWriteCost + outputCost,
     costBreakdownUsd: {
-      input: (standardInputTokens * rate.inputUsdPerMillion) / 1_000_000 * multiplier,
-      cachedInput: (cachedTokens * cachedRate) / 1_000_000 * multiplier,
-      cacheWrite: (cacheWriteTokens * cacheWriteRate) / 1_000_000 * multiplier,
-      output: (usage.outputTokens * rate.outputUsdPerMillion) / 1_000_000 * multiplier
+      input: inputCost,
+      cachedInput: cachedInputCost,
+      cacheWrite: cacheWriteCost,
+      output: outputCost
     }
   };
 }
 
-function resolveModelRate(provider: ProviderConfig | undefined, model: string): NonNullable<ProviderConfig["modelRates"]>[number] | undefined {
+function resolveModelRate(provider: ProviderConfig | undefined, model: string): PricedModelRate | undefined {
   const resolvedModel = model.trim();
   const providerRate = provider?.modelRates?.find((rate) => rate.model === resolvedModel);
-  return providerRate ?? DEFAULT_MODEL_RATES.find((rate) => rate.model === resolvedModel);
+  const defaultRate = DEFAULT_MODEL_RATES.find((rate) => rate.model === resolvedModel);
+  if (!providerRate) {
+    return defaultRate && isPricedModelRate(defaultRate) ? defaultRate : undefined;
+  }
+  const inputUsdPerMillion = providerRate.inputUsdPerMillion ?? defaultRate?.inputUsdPerMillion;
+  const outputUsdPerMillion = providerRate.outputUsdPerMillion ?? defaultRate?.outputUsdPerMillion;
+  if (inputUsdPerMillion == null || outputUsdPerMillion == null) {
+    return undefined;
+  }
+  return {
+    ...defaultRate,
+    ...providerRate,
+    inputUsdPerMillion,
+    outputUsdPerMillion,
+    cachedInputUsdPerMillion: providerRate.cachedInputUsdPerMillion ?? defaultRate?.cachedInputUsdPerMillion,
+    cacheWriteUsdPerMillion: providerRate.cacheWriteUsdPerMillion ?? defaultRate?.cacheWriteUsdPerMillion
+  };
+}
+
+function isPricedModelRate(rate: NonNullable<ProviderConfig["modelRates"]>[number]): rate is PricedModelRate {
+  return rate.inputUsdPerMillion != null && rate.outputUsdPerMillion != null;
 }
 
 function sumTokenBreakdowns(values: TokenUsageBreakdown[]): TokenUsageBreakdown | undefined {

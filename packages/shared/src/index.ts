@@ -252,11 +252,15 @@ export interface ProviderConfig {
   }>;
   modelRates?: Array<{
     model: string;
-    inputUsdPerMillion: number;
+    inputUsdPerMillion?: number;
     cachedInputUsdPerMillion?: number;
     cacheWriteUsdPerMillion?: number;
-    outputUsdPerMillion: number;
+    outputUsdPerMillion?: number;
     multiplier: number;
+    inputMultiplier?: number;
+    cacheReadMultiplier?: number;
+    cacheWriteMultiplier?: number;
+    outputMultiplier?: number;
   }>;
   /** Relay Channel Mode: "fast" (default) or "advanced" */
   channelMode?: "fast" | "advanced";

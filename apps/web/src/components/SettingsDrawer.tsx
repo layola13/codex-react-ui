@@ -954,6 +954,29 @@ type RelayTemplateId =
 
 const CHAT_COMPLETIONS_MODEL_RATES = "";
 
+type ModelRateDraft = {
+  model: string;
+  inputUsdPerMillion: string;
+  cachedInputUsdPerMillion: string;
+  cacheWriteUsdPerMillion: string;
+  outputUsdPerMillion: string;
+  inputMultiplier: string;
+  cacheReadMultiplier: string;
+  cacheWriteMultiplier: string;
+  outputMultiplier: string;
+};
+
+const DEFAULT_MODEL_RATE_DRAFT = {
+  inputUsdPerMillion: "",
+  cachedInputUsdPerMillion: "",
+  cacheWriteUsdPerMillion: "",
+  outputUsdPerMillion: "",
+  inputMultiplier: "1",
+  cacheReadMultiplier: "1",
+  cacheWriteMultiplier: "1",
+  outputMultiplier: "1"
+};
+
 const RELAY_PROVIDER_TEMPLATES: Array<{
   id: RelayTemplateId;
   label: string;
@@ -1374,7 +1397,9 @@ function RelaySettingsPanel({
   const [apiKey, setApiKey] = useState("");
   const [nativeModels, setNativeModels] = useState(template.nativeModels);
   const [modelAliases, setModelAliases] = useState(template.modelAliases);
-  const [modelRates, setModelRates] = useState(template.modelRates);
+  const [modelRateDrafts, setModelRateDrafts] = useState<ModelRateDraft[]>(() =>
+    modelRateDraftsForModels(parseCsv(template.nativeModels), parseModelRates(template.modelRates))
+  );
   const [remark, setRemark] = useState("");
   const [quotaUsd, setQuotaUsd] = useState<string>("");
   const [stationType, setStationType] = useState<StationType>("third_party");
@@ -1423,6 +1448,11 @@ function RelaySettingsPanel({
   }, [canManage, relayView]);
 
   const activeModelList = useMemo(() => parseCsv(nativeModels), [nativeModels]);
+  const modelRateRows = useMemo(
+    () => modelRateDraftRowsForModels(activeModelList, modelRateDrafts),
+    [activeModelList, modelRateDrafts]
+  );
+  const tieredContextEnabled = channelMode === "advanced" && groups.some((group) => group.enableTieredContext === true);
 
   const filteredProviders = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -1501,7 +1531,7 @@ function RelaySettingsPanel({
     setBaseUrl(entry.baseUrl);
     setNativeModels(entry.nativeModels);
     setModelAliases(entry.modelAliases);
-    setModelRates(entry.modelRates);
+    setModelRateDrafts(modelRateDraftsForModels(parseCsv(entry.nativeModels), parseModelRates(entry.modelRates)));
     setRemark("");
     setQuotaUsd("");
     setStationType("third_party");
@@ -1533,7 +1563,7 @@ function RelaySettingsPanel({
     setBaseUrl(provider.baseUrl ?? "");
     setNativeModels(provider.nativeModels.join(", "));
     setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
-    setModelRates(formatModelRates(provider.modelRates) || formatModelRates(defaultRatesForProvider(provider)));
+    setModelRateDrafts(modelRateDraftsForModels(provider.nativeModels, provider.modelRates ?? defaultRatesForProvider(provider)));
     setRemark(provider.remark ?? "");
     setQuotaUsd(provider.quotaUsd != null ? String(provider.quotaUsd) : "");
     setStationType(provider.stationType ?? "third_party");
@@ -1653,7 +1683,7 @@ function RelaySettingsPanel({
           defaultModel: nativeModelList[0] ?? editingProvider?.defaultModel ?? selectedModel,
           nativeModels: nativeModelList,
           modelAliases: parseAliases(modelAliases),
-          modelRates: parseModelRates(modelRates),
+          modelRates: modelRateDraftsToProviderRates(modelRateRows, channelMode === "advanced"),
           channelMode,
           groups: channelMode === "advanced" ? groups : undefined,
           quotaUsd: quotaUsd.trim() ? parseFloat(quotaUsd) : undefined,
@@ -2343,16 +2373,82 @@ function RelaySettingsPanel({
                 />
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.modelRates")}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  label={t("settings.relay.modelRatesHelp")}
-                  value={modelRates}
-                  onChange={(event) => setModelRates(event.target.value)}
-                  helperText={t("settings.relay.modelRatesDescription")}
-                />
+                <Stack spacing={1.25} sx={{ width: "100%" }}>
+                  <Alert severity={tieredContextEnabled ? "warning" : "info"} variant="outlined" sx={{ borderRadius: 2 }}>
+                    {tieredContextEnabled ? t("settings.relay.modelRatesTieredHint") : t("settings.relay.modelRatesListHelp")}
+                  </Alert>
+                  {modelRateRows.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {t("settings.relay.modelRatesNoModels")}
+                    </Typography>
+                  ) : (
+                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.model")}</TableCell>
+                            <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.inputMultiplier")}</TableCell>
+                            <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.cacheReadMultiplier")}</TableCell>
+                            <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.cacheWriteMultiplier")}</TableCell>
+                            <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.outputMultiplier")}</TableCell>
+                            {channelMode === "advanced" ? (
+                              <>
+                                <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.inputPrice")}</TableCell>
+                                <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.cacheReadPrice")}</TableCell>
+                                <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.cacheWritePrice")}</TableCell>
+                                <TableCell sx={{ fontWeight: 800 }}>{t("settings.relay.outputPrice")}</TableCell>
+                              </>
+                            ) : null}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {modelRateRows.map((rate) => (
+                            <TableRow key={rate.model}>
+                              <TableCell sx={{ maxWidth: 220 }}>
+                                <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", overflowWrap: "anywhere" }}>
+                                  {rate.model}
+                                </Typography>
+                              </TableCell>
+                              {(["inputMultiplier", "cacheReadMultiplier", "cacheWriteMultiplier", "outputMultiplier"] as const).map((field) => (
+                                <TableCell key={field} sx={{ minWidth: 92 }}>
+                                  <TextField
+                                    size="small"
+                                    type="number"
+                                    value={rate[field]}
+                                    inputProps={{ step: "0.01", min: 0 }}
+                                    onChange={(event) =>
+                                      setModelRateDrafts((current) => updateModelRateDraft(current, rate.model, field, event.target.value))
+                                    }
+                                  />
+                                </TableCell>
+                              ))}
+                              {channelMode === "advanced" ? (
+                                <>
+                                  {(["inputUsdPerMillion", "cachedInputUsdPerMillion", "cacheWriteUsdPerMillion", "outputUsdPerMillion"] as const).map((field) => (
+                                    <TableCell key={field} sx={{ minWidth: 104 }}>
+                                      <TextField
+                                        size="small"
+                                        type="number"
+                                        value={rate[field]}
+                                        inputProps={{ step: "0.01", min: 0 }}
+                                        onChange={(event) =>
+                                          setModelRateDrafts((current) => updateModelRateDraft(current, rate.model, field, event.target.value))
+                                        }
+                                      />
+                                    </TableCell>
+                                  ))}
+                                </>
+                              ) : null}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    {channelMode === "advanced" ? t("settings.relay.modelRatesAdvancedHelp") : t("settings.relay.modelRatesFastHelp")}
+                  </Typography>
+                </Stack>
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.remark")}>
                 <TextField
@@ -2731,7 +2827,7 @@ function RelaySettingsPanel({
                           </TableCell>
                           <TableCell align="center">
                             <Typography variant="body2" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
-                              {provider.modelRates?.[0]?.multiplier?.toFixed(4) ?? "1.0000"}
+                              {providerRateSummary(provider)}
                             </Typography>
                           </TableCell>
                           <TableCell align="center">
@@ -2836,7 +2932,7 @@ function RelaySettingsPanel({
                                         <Stack direction="row" spacing={1} justifyContent="space-between">
                                           <Typography variant="caption" color="text.secondary">{t("settings.relay.orderingWeight")}</Typography>
                                           <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace" }}>
-                                            {provider.modelRates?.[0]?.multiplier?.toFixed(4) ?? "1.0000"}
+                                            {providerRateSummary(provider)}
                                           </Typography>
                                         </Stack>
                                         <Stack direction="row" spacing={1} justifyContent="space-between">
@@ -2962,9 +3058,9 @@ function providerModelOptions(provider: ProviderConfig): Array<{ value: string; 
 }
 
 const OPENAI_DEFAULT_MODEL_RATES: NonNullable<ProviderConfig["modelRates"]> = [
-  { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 },
-  { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1 },
-  { model: "gpt-5.6-sol", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1 }
+  { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
+  { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
+  { model: "gpt-5.6-sol", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 }
 ];
 
 function defaultRatesForProvider(provider: ProviderConfig): ProviderConfig["modelRates"] {
@@ -3013,6 +3109,35 @@ function providerTableId(provider: ProviderConfig, index: number): string {
 
 function providerTags(provider: ProviderConfig, active: boolean): string[] {
   return [provider.kind === "responsesRelay" ? "relay" : provider.kind, active ? "active" : "saved"].filter(Boolean);
+}
+
+function providerRateSummary(provider: ProviderConfig): string {
+  const rates = provider.modelRates ?? [];
+  if (rates.length === 0) {
+    return "1x";
+  }
+  const multipliers = rates.flatMap((rate) => rateMultipliers(rate));
+  const unique = [...new Set(multipliers.map((value) => formatMultiplier(value)))];
+  if (unique.length === 1) {
+    return `${unique[0]}x`;
+  }
+  const min = Math.min(...multipliers);
+  const max = Math.max(...multipliers);
+  return `${rates.length} models ${formatMultiplier(min)}-${formatMultiplier(max)}x`;
+}
+
+function rateMultipliers(rate: NonNullable<ProviderConfig["modelRates"]>[number]): number[] {
+  const legacyMultiplier = rate.multiplier || 1;
+  return [
+    rate.inputMultiplier ?? legacyMultiplier,
+    rate.cacheReadMultiplier ?? legacyMultiplier,
+    rate.cacheWriteMultiplier ?? legacyMultiplier,
+    rate.outputMultiplier ?? legacyMultiplier
+  ];
+}
+
+function formatMultiplier(value: number): string {
+  return Number.isFinite(value) ? Number(value.toFixed(4)).toString() : "1";
 }
 
 function translateProviderTag(tag: string, t: TranslateFn): string {
@@ -3070,38 +3195,126 @@ function parseModelRates(value: string): ProviderConfig["modelRates"] {
       continue;
     }
     if (parts.length >= 5 && parts[0] != null && parts[3] != null) {
+      const multiplier = parts[4] || 1;
       rates.push({
         model,
         inputUsdPerMillion: parts[0],
         cachedInputUsdPerMillion: parts[1],
         cacheWriteUsdPerMillion: parts[2],
         outputUsdPerMillion: parts[3],
-        multiplier: parts[4] || 1
+        multiplier,
+        inputMultiplier: multiplier,
+        cacheReadMultiplier: multiplier,
+        cacheWriteMultiplier: multiplier,
+        outputMultiplier: multiplier
       });
     } else if (parts.length >= 3 && parts[0] != null && parts[1] != null) {
+      const multiplier = parts[2] || 1;
       rates.push({
         model,
         inputUsdPerMillion: parts[0],
         cachedInputUsdPerMillion: parts[0],
         cacheWriteUsdPerMillion: parts[0],
         outputUsdPerMillion: parts[1],
-        multiplier: parts[2] || 1
+        multiplier,
+        inputMultiplier: multiplier,
+        cacheReadMultiplier: multiplier,
+        cacheWriteMultiplier: multiplier,
+        outputMultiplier: multiplier
       });
     }
   }
   return rates.length > 0 ? rates : undefined;
 }
 
-function formatModelRates(rates: ProviderConfig["modelRates"]): string {
-  return (rates ?? [])
-    .map((rate) =>
-      [
-        rate.model,
-        "=",
-        [rate.inputUsdPerMillion, rate.cachedInputUsdPerMillion ?? rate.inputUsdPerMillion, rate.cacheWriteUsdPerMillion ?? rate.inputUsdPerMillion, rate.outputUsdPerMillion, rate.multiplier ?? 1].join("/")
-      ].join("")
-    )
-    .join("\n");
+function modelRateDraftsForModels(models: string[], rates: ProviderConfig["modelRates"]): ModelRateDraft[] {
+  const byModel = new Map((rates ?? []).map((rate) => [rate.model, rate]));
+  return models.map((model) => {
+    const rate = byModel.get(model);
+    const multiplier = rate?.multiplier ?? 1;
+    return {
+      model,
+      inputUsdPerMillion: formatOptionalNumberInput(rate?.inputUsdPerMillion),
+      cachedInputUsdPerMillion: formatOptionalNumberInput(rate?.cachedInputUsdPerMillion ?? rate?.inputUsdPerMillion),
+      cacheWriteUsdPerMillion: formatOptionalNumberInput(rate?.cacheWriteUsdPerMillion ?? rate?.inputUsdPerMillion),
+      outputUsdPerMillion: formatOptionalNumberInput(rate?.outputUsdPerMillion),
+      inputMultiplier: formatNumberInput(rate?.inputMultiplier ?? multiplier),
+      cacheReadMultiplier: formatNumberInput(rate?.cacheReadMultiplier ?? multiplier),
+      cacheWriteMultiplier: formatNumberInput(rate?.cacheWriteMultiplier ?? multiplier),
+      outputMultiplier: formatNumberInput(rate?.outputMultiplier ?? multiplier)
+    };
+  });
+}
+
+function modelRateDraftRowsForModels(models: string[], drafts: ModelRateDraft[]): ModelRateDraft[] {
+  const byModel = new Map(drafts.map((draft) => [draft.model, draft]));
+  return models.map((model) => byModel.get(model) ?? { model, ...DEFAULT_MODEL_RATE_DRAFT });
+}
+
+function updateModelRateDraft(drafts: ModelRateDraft[], model: string, field: keyof Omit<ModelRateDraft, "model">, value: string): ModelRateDraft[] {
+  const seen = new Set<string>();
+  const next = drafts.map((draft) => {
+    if (draft.model !== model) {
+      return draft;
+    }
+    seen.add(model);
+    return { ...draft, [field]: value };
+  });
+  if (!seen.has(model)) {
+    next.push({ model, ...DEFAULT_MODEL_RATE_DRAFT, [field]: value });
+  }
+  return next;
+}
+
+function modelRateDraftsToProviderRates(drafts: ModelRateDraft[], includePrices: boolean): ProviderConfig["modelRates"] {
+  const rates: NonNullable<ProviderConfig["modelRates"]> = [];
+  for (const draft of drafts) {
+    const model = draft.model.trim();
+    if (!model) {
+      continue;
+    }
+    const inputMultiplier = parsePositiveNumber(draft.inputMultiplier, 1);
+    const cacheReadMultiplier = parsePositiveNumber(draft.cacheReadMultiplier, 1);
+    const cacheWriteMultiplier = parsePositiveNumber(draft.cacheWriteMultiplier, 1);
+    const outputMultiplier = parsePositiveNumber(draft.outputMultiplier, 1);
+    const rate: NonNullable<ProviderConfig["modelRates"]>[number] = {
+      model,
+      multiplier: 1,
+      inputMultiplier,
+      cacheReadMultiplier,
+      cacheWriteMultiplier,
+      outputMultiplier
+    };
+    if (includePrices) {
+      rate.inputUsdPerMillion = parseOptionalPositiveNumber(draft.inputUsdPerMillion);
+      rate.cachedInputUsdPerMillion = parseOptionalPositiveNumber(draft.cachedInputUsdPerMillion);
+      rate.cacheWriteUsdPerMillion = parseOptionalPositiveNumber(draft.cacheWriteUsdPerMillion);
+      rate.outputUsdPerMillion = parseOptionalPositiveNumber(draft.outputUsdPerMillion);
+    }
+    rates.push(rate);
+  }
+  return rates.length > 0 ? rates : undefined;
+}
+
+function parsePositiveNumber(value: string, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function formatNumberInput(value: number): string {
+  return Number.isFinite(value) ? String(value) : "0";
+}
+
+function parseOptionalPositiveNumber(value: string): number | undefined {
+  if (!value.trim()) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function formatOptionalNumberInput(value: number | undefined): string {
+  return value != null && Number.isFinite(value) ? String(value) : "";
 }
 
 type QuickCodexConfigField = (typeof CODEX_CONFIG_FIELD_META)[number];

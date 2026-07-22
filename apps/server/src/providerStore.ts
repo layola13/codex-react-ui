@@ -398,8 +398,23 @@ function modelRateArray(value: unknown): ProviderConfig["modelRates"] {
     const cacheWriteUsdPerMillion = numberValue(record.cacheWriteUsdPerMillion);
     const outputUsdPerMillion = numberValue(record.outputUsdPerMillion);
     const multiplier = numberValue(record.multiplier) ?? 1;
-    if (model && inputUsdPerMillion != null && outputUsdPerMillion != null) {
-      rates.push({ model, inputUsdPerMillion, cachedInputUsdPerMillion, cacheWriteUsdPerMillion, outputUsdPerMillion, multiplier });
+    const inputMultiplier = numberValue(record.inputMultiplier) ?? multiplier;
+    const cacheReadMultiplier = numberValue(record.cacheReadMultiplier) ?? multiplier;
+    const cacheWriteMultiplier = numberValue(record.cacheWriteMultiplier) ?? multiplier;
+    const outputMultiplier = numberValue(record.outputMultiplier) ?? multiplier;
+    if (model) {
+      rates.push({
+        model,
+        inputUsdPerMillion,
+        cachedInputUsdPerMillion,
+        cacheWriteUsdPerMillion,
+        outputUsdPerMillion,
+        multiplier,
+        inputMultiplier,
+        cacheReadMultiplier,
+        cacheWriteMultiplier,
+        outputMultiplier
+      });
     }
   }
   return rates.length > 0 ? rates : undefined;

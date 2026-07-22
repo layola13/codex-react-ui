@@ -114,12 +114,16 @@ Admins manage channels under **Settings → Relay**. Members only see relays lis
 
 1. Open **Settings → Relay → Add channel**.
 2. Choose an API format / service template such as Responses relay, OpenAI Chat Completions, Ollama, LM Studio, or Bedrock.
-3. Fill in channel name, Base URL, API Key, optional model aliases, model rates, and free-form **Remark** notes.
-4. Click **Fetch models** to call the upstream model-list endpoint through the local server. The fetcher supports OpenAI-compatible `/v1/models`, Anthropic-like `/v1/models`, Gemini `/v1beta/models`, and common relay URL variants.
-5. Select fetched models into the **Active models** list, or type comma-separated model IDs manually.
-6. Save the channel, then choose a model in the channel list and click **Activate**.
+3. Fill in channel name, Base URL, API Key, optional model aliases, model multipliers, and free-form **Remark** notes.
+4. Pick **Fast Mode** for normal channel setup: every active model appears in a list with four multipliers — input, output, cache read, and cache write — all defaulting to `1`.
+5. Switch to **Advanced Mode** only when you need raw per-model USD-per-million prices, relay groups, key pools, fallback groups, or tiered context ratios. The four model multipliers still default to `1`.
+6. Click **Fetch models** to call the upstream model-list endpoint through the local server. The fetcher supports OpenAI-compatible `/v1/models`, Anthropic-like `/v1/models`, Gemini `/v1beta/models`, and common relay URL variants.
+7. Select fetched models into the **Active models** list, or type comma-separated model IDs manually.
+8. Save the channel, then choose a model in the channel list and click **Activate**.
 
-The channel list shows saved channel ID, provider/API format, active status, tags, model chips, remarks, key storage, timestamps, and per-channel model selectors. Expanding a row shows Base URL, API format, update time, remark, key storage, tags, and the saved active models. Search matches channel name, ID, kind, Base URL, default model, active models, tags, and remarks.
+Model multiplier logic is intentionally simple by default: `1` means normal pricing, and separate input/output/cache-read/cache-write multipliers are stored per active model. When tiered context ratios are enabled in Advanced Mode, the model multipliers still remain visible as base multipliers and are multiplied together with the group ratio and token-tier ratio; leave them at `1` unless you need a per-model override.
+
+The channel list shows saved channel ID, provider/API format, active status, tags, model chips, remarks, key storage, timestamps, multiplier summary, and per-channel model selectors. Expanding a row shows Base URL, API format, update time, remark, key storage, tags, and the saved active models. Search matches channel name, ID, kind, Base URL, default model, active models, tags, and remarks.
 
 Activating a provider writes:
 
