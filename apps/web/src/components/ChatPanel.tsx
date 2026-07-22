@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Avatar, Badge, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import type { JsonValue } from "@codex-ui/shared";
 import AccountTreeIcon from "@mui/icons-material/AccountTree";
 import AssessmentIcon from "@mui/icons-material/Assessment";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
@@ -20,11 +21,9 @@ import RateReviewIcon from "@mui/icons-material/RateReview";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
-import type { ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
-import type { TerminalSession } from "../state/codexClient";
+import type { PendingServerRequest, ThreadEntry, WorkbenchItem, WorkbenchTurn } from "../state/codexClient";
 import { themeVisualTuning, type ThemePlugin } from "../theme";
 import { ChatWaterfall } from "./chat-waterfall/ChatWaterfall";
-import type { ChatWorkingStatus } from "./chat-waterfall/ChatWaterfall";
 import { buildChatRows } from "./chat-waterfall/chatRows";
 import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./chat-waterfall/types";
 import type { TranslateFn } from "../i18n";
@@ -122,11 +121,11 @@ type Props = {
   threads?: ThreadEntry[];
   activeThreadId: string | null;
   errors: string[];
+  pendingRequests?: PendingServerRequest[];
   goal?: GoalBannerState | null;
   slashNotice?: SlashCommandNoticeState | null;
   stats?: WorkbenchStatsState | null;
   requestMonitor?: RequestMonitorEntry[];
-  terminalSessions?: TerminalSession[];
   statsOpen?: boolean;
   modes?: WorkbenchModeState;
   activeThemePlugin?: ThemePlugin | null;
@@ -140,6 +139,7 @@ type Props = {
   onAgentThreadSelect?: (threadId: string) => void;
   onStatsClose?: () => void;
   onSlashNoticeClose?: () => void;
+  onAnswerServerRequest?: (id: string | number, result: JsonValue) => void;
   onGoalEdit?: () => void;
   onGoalStatusChange?: (status: GoalStatus) => void;
   onGoalClear?: () => void;
@@ -184,11 +184,11 @@ export function ChatPanel({
   threads = [],
   activeThreadId,
   errors,
+  pendingRequests = [],
   goal,
   slashNotice,
   stats,
   requestMonitor = [],
-  terminalSessions = [],
   statsOpen = false,
   modes = { fast: false, plan: false, goalActive: false },
   activeThemePlugin,
@@ -202,6 +202,7 @@ export function ChatPanel({
   onAgentThreadSelect,
   onStatsClose,
   onSlashNoticeClose,
+  onAnswerServerRequest,
   onGoalEdit,
   onGoalStatusChange,
   onGoalClear
@@ -230,26 +231,6 @@ export function ChatPanel({
   const chatRows = selectedAgent
     ? agentConversationRows(turns, activeThreadId, selectedAgent, turnTokenUsage)
     : mainConversationRows(turns, activeThreadId, turnTokenUsage);
-  const workingStartedAtRef = useRef<{ key: string | null; startedAt: number }>({ key: null, startedAt: Date.now() });
-  const runningTurns = visibleTurnsForWorkingStatus(turns, activeThreadId, selectedAgent).filter((turn) => isRunningTurnStatus(turn.status));
-  const workingIdentity =
-    selectedAgent && isRunningAgentStatus(selectedAgent.status)
-      ? `agent:${selectedAgent.id}:${selectedAgent.status ?? ""}:${runningTurns.map((turn) => turn.id).join("|")}`
-      : runningTurns.length > 0
-        ? `main:${activeThreadId ?? "none"}:${runningTurns.map((turn) => `${turn.id}:${turn.status}`).join("|")}`
-        : null;
-  if (workingStartedAtRef.current.key !== workingIdentity) {
-    workingStartedAtRef.current = { key: workingIdentity, startedAt: Date.now() };
-  }
-  const workingStatus = buildWorkingStatus({
-    rows: chatRows,
-    turns,
-    activeThreadId,
-    selectedAgent,
-    startedAt: workingStartedAtRef.current.startedAt,
-    backgroundTerminalCount: terminalSessions.filter((session) => session.status === "running").length,
-    t
-  });
   const hasAnyVisibleThreadActivity = hasThreadActivity(turns, activeThreadId);
   const showEmptyConversation = chatRows.length === 0 && !welcomeDismissed && (selectedAgent || !hasAnyVisibleThreadActivity);
   const hasParallelAgents = visibleAgents.length > 0;
@@ -318,11 +299,13 @@ export function ChatPanel({
         <ChatWaterfall
           rows={chatRows}
           t={t}
-          workingStatus={workingStatus}
           assistantUsageDisplay={assistantUsageDisplay}
           before={
             <Stack spacing={1.75} sx={{ maxWidth: 1120, mx: "auto" }}>
               {errors.map((error, index) => (error ? <Alert key={`${error}-${index}`} severity="error">{error}</Alert> : null))}
+              {pendingRequests.length > 0 && onAnswerServerRequest && (
+                <PendingServerRequestsPanel pendingRequests={pendingRequests} onAnswerServerRequest={onAnswerServerRequest} />
+              )}
               {slashNotice && (
                 <Alert
                   data-testid="slash-command-result"
@@ -1077,6 +1060,225 @@ function OnboardingGuide({
   );
 }
 
+function PendingServerRequestsPanel({
+  pendingRequests,
+  onAnswerServerRequest
+}: {
+  pendingRequests: PendingServerRequest[];
+  onAnswerServerRequest: (id: string | number, result: JsonValue) => void;
+}) {
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, Record<string, string>>>({});
+  return (
+    <Paper data-testid="pending-server-requests" variant="outlined" sx={{ p: 1, borderRadius: 1, borderColor: "warning.main", bgcolor: (theme) => alpha(theme.palette.warning.main, theme.palette.mode === "dark" ? 0.12 : 0.08) }}>
+      <Stack spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography variant="subtitle2" sx={{ fontWeight: 850, flex: 1 }}>
+            Approval needed
+          </Typography>
+          <Chip size="small" color="warning" label={pendingRequests.length} />
+        </Stack>
+        {pendingRequests.map((request) => {
+          const params = asRecord(request.params);
+          const questions = requestQuestions(request);
+          const requestKey = String(request.id);
+          const selectedForRequest = selectedAnswers[requestKey] ?? {};
+          if (questions.length > 0) {
+            const optionQuestionIds = questions.filter((question) => question.options.length > 0).map((question) => question.id);
+            const ready = optionQuestionIds.every((id) => Boolean(selectedForRequest[id]));
+            return (
+              <Box key={requestKey} sx={{ pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
+                <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                  {requestTitle(request)}
+                </Typography>
+                <Stack spacing={0.75} sx={{ mt: 0.75 }}>
+                  {questions.map((question) => (
+                    <Box key={question.id}>
+                      <Typography variant="caption" sx={{ display: "block", fontWeight: 800 }}>
+                        {question.header || question.question}
+                      </Typography>
+                      {question.header && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                          {question.question}
+                        </Typography>
+                      )}
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+                        {question.options.map((option) => (
+                          <Button
+                            key={option.label}
+                            size="small"
+                            variant={selectedForRequest[question.id] === option.label ? "contained" : "outlined"}
+                            onClick={() =>
+                              setSelectedAnswers((current) => ({
+                                ...current,
+                                [requestKey]: {
+                                  ...(current[requestKey] ?? {}),
+                                  [question.id]: option.label
+                                }
+                              }))
+                            }
+                            sx={{ borderRadius: 1 }}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={0.75} sx={{ mt: 1 }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={!ready}
+                    onClick={() => onAnswerServerRequest(request.id, buildUserInputResponse(questions, selectedForRequest))}
+                  >
+                    Submit
+                  </Button>
+                  <Button size="small" color="warning" onClick={() => onAnswerServerRequest(request.id, { answers: {} })}>
+                    Skip
+                  </Button>
+                </Stack>
+              </Box>
+            );
+          }
+          return (
+            <Box key={requestKey} sx={{ pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
+              <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                {requestTitle(request)}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.25, overflowWrap: "anywhere" }}>
+                {requestSummary(request, params)}
+              </Typography>
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.85 }}>
+                <Button size="small" variant="contained" onClick={() => onAnswerServerRequest(request.id, buildApprovalResponse(request, "accept"))}>
+                  Allow
+                </Button>
+                <Button size="small" variant="outlined" onClick={() => onAnswerServerRequest(request.id, buildApprovalResponse(request, "acceptForSession"))}>
+                  Allow session
+                </Button>
+                <Button size="small" color="warning" onClick={() => onAnswerServerRequest(request.id, buildApprovalResponse(request, "decline"))}>
+                  Decline
+                </Button>
+                <Button size="small" color="error" onClick={() => onAnswerServerRequest(request.id, buildApprovalResponse(request, "cancel"))}>
+                  Cancel
+                </Button>
+              </Stack>
+            </Box>
+          );
+        })}
+      </Stack>
+    </Paper>
+  );
+}
+
+type ApprovalDecision = "accept" | "acceptForSession" | "decline" | "cancel";
+
+function buildApprovalResponse(request: PendingServerRequest, decision: ApprovalDecision): JsonValue {
+  const method = request.method;
+  const params = asRecord(request.params);
+  if (method === "execCommandApproval" || method === "applyPatchApproval") {
+    return { decision: legacyReviewDecision(decision) };
+  }
+  if (method === "item/permissions/requestApproval" || isRecord(params.permissions)) {
+    if (decision === "accept" || decision === "acceptForSession") {
+      const requested = asRecord(params.permissions);
+      const permissions: Record<string, JsonValue> = {};
+      if (requested.network != null) permissions.network = requested.network as JsonValue;
+      if (requested.fileSystem != null) permissions.fileSystem = requested.fileSystem as JsonValue;
+      return { permissions, scope: decision === "acceptForSession" ? "session" : "turn" };
+    }
+    return { permissions: {}, scope: "turn" };
+  }
+  return { decision };
+}
+
+function legacyReviewDecision(decision: ApprovalDecision): string {
+  switch (decision) {
+    case "accept":
+      return "approved";
+    case "acceptForSession":
+      return "approved_for_session";
+    case "decline":
+      return "denied";
+    case "cancel":
+      return "abort";
+  }
+}
+
+function buildUserInputResponse(questions: RequestQuestion[], selected: Record<string, string>): JsonValue {
+  const answers: Record<string, JsonValue> = {};
+  questions.forEach((question) => {
+    const answer = selected[question.id];
+    if (answer) {
+      answers[question.id] = { answers: [answer] };
+    }
+  });
+  return { answers };
+}
+
+type RequestQuestion = {
+  id: string;
+  header: string;
+  question: string;
+  options: Array<{ label: string; description: string }>;
+};
+
+function requestQuestions(request: PendingServerRequest): RequestQuestion[] {
+  const params = asRecord(request.params);
+  const questions: unknown[] = Array.isArray(params.questions) ? params.questions : [];
+  return questions.flatMap((entry: unknown) => {
+    const question = asRecord(entry);
+    const id = stringValue(question.id);
+    if (!id) {
+      return [];
+    }
+    const options = Array.isArray(question.options)
+      ? (question.options as unknown[]).flatMap((option: unknown) => {
+          const optionRecord = asRecord(option);
+          const label = stringValue(optionRecord.label);
+          return label ? [{ label, description: stringValue(optionRecord.description) ?? "" }] : [];
+        })
+      : [];
+    return [
+      {
+        id,
+        header: stringValue(question.header) ?? "",
+        question: stringValue(question.question) ?? id,
+        options
+      }
+    ];
+  });
+}
+
+function requestTitle(request: PendingServerRequest): string {
+  switch (request.method) {
+    case "item/commandExecution/requestApproval":
+    case "execCommandApproval":
+      return "Command approval";
+    case "item/fileChange/requestApproval":
+    case "applyPatchApproval":
+      return "File change approval";
+    case "item/permissions/requestApproval":
+      return "Permission request";
+    case "item/tool/requestUserInput":
+      return "Choose an option";
+    default:
+      return request.method;
+  }
+}
+
+function requestSummary(request: PendingServerRequest, params: Record<string, unknown>): string {
+  const command = stringValue(params.command) ?? (Array.isArray(params.command) ? params.command.map(String).join(" ") : undefined);
+  const cwd = stringValue(params.cwd);
+  const reason = stringValue(params.reason);
+  const grantRoot = stringValue(params.grantRoot);
+  const parts = [command, cwd ? `cwd ${cwd}` : undefined, grantRoot ? `root ${grantRoot}` : undefined, reason].filter((part): part is string => Boolean(part));
+  if (parts.length > 0) {
+    return parts.join(" · ");
+  }
+  return JSON.stringify(request.params ?? {}, null, 2);
+}
+
 function RequestMonitorTable({ entries, t }: { entries: RequestMonitorEntry[]; t: TranslateFn }) {
   return (
     <Paper
@@ -1340,136 +1542,6 @@ function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | 
   return buildChatRows(visibleTurns, undefined, turnTokenUsage);
 }
 
-function buildWorkingStatus({
-  rows,
-  turns,
-  activeThreadId,
-  selectedAgent,
-  startedAt,
-  backgroundTerminalCount,
-  t
-}: {
-  rows: ChatWaterfallRow[];
-  turns: WorkbenchTurn[];
-  activeThreadId: string | null;
-  selectedAgent: AgentSession | null;
-  startedAt: number;
-  backgroundTerminalCount: number;
-  t: TranslateFn;
-}): ChatWorkingStatus | null {
-  const running =
-    selectedAgent && isRunningAgentStatus(selectedAgent.status)
-      ? true
-      : visibleTurnsForWorkingStatus(turns, activeThreadId, selectedAgent).some((turn) => isRunningTurnStatus(turn.status));
-  if (!running) {
-    return null;
-  }
-
-  const liveRows = rows.filter((row) => row.isLive);
-  const liveAssistant = [...liveRows].reverse().find((row) => row.kind === "assistantMessage" && row.text.trim());
-  if (liveAssistant) {
-    return {
-      active: true,
-      label: t("chat.working.working"),
-      startedAt,
-      backgroundTerminalCount,
-      detail: shortStatusDetail(liveAssistant.text) ?? t("chat.working.streamingDetail")
-    };
-  }
-
-  const liveReasoning = [...liveRows].reverse().find((row) => row.kind === "reasoningPreview");
-  if (liveReasoning) {
-    return {
-      active: true,
-      label: t("chat.working.working"),
-      startedAt,
-      backgroundTerminalCount,
-      detail: shortStatusDetail(liveReasoning.text || liveReasoning.reasoning) ?? t("chat.working.thinkingDetail")
-    };
-  }
-
-  const latestLiveRow = liveRows.at(-1);
-  if (!latestLiveRow) {
-    return {
-      active: true,
-      label: t("chat.working.working"),
-      startedAt,
-      backgroundTerminalCount,
-      detail: t("chat.working.waitingForResponse")
-    };
-  }
-
-  switch (latestLiveRow.kind) {
-    case "assistantMessage":
-      return {
-        active: true,
-        label: t("chat.working.working"),
-        startedAt,
-        backgroundTerminalCount,
-        detail: shortStatusDetail(latestLiveRow.text) ?? t("chat.working.streamingDetail")
-      };
-    case "commandExecution":
-      return {
-        active: true,
-        label: t("chat.working.working"),
-        startedAt,
-        backgroundTerminalCount,
-        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.commandDetail")
-      };
-    case "toolCall":
-    case "toolResult":
-      return {
-        active: true,
-        label: t("chat.working.working"),
-        startedAt,
-        backgroundTerminalCount,
-        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.toolDetail")
-      };
-    case "fileChange":
-      return {
-        active: true,
-        label: t("chat.working.working"),
-        startedAt,
-        backgroundTerminalCount,
-        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.filesDetail")
-      };
-    default:
-      return {
-        active: true,
-        label: t("chat.working.working"),
-        startedAt,
-        backgroundTerminalCount,
-        detail: shortStatusDetail(latestLiveRow.title || latestLiveRow.text) ?? t("chat.working.waitingForResponse")
-      };
-  }
-}
-
-function visibleTurnsForWorkingStatus(turns: WorkbenchTurn[], activeThreadId: string | null, selectedAgent: AgentSession | null): WorkbenchTurn[] {
-  if (selectedAgent?.threadId) {
-    return turns.filter((turn) => turn.threadId === selectedAgent.threadId);
-  }
-  if (!activeThreadId) {
-    return [];
-  }
-  return turns.filter((turn) => turn.threadId === activeThreadId);
-}
-
-function isRunningTurnStatus(status?: string): boolean {
-  return status === "inProgress" || status === "pending" || status === "pendingInit" || status === "started";
-}
-
-function isRunningAgentStatus(status?: string): boolean {
-  return Boolean(status && ["running", "inProgress", "pendingInit", "started", "interacted"].includes(status));
-}
-
-function shortStatusDetail(value?: string): string | undefined {
-  const normalized = value?.replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return undefined;
-  }
-  return normalized.length > 120 ? `${normalized.slice(0, 119)}...` : normalized;
-}
-
 function hasThreadActivity(turns: WorkbenchTurn[], activeThreadId: string | null): boolean {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
   return visibleTurns.some((turn) => turn.items.length > 0);
@@ -1618,6 +1690,10 @@ function renderMcpToolCall(item: { payload?: unknown }) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
 }
 
 function stringValue(value: unknown): string | undefined {

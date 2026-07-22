@@ -6,28 +6,30 @@ Build a local-first React + MUI facade for Codex CLI where Codex remains the exe
 
 ## Active Slice
 
-Current requested slice is implemented and awaiting final commit/push:
+Current requested slice is implemented, verified, and awaiting final commit/push:
 
-1. Chat attachments:
-   - Images render as previews without raw base64 transcript text.
-   - PDF, Office, CSV, Markdown, JSON, and text files upload to the local server and send as file mentions/cards.
-2. Chat waterfall:
-   - Command/tool/file activity rows render compactly with status dots and labels such as `Bash`, `Read`, `Edit`, and `New`.
-   - Activity rows can be clicked to expand details; explicit expand/collapse controls remain available.
-3. Composer while running:
-   - Send remains available to append while a turn is active.
-   - Stop is separate.
-   - `Esc` stops and `Enter` sends/appends; help text lives in the existing composer setup tooltip.
-4. SSH workspace:
-   - New chat workspace selection can switch between local and SSH.
-   - SSH mode shows key setup help, accepts `ssh user@192.168.11.1`-style commands, browses remote directories, and sends remote workspace metadata on `thread/start` / `turn/start`.
-5. Verification:
+1. Chat waterfall density:
+   - Consecutive completed Bash rows fold behind a dashed compact group while the newest Bash row remains visible.
+   - Activity rows keep clickable expand/collapse behavior with low-contrast `ctrl+o to expand` hints.
+   - The long Working marquee moved out of the transcript and into the composer status area.
+   - Assistant answer time remains normal text color while usage/cost/speed details are pale.
+2. File edit/new/git diff expansion:
+   - Expanded file rows use `@git-diff-view/file` and `@git-diff-view/react` for old/new text diffs.
+   - File-change payload extraction reads `old_string/new_string`, before/after/content fields, unified diff/patch fields, and changes arrays.
+   - Payload-only file events no longer expand to a blank panel.
+3. Native Codex slash and request parity:
+   - Native slash commands such as `/plan`, `/review`, `/diff`, `/compact`, `/resume`, `/new`, `/status`, and `/usage` pass unchanged to Codex.
+   - Only explicit Web-local commands remain intercepted: `/fast`, `/stats`, and sticky-goal `/goal`.
+   - Codex-native approval and choice prompts render in the main chat waterfall and can be answered there.
+4. Verification:
    - `bun run typecheck` passed.
-   - Focused Playwright coverage for attachments, SSH workspaces, running composer append/stop, and long waterfall rows passed.
+   - Focused Playwright verification passed for Working status, native approvals, native slash forwarding, and long waterfall rows.
+   - Full `workbench.spec.ts` passed 32/32.
+   - `bun run build` passed.
 
 ## Completed Slice
 
-Implemented chat attachments, compact clickable waterfall activities, running-turn append controls, and SSH workspaces.
+Implemented chat attachments, compact clickable waterfall activities, running-turn append controls, SSH workspaces, waterfall density refinements, native slash forwarding, and nonblank diff expansion.
 
 1. Attachments:
    - `Composer` accepts image and document file types.
@@ -37,6 +39,8 @@ Implemented chat attachments, compact clickable waterfall activities, running-tu
    - `ChatRow` now renders compact activity rows with status dots.
    - Bash/tool/file rows keep rich expanded details while using one-line collapsed summaries.
    - Row labels use primary theme color and support click-to-expand.
+   - Consecutive old Bash rows can fold into a dashed compact group.
+   - File edit/new rows render payload-only diffs through `@git-diff-view` when old/new text is available.
 3. SSH workspace:
    - New chat workspace selection supports Local/SSH modes.
    - `/api/ssh/list-directory` browses remote directories through `ssh` without shell-interpolating local command strings.
@@ -44,6 +48,7 @@ Implemented chat attachments, compact clickable waterfall activities, running-tu
 4. Verification:
    - `bun run typecheck`
    - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "attachments|SSH workspaces|shows working status|virtualizes long main chat transcripts"`
+   - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "working status|native Codex approval|slash commands|virtualizes long main chat"`
 
 ## Previous Completed Slice
 

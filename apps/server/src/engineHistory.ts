@@ -48,6 +48,7 @@ export type EngineHistoryItem = {
   sourcePath?: string;
   canResume: boolean;
   messageCount?: number;
+  historyKind?: "session" | "tui";
 };
 
 export type EngineMessage = {
@@ -199,7 +200,8 @@ function listCodexMirror(): EngineHistoryItem[] {
       preview: typeof r.preview === "string" ? clip(r.preview) : undefined,
       updatedAt: toMs(r.updated_at),
       canResume: true,
-      sourcePath: indexPath
+      sourcePath: indexPath,
+      historyKind: "session"
     });
   }
   // Fallback: scan rollouts
@@ -221,11 +223,52 @@ function listCodexMirror(): EngineHistoryItem[] {
         updatedAt: st.mtimeMs,
         createdAt: st.birthtimeMs,
         canResume: true,
-        sourcePath: file
+        sourcePath: file,
+        historyKind: "session"
       });
     }
   }
+  items.push(...listCodexTuiHistory());
   return items;
+}
+
+function listCodexTuiHistory(): EngineHistoryItem[] {
+  const hist = join(home(), ".codex", "history.jsonl");
+  const bySession = new Map<string, EngineHistoryItem>();
+  for (const row of parseJsonl(hist, 5000)) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const id = typeof r.session_id === "string" ? r.session_id : "";
+    const text = typeof r.text === "string" ? r.text : "";
+    if (!id || !text.trim()) continue;
+    const ts = toMs(r.ts);
+    const title = clip(text, 80) || id.slice(0, 8);
+    const prev = bySession.get(id);
+    if (!prev) {
+      bySession.set(id, {
+        engine: "codex",
+        id,
+        title,
+        preview: clip(text),
+        updatedAt: ts,
+        createdAt: ts,
+        canResume: false,
+        sourcePath: hist,
+        messageCount: 1,
+        historyKind: "tui"
+      });
+    } else {
+      prev.messageCount = (prev.messageCount ?? 0) + 1;
+      if (ts && (!prev.updatedAt || ts >= prev.updatedAt)) {
+        prev.updatedAt = ts;
+        prev.preview = clip(text);
+      }
+      if (!prev.title || prev.title === id.slice(0, 8)) {
+        prev.title = title;
+      }
+    }
+  }
+  return [...bySession.values()];
 }
 
 function listClaude(): EngineHistoryItem[] {
@@ -968,7 +1011,7 @@ function transcriptCodex(id: string): EngineTranscript | null {
   const sessions = join(home(), ".codex", "sessions");
   const files = walkFiles(sessions, (n) => n.includes(id) && n.endsWith(".jsonl"), 10);
   const file = files[0];
-  if (!file) return null;
+  if (!file) return transcriptCodexTuiHistory(id);
   const messages: EngineMessage[] = [];
   for (const row of parseJsonl(file, 1500)) {
     if (!row || typeof row !== "object") continue;
@@ -989,6 +1032,29 @@ function transcriptCodex(id: string): EngineTranscript | null {
     title: messages.find((m) => m.role === "user")?.text.slice(0, 80) || id.slice(0, 8),
     messages,
     sourcePath: file
+  };
+}
+
+function transcriptCodexTuiHistory(id: string): EngineTranscript | null {
+  const hist = join(home(), ".codex", "history.jsonl");
+  const messages: EngineMessage[] = [];
+  for (const row of parseJsonl(hist, 5000)) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    if (r.session_id !== id || typeof r.text !== "string" || !r.text.trim()) continue;
+    messages.push({
+      role: "user",
+      text: redact(clip(r.text, 4000) || r.text),
+      timestamp: toMs(r.ts)
+    });
+  }
+  if (messages.length === 0) return null;
+  return {
+    engine: "codex",
+    id,
+    title: messages[0]?.text.slice(0, 80) || id.slice(0, 8),
+    messages,
+    sourcePath: hist
   };
 }
 
@@ -1020,4 +1086,3 @@ export function isEngineId(value: string): value is EngineId {
 export function enginesReadyForChatRuntime(): EngineMeta[] {
   return ENGINE_CATALOG.filter((e) => e.canChat);
 }
-

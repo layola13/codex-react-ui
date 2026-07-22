@@ -3,6 +3,14 @@
 ## Now
 
 - [ ] Fix animated SVG captcha visibility/reload so login and password-change captcha do not render as a blank dark box.
+- [x] Fold consecutive completed Bash rows behind a dashed compact group while keeping the newest Bash row visible.
+- [x] Move the long Working marquee out of the transcript and into the composer status area.
+- [x] Lower visual weight for `ctrl+o to expand` hints and non-time assistant usage metadata.
+- [x] Render Codex-native approval and choice prompts in the main chat waterfall.
+- [x] Forward native slash commands such as `/plan`, `/review`, `/diff`, `/compact`, `/resume`, `/new`, `/status`, and `/usage` unchanged to Codex.
+- [x] Keep only explicit Web-local slash commands intercepted: `/fast`, `/stats`, and sticky-goal `/goal`.
+- [x] Add `@git-diff-view` file diff rendering for expanded edit/new file rows.
+- [x] Fix blank file expansion by extracting diff/content from file-change payloads as well as row text.
 - [x] Verify and fix the reported blank homepage with a real browser run; prioritize service worker/cache issues and any console errors.
 - [x] Change the PWA service worker to avoid cache-first HTML app-shell responses, so stale cached `index.html` cannot white-screen the latest build.
 - [x] Rename composer status icon accessibility text so it no longer collides with the real Send button.

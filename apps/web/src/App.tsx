@@ -109,7 +109,7 @@ import {
   type WorkbenchModeState,
   type WorkbenchStatsState
 } from "./components/ChatPanel";
-import { Composer } from "./components/Composer";
+import { Composer, type ComposerWorkingStatus } from "./components/Composer";
 import { NewChatButton } from "./components/NewChatButton";
 import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
 import { ThemeBackgroundMedia } from "./components/ThemeBackgroundMedia";
@@ -192,17 +192,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 type ComposerSlashCommand =
-  | { type: "settings"; section: SettingsSectionId; pluginTab?: CodexPluginSettingsTab }
   | { type: "fast"; enabled?: boolean }
   | { type: "stats"; scope: "status" | "stats" }
-  | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string }
-  | { type: "plan"; enabled?: boolean; prompt?: string }
-  | { type: "new"; permission?: PermissionPresetId }
-  | { type: "rename"; name: string }
-  | { type: "review"; target: JsonValue; delivery: "inline" | "detached" }
-  | { type: "diff" }
-  | { type: "compact" }
-  | { type: "resume"; threadId?: string };
+  | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string };
 
 type SlashCommandNotice = {
   id: string;
@@ -1030,6 +1022,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (message.message.method === "mcpServer/startupStatus/updated") {
           void loadTooling();
         }
+        if (message.message.method === "serverRequest/resolved") {
+          const params = asRecord(message.message.params);
+          const requestId = params.requestId;
+          if (typeof requestId === "string" || typeof requestId === "number") {
+            dispatch({ type: "serverRequestResolved", id: requestId });
+          }
+        }
       }
       if (message.type === "codex.serverRequest") {
         dispatch({ type: "serverRequest", message: message.message });
@@ -1757,44 +1756,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const handleComposerSlashCommand = useCallback(
     async (command: ComposerSlashCommand) => {
       switch (command.type) {
-        case "settings":
-          openSettings(command.section, command.pluginTab ?? "marketplace");
-          return;
         case "fast":
           setFastModeEnabled((current) => command.enabled ?? !current);
           return;
         case "stats":
           setStatsPanelScope(command.scope);
-          return;
-        case "new":
-          {
-            const nextPermission = command.permission ?? permission;
-            requestNewSession(nextPermission);
-            if (nextPermission === "dangerBypass") {
-              return;
-            }
-          }
-          setSlashNotice({
-            id: `new-${Date.now()}`,
-            title: "New chat ready",
-            message: "The next prompt will start a fresh Codex thread.",
-            severity: "success"
-          });
-          return;
-        case "rename":
-          await renameActiveThread(command.name);
-          return;
-        case "review":
-          await startReview(command.target, command.delivery);
-          return;
-        case "diff":
-          await showDiffToRemote();
-          return;
-        case "compact":
-          await compactActiveThread();
-          return;
-        case "resume":
-          await resumeThreadFromSlash(command.threadId);
           return;
         case "goal":
           if (command.action === "set") {
@@ -1824,27 +1790,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           }
           setStatsPanelScope("status");
           return;
-        case "plan":
-          setPlanModeEnabled(command.enabled ?? true);
-          if (command.prompt) {
-            await startCodexTurn(command.prompt, [], []);
-          }
-          return;
       }
     },
     [
       clearActiveGoal,
-      compactActiveThread,
-      openSettings,
-      permission,
-      renameActiveThread,
-      requestNewSession,
-      resumeThreadFromSlash,
       setActiveGoalStatus,
       setGoalForActiveThread,
-      showDiffToRemote,
-      startCodexTurn,
-      startReview,
       state.activeThreadId,
       threadGoals
     ]
@@ -2008,7 +1959,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
   const answerRequest = useCallback(
     (id: string | number, decision: "accept" | "acceptForSession" | "decline" | "cancel") => {
-      client.respondToServerRequest(id, { decision });
+      const request = state.pendingRequests.find((entry) => entry.id === id);
+      client.respondToServerRequest(id, buildServerRequestDecisionResponse(request?.method, request?.params, decision));
+      dispatch({ type: "serverRequestResolved", id });
+    },
+    [client, state.pendingRequests]
+  );
+
+  const respondToServerRequest = useCallback(
+    (id: string | number, result: JsonValue) => {
+      client.respondToServerRequest(id, result);
       dispatch({ type: "serverRequestResolved", id });
     },
     [client]
@@ -2482,6 +2442,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const activeRunningTurn = state.activeThreadId
     ? [...state.turns].reverse().find((turn) => turn.threadId === state.activeThreadId && isRunningTurnStatus(turn.status)) ?? null
     : null;
+  const composerWorkingStatus: ComposerWorkingStatus | null = activeRunningTurn
+    ? {
+        active: true,
+        startedAt: normalizeTimestampMilliseconds(activeRunningTurn.startedAt) ?? Date.now(),
+        backgroundTerminalCount: terminalSessions.filter((session) => session.status === "running").length
+      }
+    : null;
 
   const stopActiveTurn = useCallback(async () => {
     if (!activeRunningTurn) {
@@ -2614,11 +2581,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           threads={historyThreads}
           activeThreadId={state.activeThreadId}
           errors={state.errors}
+          pendingRequests={state.pendingRequests}
           goal={activeGoal}
           slashNotice={slashNotice}
           stats={statsState}
           requestMonitor={requestMonitor}
-          terminalSessions={terminalSessions}
           statsOpen={Boolean(statsPanelScope)}
           modes={modeState}
           activeThemePlugin={activeThemePlugin}
@@ -2632,6 +2599,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
           onStatsClose={() => setStatsPanelScope(null)}
           onSlashNoticeClose={() => setSlashNotice(null)}
+          onAnswerServerRequest={respondToServerRequest}
           onGoalEdit={() => setComposerSuggestion({ id: `goal-edit-${Date.now()}`, text: activeGoal ? `/goal ${activeGoal.objective}` : "/goal " })}
           onGoalStatusChange={(status) => void setActiveGoalStatus(status)}
           onGoalClear={() => void clearActiveGoal()}
@@ -2686,6 +2654,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             modeBadges={modeState}
             dangerBypassConfirmed={dangerBypassConfirmed}
             running={Boolean(activeRunningTurn)}
+            workingStatus={composerWorkingStatus}
             statusLabel={conversationStatus}
             onStop={() => void stopActiveTurn()}
             onMentionConsumed={() => setPendingMention(null)}
@@ -3737,50 +3706,9 @@ function parseComposerSlashCommand(
   const name = match[1]?.toLowerCase() ?? "";
   const rest = match[2]?.trim() ?? "";
   switch (name) {
-    case "new":
-      return { type: "new", permission: parseNewChatPermission(rest) };
-    case "resume":
-      return { type: "resume", threadId: rest || undefined };
-    case "rename":
-      return { type: "rename", name: rest };
-    case "review": {
-      const review = parseReviewCommand(rest);
-      return { type: "review", target: review.target, delivery: review.delivery };
-    }
-    case "diff":
-      return { type: "diff" };
-    case "compact":
-      return { type: "compact" };
-    case "plugins":
-      return { type: "settings", section: "plugins", pluginTab: "marketplace" };
-    case "mcp":
-      return rest.toLowerCase() === "verbose"
-        ? { type: "settings", section: "plugins", pluginTab: "mcp" }
-        : { type: "settings", section: "plugins", pluginTab: "mcp" };
-    case "hooks":
-      return { type: "settings", section: "plugins", pluginTab: "hooks" };
-    case "apps":
-      return { type: "settings", section: "plugins", pluginTab: "apps" };
-    case "skills":
-      return { type: "settings", section: "skills" };
-    case "model":
-    case "permissions":
-    case "debug-config":
-      return { type: "settings", section: "codex" };
-    case "theme":
-      return { type: "settings", section: "appearance" };
-    case "pets":
-    case "pet":
-      return { type: "settings", section: "pet" };
-    case "title":
-    case "statusline":
-      return { type: "settings", section: "layout" };
     case "fast":
       return { type: "fast", enabled: parseOptionalBoolean(rest) };
-    case "status":
-      return { type: "stats", scope: "status" };
     case "stats":
-    case "usage":
       return { type: "stats", scope: "stats" };
     case "goal": {
       const normalized = rest.toLowerCase();
@@ -3804,14 +3732,6 @@ function parseComposerSlashCommand(
       }
       return { type: "goal", action: "set", objective: rest };
     }
-    case "plan":
-      if (!rest) {
-        return { type: "plan", enabled: true };
-      }
-      if (["off", "disable", "disabled"].includes(rest.toLowerCase())) {
-        return { type: "plan", enabled: false };
-      }
-      return { type: "plan", enabled: true, prompt: rest };
     default:
       return null;
   }
@@ -4294,6 +4214,44 @@ function mergeTurns(current: ClientState["turns"], loaded: ClientState["turns"])
 
 function isRunningTurnStatus(status?: string): boolean {
   return status === "inProgress" || status === "pending" || status === "pendingInit" || status === "started";
+}
+
+function normalizeTimestampMilliseconds(value?: number): number | null {
+  if (!value || !Number.isFinite(value)) {
+    return null;
+  }
+  return value > 1_000_000_000_000 ? value : value * 1000;
+}
+
+function buildServerRequestDecisionResponse(method: string | undefined, params: JsonValue | undefined, decision: "accept" | "acceptForSession" | "decline" | "cancel"): JsonValue {
+  if (method === "execCommandApproval" || method === "applyPatchApproval") {
+    return { decision: legacyReviewDecision(decision) };
+  }
+  const requestParams = asRecord(params);
+  if (method === "item/permissions/requestApproval" || Object.keys(asRecord(requestParams.permissions)).length > 0) {
+    if (decision === "accept" || decision === "acceptForSession") {
+      const requested = asRecord(requestParams.permissions);
+      const permissions: Record<string, JsonValue> = {};
+      if (requested.network != null) permissions.network = requested.network as JsonValue;
+      if (requested.fileSystem != null) permissions.fileSystem = requested.fileSystem as JsonValue;
+      return { permissions, scope: decision === "acceptForSession" ? "session" : "turn" };
+    }
+    return { permissions: {}, scope: "turn" };
+  }
+  return { decision };
+}
+
+function legacyReviewDecision(decision: "accept" | "acceptForSession" | "decline" | "cancel"): string {
+  switch (decision) {
+    case "accept":
+      return "approved";
+    case "acceptForSession":
+      return "approved_for_session";
+    case "decline":
+      return "denied";
+    case "cancel":
+      return "abort";
+  }
 }
 
 type ConversationStatus = "working" | "idle" | "disconnect" | "retrying";

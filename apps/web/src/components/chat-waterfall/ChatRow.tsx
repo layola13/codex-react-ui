@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { generateDiffFile } from "@git-diff-view/file";
+import { DiffModeEnum, DiffView } from "@git-diff-view/react";
+import "@git-diff-view/react/styles/diff-view.css";
 import { Alert, Box, Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PersonIcon from "@mui/icons-material/Person";
@@ -28,6 +31,8 @@ export function ChatRow({ row, t, expanded, onToggleExpanded, assistantUsageDisp
       return <ReasoningPreviewRow row={row} t={t} />;
     case "commandExecution":
       return <CommandExecutionRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
+    case "commandGroup":
+      return <CommandGroupRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "fileChange":
       return <FileChangeRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "toolCall":
@@ -136,17 +141,17 @@ function AssistantMessageRow({
               </>
             )}
             {startedAtLabel && (
-              <Typography variant="caption" data-testid="assistant-message-started-at" sx={{ fontWeight: 750, color: "text.secondary" }}>
+              <Typography variant="caption" data-testid="assistant-message-started-at" sx={{ fontWeight: 750, color: "text.primary" }}>
                 {startedAtLabel}
               </Typography>
             )}
             {firstTokenLabel && (
-              <Typography variant="caption" data-testid="assistant-first-token" sx={{ fontWeight: 750, color: "text.secondary" }}>
+              <Typography variant="caption" data-testid="assistant-first-token" sx={{ fontWeight: 650, color: "text.disabled" }}>
                 {firstTokenLabel}
               </Typography>
             )}
             {usageLabel && (
-              <Typography variant="caption" data-testid="assistant-token-usage" sx={{ fontWeight: 750, color: "text.secondary" }}>
+              <Typography variant="caption" data-testid="assistant-token-usage" sx={{ fontWeight: 650, color: "text.disabled" }}>
                 {usageLabel}
               </Typography>
             )}
@@ -281,8 +286,123 @@ function ReasoningPreviewRow({ row, t }: { row: ChatWaterfallRow; t: TranslateFn
   );
 }
 
+function CommandGroupRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
+  const groupedRows = row.groupedRows ?? [];
+  const first = groupedRows[0];
+  const last = groupedRows[groupedRows.length - 1];
+  const firstSummary = first ? activitySummary(first).detail : undefined;
+  const lastSummary = last ? activitySummary(last).detail : undefined;
+  const range = firstSummary && lastSummary && firstSummary !== lastSummary ? `${firstSummary} ... ${lastSummary}` : firstSummary ?? lastSummary;
+
+  return (
+    <Box data-testid={`workbench-item-${sanitizeTestId(row.item.type)}`} sx={{ width: "100%" }}>
+      <Box
+        role="button"
+        tabIndex={0}
+        aria-label={expanded ? "Collapse folded Bash commands" : "Expand folded Bash commands"}
+        onClick={onToggleExpanded}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggleExpanded();
+          }
+        }}
+        sx={{
+          display: "grid",
+          gridTemplateColumns: "minmax(24px, 1fr) auto minmax(24px, 1fr)",
+          alignItems: "center",
+          gap: 1,
+          minHeight: 24,
+          py: 0.15,
+          color: "text.secondary",
+          cursor: "pointer",
+          userSelect: "none",
+          "&:hover .command-group-label": {
+            color: "primary.main"
+          }
+        }}
+      >
+        <DashedRule />
+        <Stack direction="row" spacing={0.75} alignItems="center" className="command-group-label" sx={{ minWidth: 0, transition: "color 120ms ease" }}>
+          <Box
+            sx={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              bgcolor: "success.main",
+              flex: "0 0 auto"
+            }}
+          />
+          <Typography variant="caption" sx={{ fontWeight: 850, whiteSpace: "nowrap" }}>
+            {expanded ? "collapse" : `${groupedRows.length} old Bash command${groupedRows.length === 1 ? "" : "s"} folded`}
+          </Typography>
+          {range && (
+            <Typography variant="caption" sx={{ maxWidth: { xs: 160, sm: 420 }, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              ({range})
+            </Typography>
+          )}
+        </Stack>
+        <DashedRule />
+      </Box>
+      {expanded && (
+        <Stack spacing={0.5} sx={{ mt: 0.35, ml: 1.25, pl: 1.25, borderLeft: "1px dashed", borderColor: "divider" }}>
+          {groupedRows.map((commandRow) => {
+            const summary = activitySummary(commandRow);
+            const output = commandOutputPreview(commandRow.text, true).text.trimEnd();
+            return (
+              <Paper key={commandRow.key} variant="outlined" sx={{ p: 0.75, borderRadius: 1, bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.32 : 0.56) }}>
+                <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                  <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: activityStatus(commandRow.status).color, flex: "0 0 auto" }} />
+                  <Typography variant="caption" sx={{ color: "primary.main", fontWeight: 850 }}>
+                    {summary.label}
+                  </Typography>
+                  <Typography variant="caption" title={summary.detail} sx={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                    {summary.detail ? `(${summary.detail})` : ""}
+                  </Typography>
+                </Stack>
+                {output && (
+                  <Typography
+                    component="pre"
+                    sx={{
+                      mt: 0.5,
+                      mb: 0,
+                      maxHeight: 180,
+                      overflow: "auto",
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "anywhere",
+                      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                      fontSize: 11.5,
+                      color: "text.secondary"
+                    }}
+                  >
+                    {output}
+                  </Typography>
+                )}
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
+    </Box>
+  );
+}
+
+function DashedRule() {
+  return (
+    <Box
+      aria-hidden
+      sx={{
+        height: 1,
+        minWidth: 0,
+        backgroundImage: (theme) => `repeating-linear-gradient(to right, ${alpha(theme.palette.text.secondary, 0.34)} 0 7px, transparent 7px 13px)`
+      }}
+    />
+  );
+}
+
 function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
   const [copied, setCopied] = useState(false);
+  const hasOutput = Boolean(row.text.trim());
   const commandOutput = commandOutputPreview(row.text, expanded);
   const summary = activitySummary(row);
   async function copyOutput() {
@@ -295,13 +415,13 @@ function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWat
       row={row}
       label={summary.label}
       detail={summary.detail}
-      expandable={commandOutput.collapsible}
+      expandable={hasOutput}
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}
       action={
         <Stack direction="row" spacing={0.5} alignItems="center">
-          {commandOutput.collapsible && (
-            <Button size="small" variant="text" onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={{ borderRadius: 1, minWidth: 0, px: 0.75 }}>
+          {hasOutput && (
+            <Button size="small" variant="text" onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={expandHintButtonSx}>
               {expanded ? "collapse" : "ctrl+o to expand"}
             </Button>
           )}
@@ -316,30 +436,37 @@ function CommandExecutionRow({ row, expanded, onToggleExpanded }: { row: ChatWat
       }
     >
       {row.text && expanded && (
-        <Box sx={{ position: "relative", mt: 1, pt: 1 }}>
-          <Typography
-            component="pre"
-            data-testid="command-output"
-            sx={{
-              whiteSpace: expanded ? "pre-wrap" : "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              overflowWrap: "anywhere",
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: 12,
-              m: 0
-            }}
-          >
-            {commandOutput.text}
-          </Typography>
-          {commandOutput.collapsible && !expanded && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
-              {commandOutput.omittedLines} lines hidden. Expand to inspect the full terminal output.
-            </Typography>
-          )}
-        </Box>
+        <CommandOutputBlock text={commandOutput.text} />
       )}
     </ActivityRow>
+  );
+}
+
+function CommandOutputBlock({ text }: { text: string }) {
+  return (
+    <Box
+      data-testid="command-output"
+      component="pre"
+      sx={{
+        mt: 0.75,
+        mb: 0,
+        maxHeight: "min(46vh, 520px)",
+        overflow: "auto",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 12,
+        lineHeight: 1.55,
+        p: 1,
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: "divider",
+        bgcolor: (theme) => alpha(theme.palette.common.black, theme.palette.mode === "dark" ? 0.22 : 0.035),
+        color: "text.primary"
+      }}
+    >
+      {text}
+    </Box>
   );
 }
 
@@ -356,7 +483,7 @@ function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRo
       onToggleExpanded={onToggleExpanded}
       action={
         hasDetails ? (
-          <Button size="small" variant="text" aria-label={expanded ? "Collapse tool details" : "Expand tool details"} onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={{ borderRadius: 1, minWidth: 0, px: 0.75 }}>
+          <Button size="small" variant="text" aria-label={expanded ? "Collapse tool details" : "Expand tool details"} onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={expandHintButtonSx}>
             {expanded ? "collapse" : "ctrl+o to expand"}
           </Button>
         ) : null
@@ -370,7 +497,9 @@ function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRo
 function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
   const [copied, setCopied] = useState(false);
   const summary = fileChangeSummary(row);
-  const hasDetails = Boolean(row.text.trim()) || summary.changes.length > 0;
+  const details = fileChangeDetails(row, summary);
+  const activity = activitySummary(row);
+  const hasDetails = details.length > 0;
 
   async function copyPath() {
     if (!summary.primaryPath) {
@@ -384,15 +513,15 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
   return (
     <ActivityRow
       row={row}
-      label={activitySummary(row).label}
-      detail={summary.primaryPath ?? activitySummary(row).detail}
+      label={activity.label}
+      detail={activity.detail}
       expandable={hasDetails}
       expanded={expanded}
       onToggleExpanded={onToggleExpanded}
       action={
         <Stack direction="row" spacing={0.5} alignItems="center">
           {hasDetails && (
-            <Button size="small" variant="text" aria-label={expanded ? "Collapse file details" : "Expand file details"} onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={{ borderRadius: 1, minWidth: 0, px: 0.75 }}>
+            <Button size="small" variant="text" aria-label={expanded ? "Collapse file details" : "Expand file details"} onClick={(event) => { event.stopPropagation(); onToggleExpanded(); }} sx={expandHintButtonSx}>
               {expanded ? "collapse" : "ctrl+o to expand"}
             </Button>
           )}
@@ -408,22 +537,140 @@ function FileChangeRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfall
     >
       {hasDetails && expanded && (
         <Box data-testid="file-audit-details" sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
-          {summary.changes.length > 0 && (
-            <Stack spacing={0.5} sx={{ mb: row.text ? 1 : 0 }}>
-              {summary.changes.map((change, index) => (
-                <Stack key={`${change.path}-${index}`} direction="row" spacing={0.75} alignItems="center">
-                  <Typography variant="caption" sx={{ fontWeight: 850, overflowWrap: "anywhere" }}>
-                    {change.path}
-                  </Typography>
-                  <StatusChip status={change.status} />
-                </Stack>
-              ))}
-            </Stack>
-          )}
-          {row.text && <MarkdownMessage text={row.text} />}
+          <Stack spacing={1}>
+            {details.map((detail, index) => (
+              <FileChangeDetailBlock key={`${detail.path ?? "file"}-${index}`} detail={detail} />
+            ))}
+          </Stack>
         </Box>
       )}
     </ActivityRow>
+  );
+}
+
+function FileChangeDetailBlock({ detail }: { detail: FileChangeDetail }) {
+  const status = detail.status || detail.kind;
+  const stats = fileChangeStatsLabel(detail.additions ?? 0, detail.deletions ?? 0);
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        borderRadius: 1,
+        overflow: "hidden",
+        bgcolor: (theme) => alpha(theme.palette.background.default, theme.palette.mode === "dark" ? 0.34 : 0.56)
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={0.75}
+        alignItems="center"
+        sx={{
+          px: 1,
+          py: 0.65,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          minWidth: 0
+        }}
+      >
+        <Typography variant="caption" sx={{ fontWeight: 850, minWidth: 0, overflowWrap: "anywhere" }}>
+          {detail.path ?? "File change"}
+        </Typography>
+        <StatusChip status={status} />
+        {stats && (
+          <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 750 }}>
+            {stats}
+          </Typography>
+        )}
+      </Stack>
+      {detail.beforeText != null || detail.afterText != null ? (
+        <GitFileDiffView beforeText={detail.beforeText ?? ""} afterText={detail.afterText ?? ""} filePath={detail.path} />
+      ) : detail.unifiedDiff ? (
+        <UnifiedDiffBlock text={detail.unifiedDiff} />
+      ) : detail.text ? (
+        <Box sx={{ p: 1 }}>
+          <MarkdownMessage text={detail.text} />
+        </Box>
+      ) : (
+        <Box sx={{ p: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            {status ? `Status: ${status}` : "No diff body was included for this file event."}
+          </Typography>
+        </Box>
+      )}
+    </Paper>
+  );
+}
+
+function GitFileDiffView({ beforeText, afterText, filePath }: { beforeText: string; afterText: string; filePath?: string }) {
+  const theme = useTheme();
+  const lang = guessLangFromPath(filePath);
+  const diffFile = useMemo(() => {
+    if (!beforeText && !afterText) {
+      return null;
+    }
+    try {
+      const instance = generateDiffFile(filePath ?? "old", beforeText, filePath ?? "new", afterText, lang, lang);
+      instance.init();
+      instance.buildUnifiedDiffLines();
+      return instance;
+    } catch {
+      return null;
+    }
+  }, [afterText, beforeText, filePath, lang]);
+
+  if (!diffFile) {
+    return <UnifiedDiffBlock text={fallbackUnifiedDiff(beforeText, afterText)} />;
+  }
+
+  return (
+    <Box
+      data-testid="file-diff-view"
+      sx={{
+        maxHeight: "min(54vh, 620px)",
+        overflow: "auto",
+        bgcolor: (muiTheme) => alpha(muiTheme.palette.background.paper, muiTheme.palette.mode === "dark" ? 0.3 : 0.82),
+        "& .diff-view": {
+          minWidth: 640
+        }
+      }}
+    >
+      <DiffView
+        diffFile={diffFile}
+        diffViewMode={DiffModeEnum.Unified}
+        diffViewTheme={theme.palette.mode === "dark" ? "dark" : "light"}
+        diffViewHighlight
+        diffViewAddWidget={false}
+        diffViewWrap={false}
+        diffViewFontSize={12}
+      />
+    </Box>
+  );
+}
+
+function UnifiedDiffBlock({ text }: { text: string }) {
+  return (
+    <Box
+      data-testid="file-unified-diff"
+      component="pre"
+      sx={{
+        m: 0,
+        p: 1,
+        maxHeight: "min(54vh, 620px)",
+        overflow: "auto",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 12,
+        lineHeight: 1.5,
+        color: "text.primary",
+        bgcolor: (theme) => alpha(theme.palette.common.black, theme.palette.mode === "dark" ? 0.2 : 0.035),
+        "& .diff-add": { color: (theme) => theme.palette.success.main },
+        "& .diff-del": { color: (theme) => theme.palette.error.main },
+        "& .diff-meta": { color: "text.secondary" }
+      }}
+    >
+      {text}
+    </Box>
   );
 }
 
@@ -657,22 +904,289 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
 }
 
-function fileChangeSummary(row: ChatWaterfallRow): { primaryPath?: string; status?: string; changes: Array<{ path: string; status?: string }> } {
+type FileChangeSummary = {
+  primaryPath?: string;
+  status?: string;
+  additions: number;
+  deletions: number;
+  changes: Array<{ path: string; status?: string; additions?: number; deletions?: number }>;
+};
+
+type FileChangeDetail = {
+  path?: string;
+  status?: string;
+  kind?: string;
+  additions?: number;
+  deletions?: number;
+  beforeText?: string;
+  afterText?: string;
+  unifiedDiff?: string;
+  text?: string;
+};
+
+function fileChangeSummary(row: ChatWaterfallRow): FileChangeSummary {
   const payload = isRecord(row.item.payload) ? row.item.payload : {};
   const changes = Array.isArray(payload.changes)
     ? payload.changes
         .flatMap((entry) => {
           const change = isRecord(entry) ? entry : {};
           const path = stringValue(change.path) ?? stringValue(change.filePath) ?? stringValue(change.name);
-          return path ? [{ path, status: stringValue(change.status) ?? stringValue(change.kind) ?? stringValue(change.type) }] : [];
+          return path
+            ? [
+                {
+                  path,
+                  status: stringValue(change.status) ?? stringValue(change.kind) ?? stringValue(change.type),
+                  additions: numberValue(change.additions) ?? numberValue(change.added) ?? numberValue(change.addedLines),
+                  deletions: numberValue(change.deletions) ?? numberValue(change.deleted) ?? numberValue(change.removedLines)
+                }
+              ]
+            : [];
         })
     : [];
   const primaryPath = stringValue(payload.path) ?? stringValue(payload.filePath) ?? stringValue(payload.name) ?? changes[0]?.path;
+  const details = extractFileChangeDetails(row, payload, primaryPath, changes);
+  const payloadAdditions = numberValue(payload.additions) ?? numberValue(payload.added) ?? numberValue(payload.addedLines);
+  const payloadDeletions = numberValue(payload.deletions) ?? numberValue(payload.deleted) ?? numberValue(payload.removedLines);
+  const detailAdditions = sumNumbers(details.map((detail) => detail.additions));
+  const detailDeletions = sumNumbers(details.map((detail) => detail.deletions));
+  const changeAdditions = sumNumbers(changes.map((change) => change.additions));
+  const changeDeletions = sumNumbers(changes.map((change) => change.deletions));
+  const detailChanges = details.flatMap((detail) => (detail.path ? [{ path: detail.path, status: detail.status ?? detail.kind, additions: detail.additions, deletions: detail.deletions }] : []));
   return {
     primaryPath,
     status: row.status ?? stringValue(payload.status) ?? changes[0]?.status,
-    changes
+    additions: payloadAdditions ?? changeAdditions ?? detailAdditions ?? 0,
+    deletions: payloadDeletions ?? changeDeletions ?? detailDeletions ?? 0,
+    changes: changes.length > 0 ? changes : detailChanges
   };
+}
+
+function fileChangeDetails(row: ChatWaterfallRow, summary: FileChangeSummary): FileChangeDetail[] {
+  const payload = isRecord(row.item.payload) ? row.item.payload : {};
+  const details = extractFileChangeDetails(row, payload, summary.primaryPath, summary.changes);
+  if (details.length > 0) {
+    return details;
+  }
+  if (summary.changes.length > 0) {
+    return summary.changes.map((change) => ({ ...change, kind: change.status }));
+  }
+  return row.text.trim() ? [{ path: summary.primaryPath, status: summary.status, text: row.text.trim() }] : [];
+}
+
+function extractFileChangeDetails(
+  row: ChatWaterfallRow,
+  payload: Record<string, unknown>,
+  primaryPath?: string,
+  changes: Array<{ path: string; status?: string; additions?: number; deletions?: number }> = []
+): FileChangeDetail[] {
+  const details: FileChangeDetail[] = [];
+
+  function addDetail(detail: FileChangeDetail | null) {
+    if (!detail) {
+      return;
+    }
+    const hasBody = detail.beforeText != null || detail.afterText != null || Boolean(detail.unifiedDiff?.trim()) || Boolean(detail.text?.trim());
+    if (!hasBody && !detail.path && !detail.status && !detail.kind) {
+      return;
+    }
+    details.push(detail);
+  }
+
+  addDetail(detailFromRecord(payload, primaryPath));
+
+  const args = isRecord(payload.arguments) ? payload.arguments : null;
+  if (args) {
+    addDetail(detailFromRecord(args, primaryPath));
+  }
+
+  for (const key of ["changes", "fileChanges", "files", "edits", "patches"]) {
+    const entries = payload[key];
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+    for (const entry of entries) {
+      if (isRecord(entry)) {
+        const fallback = firstStringValue(entry, ["path", "filePath", "file_path", "name"]) ?? primaryPath;
+        addDetail(detailFromRecord(entry, fallback));
+      }
+    }
+  }
+
+  const rowBody = bodyFromText(row.text);
+  if (rowBody) {
+    const stats = rowBody.unifiedDiff ? diffLineStats(rowBody.unifiedDiff) : undefined;
+    const target = details.find((detail) => !detail.beforeText && !detail.afterText && !detail.unifiedDiff && !detail.text && (detail.path === primaryPath || !detail.path));
+    const bodyDetail: FileChangeDetail = {
+      path: primaryPath,
+      status: row.status,
+      additions: stats?.additions,
+      deletions: stats?.deletions,
+      ...rowBody
+    };
+    if (target) {
+      Object.assign(target, bodyDetail, { path: target.path ?? bodyDetail.path, status: target.status ?? bodyDetail.status });
+    } else if (!details.some((detail) => sameDetailBody(detail, bodyDetail))) {
+      addDetail(bodyDetail);
+    }
+  }
+
+  if (details.length === 0 && changes.length > 0) {
+    for (const change of changes) {
+      addDetail({ ...change, kind: change.status });
+    }
+  }
+
+  return mergeFileDetails(details, primaryPath);
+}
+
+function detailFromRecord(record: Record<string, unknown>, fallbackPath?: string): FileChangeDetail | null {
+  const path = firstStringValue(record, ["path", "filePath", "file_path", "name", "filename", "file"])
+    ?? firstStringValue(isRecord(record.file) ? record.file : {}, ["path", "name"])
+    ?? fallbackPath;
+  const status = firstStringValue(record, ["status", "kind", "type", "operation"]);
+  const beforeText = firstStringValue(record, ["beforeText", "oldText", "oldContent", "previousText", "originalText", "old_string", "oldString", "before", "original"]);
+  const afterText = firstStringValue(record, ["afterText", "newText", "newContent", "updatedText", "content", "new_string", "newString", "after", "replacement"]);
+  const rawDiff = firstStringValue(record, ["diff", "patch", "unifiedDiff", "gitDiff"]);
+  const rawText = firstStringValue(record, ["text", "body", "message"]);
+  const diffBody = rawDiff ? normalizeDiffText(rawDiff) : null;
+  const textBody = rawText ? bodyFromText(rawText) : null;
+  const stats = beforeText != null || afterText != null
+    ? diffTextStats(beforeText ?? "", afterText ?? "", path)
+    : diffBody
+      ? diffLineStats(diffBody)
+      : textBody?.unifiedDiff
+        ? diffLineStats(textBody.unifiedDiff)
+        : undefined;
+
+  const detail: FileChangeDetail = {
+    path,
+    status,
+    additions: numberValue(record.additions) ?? numberValue(record.added) ?? numberValue(record.addedLines) ?? stats?.additions,
+    deletions: numberValue(record.deletions) ?? numberValue(record.deleted) ?? numberValue(record.removedLines) ?? stats?.deletions
+  };
+  if (beforeText != null || afterText != null) {
+    detail.beforeText = beforeText ?? "";
+    detail.afterText = afterText ?? "";
+  } else if (diffBody) {
+    detail.unifiedDiff = diffBody;
+  } else if (textBody) {
+    Object.assign(detail, textBody);
+  }
+  return detail;
+}
+
+function bodyFromText(text: string): Pick<FileChangeDetail, "unifiedDiff" | "text"> | null {
+  const normalized = normalizeDiffText(text);
+  if (!normalized) {
+    return null;
+  }
+  if (looksLikeDiff(normalized)) {
+    return { unifiedDiff: normalized };
+  }
+  return { text: normalized };
+}
+
+function normalizeDiffText(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const fenced = /^```(?:diff|patch)?\s*\n([\s\S]*?)\n```$/i.exec(trimmed);
+  return (fenced?.[1] ?? trimmed).trimEnd();
+}
+
+function looksLikeDiff(text: string): boolean {
+  if (/^(diff --git|@@ |index |--- |\+\+\+ )/m.test(text)) {
+    return true;
+  }
+  const stats = diffLineStats(text);
+  return stats.additions > 0 || stats.deletions > 0;
+}
+
+function mergeFileDetails(details: FileChangeDetail[], primaryPath?: string): FileChangeDetail[] {
+  const merged: FileChangeDetail[] = [];
+  for (const detail of details) {
+    const path = detail.path ?? primaryPath;
+    const existingSamePath = merged.find((entry) => (entry.path ?? primaryPath) === path);
+    const detailHasBody = detail.beforeText != null || detail.afterText != null || Boolean(detail.unifiedDiff) || Boolean(detail.text);
+    const existingHasBody = existingSamePath && (existingSamePath.beforeText != null || existingSamePath.afterText != null || Boolean(existingSamePath.unifiedDiff) || Boolean(existingSamePath.text));
+    if (existingSamePath && detailHasBody && !existingHasBody) {
+      Object.assign(existingSamePath, detail, { path, status: existingSamePath.status ?? detail.status, kind: existingSamePath.kind ?? detail.kind });
+      continue;
+    }
+    if (existingSamePath && !detailHasBody) {
+      existingSamePath.status = existingSamePath.status ?? detail.status;
+      existingSamePath.kind = existingSamePath.kind ?? detail.kind;
+      existingSamePath.additions = existingSamePath.additions ?? detail.additions;
+      existingSamePath.deletions = existingSamePath.deletions ?? detail.deletions;
+      continue;
+    }
+    merged.push({ ...detail, path });
+  }
+  return merged;
+}
+
+function sameDetailBody(left: FileChangeDetail, right: FileChangeDetail): boolean {
+  return left.unifiedDiff === right.unifiedDiff && left.text === right.text && left.beforeText === right.beforeText && left.afterText === right.afterText;
+}
+
+function diffTextStats(beforeText: string, afterText: string, filePath?: string): { additions: number; deletions: number } | undefined {
+  try {
+    const lang = guessLangFromPath(filePath);
+    const diff = generateDiffFile(filePath ?? "old", beforeText, filePath ?? "new", afterText, lang, lang);
+    diff.initRaw();
+    return { additions: diff.additionLength, deletions: diff.deletionLength };
+  } catch {
+    return undefined;
+  }
+}
+
+function fallbackUnifiedDiff(beforeText: string, afterText: string): string {
+  const beforeLines = beforeText.split(/\r?\n/).filter((line) => line.length > 0).map((line) => `-${line}`);
+  const afterLines = afterText.split(/\r?\n/).filter((line) => line.length > 0).map((line) => `+${line}`);
+  return [...beforeLines, ...afterLines].join("\n");
+}
+
+function guessLangFromPath(filePath?: string): string {
+  if (!filePath) return "txt";
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  const map: Record<string, string> = {
+    ts: "typescript",
+    tsx: "typescript",
+    js: "javascript",
+    jsx: "javascript",
+    py: "python",
+    rs: "rust",
+    go: "go",
+    java: "java",
+    kt: "kotlin",
+    rb: "ruby",
+    swift: "swift",
+    c: "c",
+    cpp: "cpp",
+    h: "c",
+    hpp: "cpp",
+    cs: "csharp",
+    css: "css",
+    scss: "scss",
+    html: "html",
+    vue: "vue",
+    json: "json",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "toml",
+    xml: "xml",
+    md: "markdown",
+    sql: "sql",
+    sh: "bash",
+    zsh: "bash",
+    bash: "bash",
+    dockerfile: "dockerfile",
+    lua: "lua",
+    php: "php",
+    dart: "dart"
+  };
+  return (ext && map[ext]) || "txt";
 }
 
 function renderToolPayload(row: ChatWaterfallRow) {
@@ -727,6 +1241,18 @@ function sanitizeTestId(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]+/g, "-");
 }
 
+const expandHintButtonSx = {
+  borderRadius: 1,
+  minWidth: 0,
+  px: 0.75,
+  color: "text.disabled",
+  fontWeight: 650,
+  "&:hover": {
+    color: "text.secondary",
+    bgcolor: "action.hover"
+  }
+};
+
 function StatusChip({ status }: { status?: string }) {
   if (!status || isSilentStatus(status)) {
     return null;
@@ -753,7 +1279,9 @@ function activitySummary(row: ChatWaterfallRow): { label: string; detail?: strin
   if (row.kind === "fileChange") {
     const summary = fileChangeSummary(row);
     const label = fileActivityLabel(row, payload);
-    return { label, detail: summary.primaryPath ?? firstStringValue(payload, ["path", "filePath", "name"]) ?? compactText(row.text) };
+    const path = summary.primaryPath ?? firstStringValue(payload, ["path", "filePath", "name"]) ?? compactText(row.text);
+    const stats = fileChangeStatsLabel(summary.additions, summary.deletions);
+    return { label, detail: path ? `${path}${stats ? ` ${stats}` : ""}` : stats };
   }
   const label = toolActivityLabel(row, payload);
   return { label, detail: toolActivityDetail(payload, row) };
@@ -777,9 +1305,9 @@ function commandSummary(payload: Record<string, unknown>, row: ChatWaterfallRow)
 
 function fileActivityLabel(row: ChatWaterfallRow, payload: Record<string, unknown>): string {
   const type = [row.title, row.status, firstStringValue(payload, ["type", "kind", "status"])].join(" ").toLowerCase();
-  if (type.includes("edit") || type.includes("update") || type.includes("patch") || type.includes("modif") || type.includes("changed")) return "Edit";
-  if (type.includes("new") || type.includes("create")) return "New";
-  if (type.includes("write")) return "Write";
+  if (type.includes("edit") || type.includes("update") || type.includes("patch") || type.includes("modif") || type.includes("changed")) return "Edited";
+  if (type.includes("new") || type.includes("create")) return "Created";
+  if (type.includes("write")) return "Wrote";
   if (type.includes("read")) return "Read";
   return "File";
 }
@@ -843,6 +1371,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : undefined;
+  }
+  return undefined;
+}
+
+function sumNumbers(values: Array<number | undefined>): number | undefined {
+  const present = values.filter((value): value is number => value != null);
+  return present.length > 0 ? present.reduce((total, value) => total + value, 0) : undefined;
+}
+
+function diffLineStats(text: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      continue;
+    }
+    if (line.startsWith("+")) {
+      additions += 1;
+    } else if (line.startsWith("-")) {
+      deletions += 1;
+    }
+  }
+  return { additions, deletions };
+}
+
+function fileChangeStatsLabel(additions: number, deletions: number): string {
+  if (additions === 0 && deletions === 0) {
+    return "";
+  }
+  return `(+${additions} -${deletions})`;
 }
 
 function prettyJson(value: unknown): string {

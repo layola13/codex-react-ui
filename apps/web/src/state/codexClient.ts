@@ -2165,6 +2165,7 @@ export type EngineHistoryItem = {
   sourcePath?: string;
   canResume: boolean;
   messageCount?: number;
+  historyKind?: "session" | "tui";
 };
 
 export type EngineMessage = {

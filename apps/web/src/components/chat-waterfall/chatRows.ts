@@ -58,7 +58,7 @@ export function buildChatRows(turns: WorkbenchTurn[], filterItem: ChatRowFilter 
     }
   });
 
-  return applyAssistantHeaderGrouping(rows);
+  return applyAssistantHeaderGrouping(compactConsecutiveCommandRows(rows));
 }
 
 function normalizeTurnItemsForDisplay(items: WorkbenchItem[]): WorkbenchItem[] {
@@ -132,6 +132,73 @@ function itemKind(item: WorkbenchItem, activeThinking?: boolean): ChatRowKind {
   return "status";
 }
 
+function compactConsecutiveCommandRows(rows: ChatWaterfallRow[]): ChatWaterfallRow[] {
+  const next: ChatWaterfallRow[] = [];
+  let run: ChatWaterfallRow[] = [];
+
+  function flushRun() {
+    if (run.length === 0) {
+      return;
+    }
+    if (run.length === 1) {
+      next.push(run[0]!);
+      run = [];
+      return;
+    }
+    const visible = run[run.length - 1]!;
+    const hidden = run.slice(0, -1);
+    next.push(commandGroupRow(hidden));
+    next.push(visible);
+    run = [];
+  }
+
+  for (const row of rows) {
+    if (row.kind === "commandExecution" && !row.isLive) {
+      run.push(row);
+      continue;
+    }
+    flushRun();
+    next.push(row);
+  }
+  flushRun();
+  return next;
+}
+
+function commandGroupRow(rows: ChatWaterfallRow[]): ChatWaterfallRow {
+  const first = rows[0]!;
+  const last = rows[rows.length - 1]!;
+  const title = `${rows.length} Bash command${rows.length === 1 ? "" : "s"} hidden`;
+  const text = rows.map((row) => `${row.title}\n${row.text}`.trim()).join("\n\n");
+  return {
+    key: `command-group:${first.key}:${last.key}`,
+    turnId: first.turnId,
+    threadId: first.threadId,
+    itemIds: rows.flatMap((row) => row.itemIds),
+    kind: "commandGroup",
+    role: "tool",
+    text,
+    title,
+    status: "completed",
+    item: {
+      id: `command-group-${first.item.id}-${last.item.id}`,
+      type: "commandGroup",
+      title,
+      text,
+      status: "completed",
+      payload: {
+        count: rows.length,
+        commands: rows.map((row) => row.item.payload ?? { title: row.title, text: row.text })
+      }
+    },
+    searchText: rows.map((row) => row.searchText).join("\n"),
+    width: "wide",
+    isLive: false,
+    startedAt: first.startedAt,
+    completedAt: last.completedAt,
+    groupedRows: rows
+  };
+}
+
 function rowRole(kind: ChatRowKind): ChatRowRole {
   switch (kind) {
     case "userMessage":
@@ -143,6 +210,7 @@ function rowRole(kind: ChatRowKind): ChatRowRole {
     case "toolResult":
     case "fileChange":
     case "commandExecution":
+    case "commandGroup":
       return "tool";
     default:
       return "system";
@@ -150,7 +218,7 @@ function rowRole(kind: ChatRowKind): ChatRowRole {
 }
 
 function rowWidth(kind: ChatRowKind, text: string): ChatRowWidth {
-  if (kind === "commandExecution" || kind === "fileChange" || kind === "toolCall" || text.includes("```")) {
+  if (kind === "commandExecution" || kind === "commandGroup" || kind === "fileChange" || kind === "toolCall" || text.includes("```")) {
     return "wide";
   }
   if (kind === "status" || kind === "notice" || kind === "checkpoint") {
@@ -210,6 +278,8 @@ function fallbackTitle(kind: ChatRowKind): string {
       return "Thinking";
     case "commandExecution":
       return "Command";
+    case "commandGroup":
+      return "Bash commands";
     case "fileChange":
       return "File change";
     case "toolCall":

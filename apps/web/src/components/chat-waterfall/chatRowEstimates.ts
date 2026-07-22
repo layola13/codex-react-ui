@@ -11,6 +11,8 @@ export function estimateChatRowSize(row: ChatWaterfallRow): number {
       return 96;
     case "commandExecution":
       return clamp(112 + Math.min(textLength, 240) / 16, 128, 240);
+    case "commandGroup":
+      return 56;
     case "fileChange":
       return clamp(220 + textLength / 10, 260, 620);
     case "toolCall":

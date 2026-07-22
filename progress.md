@@ -2,6 +2,24 @@
 
 ## 2026-07-22
 
+- Chat waterfall density, native slash forwarding, and diff expansion follow-up:
+  - Folded consecutive completed Bash rows into a dashed separator group while leaving the latest command visible.
+  - Moved the running Working status out of the transcript and into the composer status area, with elapsed time, `/ps`, `/stop`, and background terminal count in the tooltip.
+  - Lowered the visual weight of `ctrl+o to expand` hints and assistant usage metadata; answer time remains normal text color.
+  - Added main-chat pending server request rendering for Codex-native approvals and choice prompts, so non-full-access authorization flows can be answered in the waterfall.
+  - Forwarded native slash commands such as `/plan`, `/review`, `/diff`, `/compact`, `/resume`, `/new`, `/status`, and `/usage` unchanged to Codex instead of rewriting them into browser RPCs.
+  - Kept only explicit Web-local slash commands intercepted: `/fast`, `/stats`, and sticky-goal `/goal` controls.
+  - Added `@git-diff-view/file` and `@git-diff-view/react` for expanded file edit/new diff rendering.
+  - Fixed blank file expansion by extracting file-change bodies from payload fields such as `old_string/new_string`, `before/after`, `content`, `diff`, `patch`, and `changes`, with a nonblank fallback when no diff body is present.
+  - Updated Playwright coverage for payload-only file diffs and native slash forwarding.
+  - Verification passed:
+    - `bun run typecheck`
+    - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "working status|native Codex approval|slash commands|virtualizes long main chat"`
+    - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "sidechat supports|forwards native /new danger|parallel agents|plugins and MCP|installed-only plugin|workspace files explorer"`
+    - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts --grep "matches desktop and mobile" --update-snapshots`
+    - `node ./node_modules/@playwright/test/cli.js test tests/e2e/workbench.spec.ts`
+    - `bun run build`
+
 - Chat attachments, compact activity rows, running composer append, and SSH workspace slice:
   - Fixed composer attachment handling so image messages render preview thumbnails instead of raw base64 text.
   - Added document attachment support for PDF, Word, Excel, PowerPoint, CSV, Markdown, JSON, and text files. Non-image files upload to the local server and are sent as file mentions with compact file cards.

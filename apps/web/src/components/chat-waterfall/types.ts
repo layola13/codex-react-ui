@@ -23,6 +23,7 @@ export type ChatRowKind =
   | "toolResult"
   | "fileChange"
   | "commandExecution"
+  | "commandGroup"
   | "status"
   | "error"
   | "checkpoint"
@@ -59,4 +60,5 @@ export type ChatWaterfallRow = {
   completedAt?: number;
   firstTokenAt?: number;
   tokenUsage?: ChatTokenUsage;
+  groupedRows?: ChatWaterfallRow[];
 };

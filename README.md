@@ -11,12 +11,12 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Third-party relay channel metadata: API format, base URL, fetched/active models, model aliases, model rates, API key preview, remarks, save, test, and activate.
 - Provider activation writes Codex config via `config/batchWrite` and restarts app-server so temporary API-key env vars are available.
 - Settings -> Codex Plugins manages real Codex plugin marketplaces, installed plugin mentions, hooks, plugin app auth state, and MCP server inventory without placeholder content.
-- Main composer UI commands `/fast`, `/status`, `/stats`, `/usage`, `/goal`, and `/plan` are handled by the browser before `turn/start`; Settings-oriented commands open Settings instead of the right workspace.
-- App-server-backed main composer commands `/review`, `/rename`, `/diff`, `/compact`, `/resume`, and `/new` use native workbench actions instead of being sent as prompt text.
+- Main composer keeps native Codex slash commands native: `/plan`, `/review`, `/diff`, `/compact`, `/resume`, `/new`, `/status`, `/usage`, `/model`, `/permissions`, plugin/settings commands, and other unknown slash commands are sent unchanged to `turn/start`.
+- Only explicit Web-local composer commands are intercepted before `turn/start`: `/fast`, `/stats`, and the sticky-goal `/goal` controls.
 - Main composer attachments now support images plus PDF/Office/text documents. Images render as previews without exposing raw base64 in chat, while documents upload to the local server and send as file mentions with compact file cards.
 - New chat workspace selection supports local folders and SSH workspaces. SSH mode accepts commands such as `ssh user@192.168.11.1`, shows key setup help, lets users browse remote folders, and sends remote workspace metadata with new turns.
 - Codex history rail lists app-server threads by Codex metadata semantics, searches title/preview/cwd/provider/source fields, resumes selected rows through `thread/resume`, and supports row rename/archive/delete through Codex thread RPCs.
-- Main chat uses a dedicated virtualized waterfall row model with lighter assistant prose, compact user bubbles, inline completed-thinking panels, compact clickable tool/file/command audit rows (`Bash`, `Read`, `Edit`, `New`, etc.) with status dots, desktop prompt-floor navigation, a searchable prompt map, data-driven transcript search, bottom-follow behavior, and a Jump to latest control for long transcripts.
+- Main chat uses a dedicated virtualized waterfall row model with lighter assistant prose, compact user bubbles, inline completed-thinking panels, compact clickable tool/file/command audit rows (`Bash`, `Read`, `Edit`, `New`, etc.) with status dots, folded old Bash runs, expandable file diffs rendered through `@git-diff-view`, desktop prompt-floor navigation, a searchable prompt map, data-driven transcript search, bottom-follow behavior, and a Jump to latest control for long transcripts.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
 - User theme plugins with editable preview colors, image/GIF/video backgrounds, optional dynamic Canvas/Three.js scenes, background tuning controls, and JSON plus ZIP import/export.
 - Sub2API-style **membership system** (admin Members UI): create members, capability matrix, per-member **relay whitelist**, concurrency limit, balance/credits, and private workspace jails.
@@ -233,21 +233,14 @@ Custom theme plugins can be exported as JSON or as a ZIP package from the same T
 
 ## Main Slash Commands
 
-The main composer intercepts lightweight UI commands before they become Codex turns:
+The main composer sends native Codex slash commands through unchanged. This includes `/plan`, `/review`, `/diff`, `/compact`, `/resume`, `/new`, `/status`, `/usage`, `/model`, `/permissions`, `/plugins`, `/mcp`, `/hooks`, and unknown slash commands. The browser only intercepts explicit Web-local commands:
 
-- Shortcut buttons beside the composer trigger `/fast`, `/status`, `/goal`, `/plan`, `/review`, and `/rename` through the same router as typed commands.
+- Shortcut buttons beside the composer still insert/send their slash text, but native command text is forwarded to Codex instead of being rewritten into Web RPCs.
 - `/fast`, `/fast on`, and `/fast off` toggle fast mode. When active, new main-chat turns use the lowest available reasoning effort and show lightning badges in the top bar and composer.
-- `/status` opens the session status panel. `/stats` and `/usage` open the project stats panel. These panels show token usage, model/provider, reasoning effort, permission mode, active goal, active modes, thread count, and turn/item counts.
+- `/stats` opens the Web project stats panel. It shows token usage, model/provider, reasoning effort, permission mode, active goal, active modes, thread count, and turn/item counts.
 - `/goal <objective>` sets the active thread goal. `/goal`, `/goal edit`, `/goal pause`, `/goal resume`, `/goal complete`, and `/goal clear` manage the sticky goal bar shown above the scrolling transcript.
-- `/plan` turns on plan mode. `/plan off` disables it. `/plan <prompt>` turns on plan mode and sends `<prompt>` as the Codex turn text, without sending the `/plan` prefix.
-- `/review` starts a review through `review/start`. Variants include `/review detached`, `/review branch <name>`, `/review detached branch <name>`, `/review commit <sha>`, and `/review <custom instructions>`.
-- `/rename <name>` renames the active thread through `thread/name/set` and updates task tabs/history.
-- `/diff` calls `gitDiffToRemote` and shows a bounded diff preview in the workbench.
-- `/compact` calls `thread/compact/start` for the active thread.
-- `/resume <thread-id>` calls `thread/resume` and reloads the selected thread.
-- `/new`, `/new read-only`, `/new workspace`, `/new full`, and `/new danger` start a fresh chat with the matching permission preset. Danger Bypass still requires the explicit confirmation dialog.
 
-Settings-oriented commands stay out of the right runtime workspace. `/plugins`, `/mcp`, `/hooks`, `/apps`, `/skills`, `/theme`, `/pet`, `/pets`, `/statusline`, `/title`, `/model`, `/permissions`, and `/debug-config` open the relevant Settings section. Sidechat inputs are intentionally not parsed by the browser, so slash-shaped sidechat text is sent to that sidechat thread exactly as typed.
+Sidechat inputs are intentionally not parsed by the browser, so slash-shaped sidechat text is sent to that sidechat thread exactly as typed.
 
 ## Dangerous Permission Audit
 

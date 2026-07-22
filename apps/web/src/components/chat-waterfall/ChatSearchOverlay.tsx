@@ -177,7 +177,7 @@ function rowMatchesScope(row: ChatWaterfallRow, scope: ChatSearchScope): boolean
     case "files":
       return row.kind === "fileChange";
     case "commands":
-      return row.kind === "commandExecution";
+      return row.kind === "commandExecution" || row.kind === "commandGroup";
     default:
       return true;
   }

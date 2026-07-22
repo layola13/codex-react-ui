@@ -1405,14 +1405,14 @@ test("shows working status while a turn is pending or thinking", async ({ page }
   await confirmWorkspace(page);
 
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("working status probe");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
-  const indicator = page.getByTestId("chat-working-indicator");
+  const indicator = page.getByTestId("composer-working-indicator");
   await expect(indicator).toContainText("Working");
-  await expect(indicator).toContainText(/Working \(\d+s • esc to interrupt\)/);
+  await expect(indicator).toContainText(/Working \d+s/);
   await expect(indicator).toContainText(/background terminals running/);
-  await expect(indicator).toContainText("/ps to view");
-  await expect(indicator).toContainText("/stop to interrupt");
+  await expect(indicator).toHaveAttribute("aria-label", /\/ps to view/);
+  await expect(indicator).toHaveAttribute("aria-label", /\/stop to interrupt/);
   await expect(indicator).toContainText("Working");
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
   await composer.fill("append while model is running");
@@ -1436,6 +1436,97 @@ test("shows working status while a turn is pending or thinking", async ({ page }
   await expect(page.getByText("completed", { exact: true })).toHaveCount(0);
   await expect(indicator).toHaveCount(0);
   await expect(acceptedResponse.getByTestId("assistant-message-header")).toHaveAttribute("data-live", "false");
+});
+
+test("shows native Codex approval and choice requests in the main chat", async ({ page }) => {
+  await page.goto("/");
+  await confirmWorkspace(page);
+
+  await page.evaluate(() => {
+    const socket = (window as unknown as {
+      __codexUiSockets?: Array<{
+        dispatchEvent: (event: MessageEvent) => boolean;
+        onmessage?: ((event: MessageEvent) => void) | null;
+      }>;
+    }).__codexUiSockets?.at(-1);
+    if (!socket) throw new Error("Missing mock socket");
+    const emit = (value: unknown) => {
+      const event = new MessageEvent("message", { data: JSON.stringify(value) });
+      socket.dispatchEvent(event);
+      socket.onmessage?.(event);
+    };
+    emit({
+      type: "codex.serverRequest",
+      message: {
+        id: "permission-request-1",
+        method: "item/permissions/requestApproval",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "perm-1",
+          cwd: "/tmp/workspace",
+          reason: "Need temporary network access",
+          permissions: { network: { enabled: true }, fileSystem: null }
+        }
+      }
+    });
+  });
+
+  const panel = page.getByTestId("pending-server-requests");
+  await expect(panel).toContainText("Permission request");
+  await expect(panel).toContainText("Need temporary network access");
+  await panel.getByRole("button", { name: "Allow session" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; requestId?: string; result?: { scope?: string; permissions?: { network?: { enabled?: boolean } } } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.type === "serverResponse" && message.requestId === "permission-request-1" && message.result?.scope === "session" && message.result.permissions?.network?.enabled === true);
+  });
+  await expect(panel).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const socket = (window as unknown as {
+      __codexUiSockets?: Array<{
+        dispatchEvent: (event: MessageEvent) => boolean;
+        onmessage?: ((event: MessageEvent) => void) | null;
+      }>;
+    }).__codexUiSockets?.at(-1);
+    if (!socket) throw new Error("Missing mock socket");
+    const emit = (value: unknown) => {
+      const event = new MessageEvent("message", { data: JSON.stringify(value) });
+      socket.dispatchEvent(event);
+      socket.onmessage?.(event);
+    };
+    emit({
+      type: "codex.serverRequest",
+      message: {
+        id: "choice-request-1",
+        method: "item/tool/requestUserInput",
+        params: {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "choice-1",
+          questions: [
+            {
+              id: "mode",
+              header: "Mode",
+              question: "Choose a mode",
+              options: [
+                { label: "Fast", description: "Use low effort" },
+                { label: "Careful", description: "Use more effort" }
+              ]
+            }
+          ],
+          autoResolutionMs: null
+        }
+      }
+    });
+  });
+  await expect(panel).toContainText("Choose an option");
+  await panel.getByRole("button", { name: "Careful" }).click();
+  await panel.getByRole("button", { name: "Submit" }).click();
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; requestId?: string; result?: { answers?: { mode?: { answers?: string[] } } } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.type === "serverResponse" && message.requestId === "choice-request-1" && message.result?.answers?.mode?.answers?.[0] === "Careful");
+  });
 });
 
 test("creates a Full Auto chat through the New Chat danger dialog", async ({ page }) => {
@@ -1481,7 +1572,7 @@ test("creates a Full Auto chat through the New Chat danger dialog", async ({ pag
   await confirmWorkspace(page);
 
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Run this in full auto");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const messages = (
@@ -1554,7 +1645,7 @@ test("supports settings, black theme, task tabs, and reasoning effort", async ({
   await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "true");
 
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use high effort");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { effort?: string } }> })
@@ -1606,7 +1697,7 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
   await expect(page.getByRole("tab", { name: "Session Index Title" })).toHaveAttribute("aria-selected", "true");
 
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Continue indexed thread");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await page.waitForFunction(() => {
     const messages = (
       window as unknown as {
@@ -1739,7 +1830,8 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
                 status: "modified",
                 path: "apps/web/file-audit-260.ts",
                 changes: [{ path: "apps/web/file-audit-260.ts", status: "modified" }],
-                text: "```diff\n+ file audit diff marker 260\n- old file audit line\n```"
+                old_string: "old file audit line",
+                new_string: "file audit diff marker 260"
               }
             }
           }
@@ -1792,6 +1884,27 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
             }
           }
         });
+        if (index === 225) {
+          for (const suffix of [1, 2]) {
+            emit({
+              type: "codex.notification",
+              message: {
+                method: "item/completed",
+                params: {
+                  threadId: "thread-1",
+                  turnId,
+                  item: {
+                    type: "commandExecution",
+                    id: `long-command-${index}-folded-${suffix}`,
+                    command: `bun run folded-${suffix}`,
+                    text: `folded bash output ${suffix}\ncompleted`,
+                    status: "completed"
+                  }
+                }
+              }
+            });
+          }
+        }
       }
       emit({
         type: "codex.notification",
@@ -1804,7 +1917,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   });
 
   const waterfall = page.getByTestId("conversation-waterfall");
-  await expect(waterfall).toHaveAttribute("data-row-count", "655");
+  await expect(waterfall).toHaveAttribute("data-row-count", "656");
   await page.waitForTimeout(120);
   const mountedRows = await waterfall.locator('[data-testid^="conversation-item-"]').count();
   expect(mountedRows).toBeGreaterThan(0);
@@ -1821,11 +1934,11 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
 
   await openTranscriptSearch(page);
   await page.getByLabel("Search transcript").fill("Long assistant answer 319");
-  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
   await expect(page.getByTestId("conversation-item-long-agent-319").getByText("Long assistant answer 319")).toBeVisible();
   await setTranscriptSearchScope(page, "Commands");
   await page.getByLabel("Search transcript").fill("stdout line 300");
-  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
   const longCommandRow = page.getByTestId("conversation-item-long-command-300");
   await expect(longCommandRow.getByText("Bash")).toBeVisible();
   await expect(longCommandRow.getByText("(bun test)")).toBeVisible();
@@ -1836,6 +1949,14 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await longCommandRow.getByRole("button", { name: "collapse" }).click();
   await expect(longCommandRow.getByTestId("command-output")).toHaveCount(0);
   await longCommandRow.getByRole("button", { name: "ctrl+o to expand" }).click();
+  await page.getByLabel("Search transcript").fill("folded bash output 1");
+  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  const commandGroupRow = page.locator('[data-testid^="conversation-item-command-group-"]').first();
+  await expect(commandGroupRow.getByText(/old Bash command/)).toBeVisible();
+  await expect(commandGroupRow).not.toContainText("folded bash output 1");
+  await commandGroupRow.getByText(/old Bash command/).click();
+  await expect(commandGroupRow).toContainText("folded bash output 1");
+  await expect(commandGroupRow).toContainText("bun run folded-1");
   await setTranscriptSearchScope(page, "User");
   await expect(page.getByText("No transcript rows match this search.")).toBeVisible();
 
@@ -1849,10 +1970,12 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(page.getByText("Long assistant answer 319")).toBeVisible();
   await openTranscriptSearch(page);
   await setTranscriptSearchScope(page, "Commands");
+  await page.getByLabel("Search transcript").fill("stdout line 300");
+  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
   await setTranscriptSearchScope(page, "Tools");
   await page.getByLabel("Search transcript").fill("tool audit secret 275");
-  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
   const toolRow = page.getByTestId("conversation-item-long-tool-275");
   await expect(toolRow.getByText("Read")).toBeVisible();
   await expect(toolRow.getByText("(/tmp/tool-audit-275.txt)")).toBeVisible();
@@ -1861,13 +1984,14 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
   await setTranscriptSearchScope(page, "Files");
   await page.getByLabel("Search transcript").fill("file audit diff marker 260");
-  await expect(page.getByText("1/1 results in 655 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
   const fileRow = page.getByTestId("conversation-item-long-file-260");
-  await expect(fileRow.getByText("Edit")).toBeVisible();
-  await expect(fileRow.getByText("(apps/web/file-audit-260.ts)").first()).toBeVisible();
+  await expect(fileRow.getByText("Edited")).toBeVisible();
+  await expect(fileRow.getByText("(apps/web/file-audit-260.ts (+1 -1))").first()).toBeVisible();
   await expect(fileRow).not.toContainText("file audit diff marker 260");
   await fileRow.getByRole("button", { name: "Expand file details" }).click();
   await expect(fileRow.getByTestId("file-audit-details")).toContainText("file audit diff marker 260");
+  await expect(fileRow.getByTestId("file-diff-view")).toBeVisible();
   await setTranscriptSearchScope(page, "Assistant");
   await page.getByLabel("Search transcript").fill("Long assistant answer 310");
   const reasoningRow = page.getByTestId("conversation-item-long-agent-310");
@@ -2123,7 +2247,7 @@ test("supports drag and drop image attachments in the composer", async ({ page }
   await expect(page.getByRole("button", { name: "Remove drop.png" })).toBeVisible();
 
   await composer.fill("Describe the dropped image");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const messages = (
@@ -2175,7 +2299,7 @@ test("supports document attachments as uploaded file mentions without rendering 
   await expect(page.getByText("report.pdf")).toBeVisible();
 
   await composer.fill("Summarize the attached report");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const messages = (
@@ -2233,7 +2357,7 @@ test("supports SSH workspaces when starting a new conversation", async ({ page }
 
   expect(sshDirectoryRequests).toContainEqual({ command: "ssh user@192.168.11.1", path: "/home/user" });
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use the ssh workspace");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const outbound = (
@@ -2290,20 +2414,20 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
 
   await input.fill(firstGoal);
   await sendSideChat.click();
-  await expect(transcript.getByText("/goal first side window", { exact: true })).toBeVisible();
+  await expect(transcript.getByText("/goal first side window", { exact: true }).first()).toBeVisible();
 
   await page.getByLabel("New side chat").click();
   await page.getByRole("menuitem", { name: /Side chat/ }).click();
   await expect(transcript.getByText("/goal first side window", { exact: true })).toHaveCount(0);
   await input.fill(secondGoal);
   await sendSideChat.click();
-  await expect(transcript.getByText(secondGoal, { exact: true })).toBeVisible();
+  await expect(transcript.getByText(secondGoal, { exact: true }).first()).toBeVisible();
 
   await page.getByLabel("New side chat").click();
   await page.getByRole("menuitem", { name: /Side chat/ }).click();
   await input.fill(statusCommand);
   await sendSideChat.click();
-  await expect(transcript.getByText(statusCommand, { exact: true })).toBeVisible();
+  await expect(transcript.getByText(statusCommand, { exact: true }).first()).toBeVisible();
 
   await page.waitForFunction((expectedTexts) => {
     const messages = (
@@ -2357,10 +2481,10 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
   await expect(page.getByRole("tablist", { name: "Task tabs" }).getByText("New mock thread")).toHaveCount(0);
 
   await page.getByTestId("sidechat-tab-sidechat-1").click();
-  await expect(transcript.getByText("/goal first side window", { exact: true })).toBeVisible();
+  await expect(transcript.getByText("/goal first side window", { exact: true }).first()).toBeVisible();
   await expect(transcript.getByText(secondGoal, { exact: true })).toHaveCount(0);
   await page.getByTestId("sidechat-tab-sidechat-2").click();
-  await expect(transcript.getByText(secondGoal, { exact: true })).toBeVisible();
+  await expect(transcript.getByText(secondGoal, { exact: true }).first()).toBeVisible();
   await expect(transcript.getByText(statusCommand, { exact: true })).toHaveCount(0);
 
   await page.screenshot({
@@ -2369,19 +2493,34 @@ test("sidechat supports multiple isolated /goal windows and preserves slash comm
   });
 });
 
-test("routes main slash commands to fast status goal and plan UI", async ({ page }) => {
+test("routes local slash commands and forwards native slash commands to Codex", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
   await confirmWorkspace(page);
 
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
-  const send = page.getByRole("button", { name: "Send" });
+  const send = page.getByRole("button", { name: "Send", exact: true });
+  async function sendSlashAndExpectNative(command: string) {
+    await composer.fill(command);
+    await send.click();
+    await page.waitForFunction((expectedText) => {
+      const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
+      return messages.some(
+        (message) =>
+          message.method === "turn/start" &&
+          message.params?.input?.some((entry) => entry.type === "text" && entry.text === expectedText)
+      );
+    }, command);
+  }
   await expect(page.getByText("mock-codex")).toBeVisible();
   await expect(composer).toBeEnabled();
   await page.getByRole("button", { name: "Attach files to this turn. Images, PDF, Office documents, and text files are supported." }).click();
   await expect(page.getByRole("menuitem").filter({ hasText: "/fast" })).toBeVisible();
   await page.getByRole("menuitem").filter({ hasText: "/status" }).click();
-  await expect(page.getByTestId("slash-stats-panel")).toContainText("Session Status");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
+    return messages.some((message) => message.method === "turn/start" && message.params?.input?.some((entry) => entry.type === "text" && entry.text === "/status"));
+  });
 
   await page.evaluate(() => {
     ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
@@ -2416,86 +2555,29 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
 
   await composer.fill("/plan inspect slash router states");
   await send.click();
-  await expect(page.getByTestId("topbar-plan-badge")).toBeVisible();
-  await expect(page.getByTestId("composer-plan-badge")).toBeVisible();
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { effort?: string; input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
     return messages.some(
       (message) =>
         message.method === "turn/start" &&
         message.params?.effort === "low" &&
-        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "inspect slash router states")
+        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "/plan inspect slash router states")
     );
   });
-  outbound = await page.evaluate(
-    () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ text?: string }> } }> }).__codexUiOutbound ?? []
-  );
-  expect(outbound.some((message) => message.method === "turn/start" && message.params?.input?.some((entry) => entry.text === "/plan inspect slash router states"))).toBe(false);
 
-  await composer.fill("/usage");
+  await composer.fill("/stats");
   await send.click();
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Project Stats");
-
-  await composer.fill("/status");
-  await send.click();
-  await expect(page.getByTestId("slash-stats-panel")).toBeVisible();
-  await expect(page.getByTestId("slash-stats-panel")).toContainText("Session Status");
-  await expect(page.getByTestId("slash-stats-panel")).toContainText("Thread tokens");
-  await expect(page.getByTestId("slash-stats-panel")).toContainText("2,468");
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Fast on");
-  await expect(page.getByTestId("slash-stats-panel")).toContainText("Plan on");
   await expect(page.getByTestId("slash-stats-panel")).toContainText("Goal Active");
 
-  await composer.fill("/rename Focused slash work");
-  await send.click();
-  await expect(page.getByTestId("slash-command-result")).toContainText("Thread renamed");
-  await expect(page.getByRole("tab").filter({ hasText: "Focused slash work" })).toHaveAttribute("aria-selected", "true");
-  await page.waitForFunction(() => {
-    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { name?: string } }> }).__codexUiOutbound ?? [];
-    return messages.some((message) => message.method === "thread/name/set" && message.params?.name === "Focused slash work");
-  });
-
-  await composer.fill("/review detached branch main");
-  await send.click();
-  await expect(page.getByTestId("slash-command-result")).toContainText("Detached review started");
-  await expect(page.getByTestId("slash-command-result")).toContainText("Review against main");
-  await page.waitForFunction(() => {
-    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { delivery?: string; target?: { type?: string; branch?: string } } }> }).__codexUiOutbound ?? [];
-    return messages.some(
-      (message) => message.method === "review/start" && message.params?.delivery === "detached" && message.params?.target?.type === "baseBranch" && message.params?.target?.branch === "main"
-    );
-  });
-
-  await composer.fill("/diff");
-  await send.click();
-  await expect(page.getByTestId("slash-command-result")).toContainText("Diff to remote");
-  await expect(page.getByTestId("slash-command-result")).toContainText("Slash command diff preview");
-  await page.waitForFunction(() => {
-    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? [];
-    return messages.some((message) => message.method === "gitDiffToRemote");
-  });
-
-  await composer.fill("/compact");
-  await send.click();
-  await expect(page.getByTestId("slash-command-result")).toContainText("Context compaction started");
-  await page.waitForFunction(() => {
-    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? [];
-    return messages.some((message) => message.method === "thread/compact/start");
-  });
-
-  await composer.fill("/resume thread-2");
-  await send.click();
-  await expect(page.getByTestId("slash-command-result")).toContainText("Thread resumed");
-  await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "true");
-  await page.waitForFunction(() => {
-    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
-    return messages.some((message) => message.method === "thread/resume" && message.params?.threadId === "thread-2");
-  });
-
-  await composer.fill("/new full");
-  await send.click();
-  await expect(page.getByTestId("slash-command-result")).toContainText("New chat ready");
-  await expect(page.getByRole("tab", { name: "Second task" })).toHaveAttribute("aria-selected", "false");
+  await sendSlashAndExpectNative("/usage");
+  await sendSlashAndExpectNative("/rename Focused slash work");
+  await sendSlashAndExpectNative("/review detached branch main");
+  await sendSlashAndExpectNative("/diff");
+  await sendSlashAndExpectNative("/compact");
+  await sendSlashAndExpectNative("/resume thread-2");
+  await sendSlashAndExpectNative("/new full");
 
   await page.screenshot({
     path: "snapshot/slash-command-status-goal-plan.png",
@@ -2503,42 +2585,19 @@ test("routes main slash commands to fast status goal and plan UI", async ({ page
   });
 });
 
-test("routes /new danger through the danger confirmation flow", async ({ page }) => {
+test("forwards native /new danger slash command to Codex", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
   await confirmWorkspace(page);
   await expect(page.getByRole("tab", { name: "Mock thread" })).toBeVisible();
 
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
-  const send = page.getByRole("button", { name: "Send" });
+  const send = page.getByRole("button", { name: "Send", exact: true });
 
   await page.evaluate(() => {
     ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
   });
   await composer.fill("/new danger");
-  await send.click();
-
-  const dialog = page.getByTestId("danger-new-chat-dialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("Create Full Auto chat");
-  await expect(page.getByRole("button", { name: "Create Full Auto Chat" })).toBeDisabled();
-  await expect(page.getByRole("tab", { name: "New task", includeHidden: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tab", { name: "Mock thread", includeHidden: true })).toHaveAttribute("aria-selected", "false");
-
-  let outbound = await page.evaluate(
-    () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { sandbox?: string; approvalPolicy?: string } }> }).__codexUiOutbound ?? []
-  );
-  expect(outbound.some((message) => message.method === "thread/start" || message.method === "turn/start")).toBe(false);
-
-  await page.getByLabel("Confirm Danger Bypass").check();
-  await page.getByRole("button", { name: "Create Full Auto Chat" }).click();
-
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByTestId("danger-session-badge")).toContainText("Full Auto");
-  await expect(page.getByRole("tab", { name: "New task" })).toHaveAttribute("aria-selected", "true");
-  await confirmWorkspace(page);
-
-  await composer.fill("Start danger slash chat");
   await send.click();
 
   await page.waitForFunction(() => {
@@ -2548,36 +2607,20 @@ test("routes /new danger through the danger confirmation flow", async ({ page })
           type?: string;
           method?: string;
           params?: {
-            sandbox?: string;
-            sandboxPolicy?: { type?: string };
-            approvalPolicy?: string;
             input?: Array<{ type?: string; text?: string }>;
           };
         }>;
       }
     ).__codexUiOutbound ?? [];
-    const threadStart = messages.some(
-      (message) =>
-        message.type === "rpc" &&
-        message.method === "thread/start" &&
-        message.params?.sandbox === "danger-full-access" &&
-        message.params?.approvalPolicy === "never"
-    );
-    const turnStart = messages.some(
+    return messages.some(
       (message) =>
         message.type === "rpc" &&
         message.method === "turn/start" &&
-        message.params?.sandboxPolicy?.type === "dangerFullAccess" &&
-        message.params?.approvalPolicy === "never" &&
-        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "Start danger slash chat")
+        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "/new danger")
     );
-    return threadStart && turnStart;
   });
 
-  outbound = await page.evaluate(
-    () => (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { sandbox?: string; approvalPolicy?: string } }> }).__codexUiOutbound ?? []
-  );
-  expect(outbound.some((message) => message.method === "thread/start")).toBe(true);
+  await expect(page.getByTestId("danger-new-chat-dialog")).toHaveCount(0);
 });
 
 test("shows parallel agents rail with switchable transcripts and completion controls", async ({ page }) => {
@@ -2587,13 +2630,13 @@ test("shows parallel agents rail with switchable transcripts and completion cont
   await expect(page.getByRole("tab", { name: "Mock thread" })).toHaveAttribute("aria-selected", "true");
 
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Launch parallel agents");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await expect(page.getByTestId("parallel-agent-rail")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-button-agent-review-thread")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-button-agent-tests-thread")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Parallel agent" })).toBeVisible();
-  await expect(page.getByText("spawnAgent")).toBeVisible();
+  await expect(page.getByText("ManageTask").first()).toBeVisible();
+  await expect(page.getByText("(spawnAgent)")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-badge-agent-review-thread")).toBeVisible();
   await expect(page.getByTestId("parallel-agent-badge-agent-tests-thread")).toBeVisible();
 
@@ -2613,7 +2656,7 @@ test("shows parallel agents rail with switchable transcripts and completion cont
   await expect(page.getByText("Review agent found missing tests for completion badges.")).toHaveCount(0);
 
   await page.getByTestId("parallel-agent-main").click();
-  await expect(page.getByRole("heading", { name: "Parallel agent" })).toBeVisible();
+  await expect(page.getByText("ManageTask").first()).toBeVisible();
   await page.getByTestId("parallel-agent-close-agent-review-thread").click();
   await expect(page.getByTestId("parallel-agent-button-agent-review-thread")).toHaveCount(0);
   await expect(page.getByTestId("parallel-agent-button-agent-tests-thread")).toBeVisible();
@@ -2959,8 +3002,8 @@ test("resolves chained provider aliases before starting a turn", async ({ page }
   await page.getByRole("button", { name: "Close settings" }).click();
   await confirmWorkspace(page);
   await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("Use the relay alias");
-  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
-  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { model?: string } }> })
@@ -3001,9 +3044,24 @@ test("supports direct MCP tool calls with JSON arguments", async ({ page }) => {
   await expect(page.getByText('"message": "from-playwright"')).toBeVisible();
 });
 
-test("manages Codex plugins and MCP servers from Settings with slash command entry points", async ({ page }) => {
+test("manages Codex plugins and MCP servers from Settings while forwarding native slash entries", async ({ page }) => {
   await page.goto("/");
   await confirmWorkspace(page);
+  async function sendNativeSlash(command: string) {
+    await page.evaluate(() => {
+      ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
+    });
+    await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill(command);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.waitForFunction((expectedText) => {
+      const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { input?: Array<{ type?: string; text?: string }> } }> }).__codexUiOutbound ?? [];
+      return messages.some(
+        (message) =>
+          message.method === "turn/start" &&
+          message.params?.input?.some((entry) => entry.type === "text" && entry.text === expectedText)
+      );
+    }, command);
+  }
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Plugins settings").click();
@@ -3032,42 +3090,9 @@ test("manages Codex plugins and MCP servers from Settings with slash command ent
   await expect(page.getByText("Ping tool")).toBeVisible();
 
   await page.getByRole("button", { name: "Close settings" }).click();
-  await page.evaluate(() => {
-    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
-  });
-  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("/plugins");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Marketplace 2" })).toHaveAttribute("aria-selected", "true");
-
-  let outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
-  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
-
-  await page.getByRole("button", { name: "Close settings" }).click();
-  await page.evaluate(() => {
-    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
-  });
-  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("/mcp");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "MCP 1" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("mock-mcp")).toBeVisible();
-
-  outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
-  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
-
-  await page.getByRole("button", { name: "Close settings" }).click();
-  await page.evaluate(() => {
-    ((window as unknown as { __codexUiOutbound?: unknown[] }).__codexUiOutbound ?? []).length = 0;
-  });
-  await page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...").fill("/hooks");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByRole("heading", { name: "Codex Plugins" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Hooks 2" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "pre_tool_use" })).toBeVisible();
-
-  outbound = await page.evaluate(() => (window as unknown as { __codexUiOutbound?: Array<{ method?: string }> }).__codexUiOutbound ?? []);
-  expect(outbound.some((message) => message.method === "turn/start")).toBe(false);
+  await sendNativeSlash("/plugins");
+  await sendNativeSlash("/mcp");
+  await sendNativeSlash("/hooks");
 });
 
 test("exports and imports UI profiles without API keys", async ({ page }) => {
@@ -3187,7 +3212,7 @@ test("uses installed-only plugin mentions and shows plugin app auth state", asyn
   const composer = page.getByPlaceholder("Ask Codex to inspect, edit, test, or explain this workspace...");
   await expect(composer).toHaveValue(/@mock-plugin/);
   await page.getByRole("button", { name: "Close settings" }).click();
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
 
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string; params?: { input?: Array<{ type?: string; path?: string }> } }> })
@@ -3259,7 +3284,7 @@ test("keeps workspace files explorer and editor panes resizable", async ({ page 
   await page.getByLabel("Open Workspace settings").click();
   await expect(page.getByRole("button", { name: "README.md" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Explorer" })).toBeVisible();
-  await expect(page.getByText("No file selected")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select a file to preview or edit." })).toBeVisible();
   // Workspace file splits from react-resizable-panels expose data-group/data-panel attrs.
   await expect(page.locator("[data-group]").first()).toBeVisible();
   await expect(page.locator("[data-panel]").first()).toBeVisible();

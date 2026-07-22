@@ -52,12 +52,19 @@ type Props = {
   };
   dangerBypassConfirmed: boolean;
   running?: boolean;
+  workingStatus?: ComposerWorkingStatus | null;
   statusLabel?: string;
   onMentionConsumed: () => void;
   onUserActivity?: () => void;
   onSuggestedPromptConsumed?: () => void;
   onStop?: () => void;
   onSend: (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[]) => void;
+};
+
+export type ComposerWorkingStatus = {
+  active: boolean;
+  startedAt: number;
+  backgroundTerminalCount: number;
 };
 
 const MAX_COMPOSER_IMAGE_BYTES = 64 * 1024 * 1024;
@@ -96,6 +103,7 @@ export function Composer({
   modeBadges = { fast: false, plan: false, goalActive: false },
   dangerBypassConfirmed,
   running = false,
+  workingStatus,
   statusLabel,
   onMentionConsumed,
   onUserActivity,
@@ -210,7 +218,7 @@ export function Composer({
       }}
     >
       <Stack spacing={1.25}>
-        <Stack direction="row" justifyContent="flex-end" spacing={0.5}>
+        <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.5}>
           <Chip
             size="small"
             color={running ? "primary" : statusLabel === "idle" ? "success" : statusLabel === "disconnect" ? "error" : statusLabel === "retrying" ? "warning" : "default"}
@@ -219,6 +227,7 @@ export function Composer({
             data-testid="composer-turn-status"
             sx={{ height: 28, fontWeight: 800 }}
           />
+          {workingStatus?.active && <ComposerWorkingIndicator status={workingStatus} t={t} />}
           <Tooltip
             arrow
             placement="top-end"
@@ -699,6 +708,91 @@ export function Composer({
     }
     setImages((current) => [...current, ...next]);
   }
+}
+
+function ComposerWorkingIndicator({ status, t }: { status: ComposerWorkingStatus; t: TranslateFn }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const elapsed = formatElapsed(now - status.startedAt);
+  const terminalSegment =
+    status.backgroundTerminalCount > 0
+      ? t("chat.working.backgroundTerminals", { count: status.backgroundTerminalCount })
+      : t("chat.working.noBackgroundTerminals");
+  const label = `Working ${elapsed}`;
+  const fullLabel = `${label} · ${terminalSegment} · ${t("chat.working.psHint")} · ${t("chat.working.stopHint")}`;
+
+  return (
+    <Tooltip title={fullLabel} arrow placement="top">
+      <Stack
+        data-testid="composer-working-indicator"
+        role="status"
+        aria-live="polite"
+        aria-label={fullLabel}
+        direction="row"
+        spacing={0.65}
+        alignItems="center"
+        sx={{
+          minWidth: 0,
+          height: 28,
+          px: 0.75,
+          borderRadius: 999,
+          color: "text.secondary",
+          bgcolor: (theme) => alpha(theme.palette.text.primary, theme.palette.mode === "dark" ? 0.045 : 0.035)
+        }}
+      >
+        <Box
+          aria-hidden
+          sx={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            bgcolor: "primary.main",
+            boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0.34)}`,
+            animation: "composerWorkingPulse 1400ms ease-in-out infinite",
+            "@keyframes composerWorkingPulse": {
+              "0%": { transform: "scale(0.88)", opacity: 0.7, boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0.3)}` },
+              "55%": { transform: "scale(1.12)", opacity: 1, boxShadow: (theme) => `0 0 0 6px ${alpha(theme.palette.primary.main, 0)}` },
+              "100%": { transform: "scale(0.88)", opacity: 0.7, boxShadow: (theme) => `0 0 0 0 ${alpha(theme.palette.primary.main, 0)}` }
+            }
+          }}
+        />
+        <Typography variant="caption" sx={{ fontWeight: 760, color: "text.secondary", whiteSpace: "nowrap", lineHeight: 1 }}>
+          {label}
+        </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            maxWidth: { xs: 74, sm: 190 },
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "text.disabled",
+            lineHeight: 1
+          }}
+        >
+          {terminalSegment} · /ps · /stop
+        </Typography>
+      </Stack>
+    </Tooltip>
+  );
+}
+
+function formatElapsed(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
 }
 
 function ComposerMenuItem({

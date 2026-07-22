@@ -74,7 +74,7 @@ type Props = {
   onOpenSettings: () => void;
 };
 
-type EngineTab = "all" | EngineId;
+type HistoryPane = "web" | "tui";
 
 export function HistorySidebar({
   threads,
@@ -100,7 +100,7 @@ export function HistorySidebar({
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
-  const [engineTab, setEngineTab] = useState<EngineTab>("all");
+  const [historyPane, setHistoryPane] = useState<HistoryPane>("web");
   const [engines, setEngines] = useState<EngineMeta[]>([]);
   const [engineItems, setEngineItems] = useState<EngineHistoryItem[]>([]);
   const [engineLoading, setEngineLoading] = useState(false);
@@ -117,7 +117,7 @@ export function HistorySidebar({
       setEngineItems([]);
       setEngineError(null);
       setEngineLoading(false);
-      setEngineTab("all");
+      setHistoryPane("web");
       setTranscript(null);
       setTranscriptError(null);
       setTranscriptLoading(false);
@@ -125,6 +125,11 @@ export function HistorySidebar({
     }
     if (!sessionToken) {
       setEngineItems([]);
+      setEngineError(null);
+      setEngineLoading(false);
+      return;
+    }
+    if (historyPane !== "tui") {
       setEngineError(null);
       setEngineLoading(false);
       return;
@@ -140,9 +145,8 @@ export function HistorySidebar({
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
-          const engine = engineTab === "all" || engineTab === "codex" ? "all" : engineTab;
           const data = await fetchEngineHistory(sessionToken, {
-            engine,
+            engine: "codex",
             q: searchTerm.trim() || undefined,
             limit: 250,
             signal: controller.signal,
@@ -152,10 +156,12 @@ export function HistorySidebar({
           setEngines(data.engines);
           // Defense in depth: never mark non-Codex host history as resumable.
           setEngineItems(
-            data.items.map((item) => ({
-              ...item,
-              canResume: item.engine === "codex" ? Boolean(item.canResume) : false
-            }))
+            data.items
+              .filter((item) => item.engine === "codex" && item.historyKind === "tui")
+              .map((item) => ({
+                ...item,
+                canResume: false
+              }))
           );
         } catch (err) {
           if (requestId !== engineRequestRef.current) return;
@@ -173,7 +179,7 @@ export function HistorySidebar({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [sessionToken, engineTab, searchTerm, showLaunchHistory]);
+  }, [sessionToken, historyPane, searchTerm, showLaunchHistory]);
 
   const engineMetaById = useMemo(() => {
     const map = new Map<string, EngineMeta>();
@@ -181,14 +187,12 @@ export function HistorySidebar({
     return map;
   }, [engines]);
 
-  const filteredEngineItems = useMemo(() => {
+  const filteredTuiItems = useMemo(() => {
     if (!showLaunchHistory) return [] as EngineHistoryItem[];
-    if (engineTab === "codex") return [] as EngineHistoryItem[];
-    if (engineTab === "all") return engineItems;
-    return engineItems.filter((i) => i.engine === engineTab);
-  }, [engineItems, engineTab, showLaunchHistory]);
+    return engineItems.filter((i) => i.engine === "codex" && i.historyKind === "tui");
+  }, [engineItems, showLaunchHistory]);
 
-  const showCodexThreads = !showLaunchHistory || engineTab === "all" || engineTab === "codex";
+  const showWebThreads = !showLaunchHistory || historyPane === "web";
 
   const openEngineItem = async (item: EngineHistoryItem) => {
     if (!sessionToken || !showLaunchHistory) return;
@@ -227,7 +231,7 @@ export function HistorySidebar({
 
   const handleRefreshAll = () => {
     onRefresh();
-    if (!showLaunchHistory || !sessionToken) return;
+    if (!showLaunchHistory || !sessionToken || historyPane !== "tui") return;
     // Nudge reload by reusing current dependencies; force-loading then re-running effect via tab noop is fragile,
     // so bump request and re-fetch with the current filter immediately.
     const requestId = ++engineRequestRef.current;
@@ -236,9 +240,8 @@ export function HistorySidebar({
     setEngineError(null);
     void (async () => {
       try {
-        const engine = engineTab === "all" || engineTab === "codex" ? "all" : engineTab;
         const data = await fetchEngineHistory(sessionToken, {
-          engine,
+          engine: "codex",
           q: searchTerm.trim() || undefined,
           limit: 250,
           signal: controller.signal,
@@ -247,10 +250,12 @@ export function HistorySidebar({
         if (requestId !== engineRequestRef.current) return;
         setEngines(data.engines);
         setEngineItems(
-          data.items.map((item) => ({
-            ...item,
-            canResume: item.engine === "codex" ? Boolean(item.canResume) : false
-          }))
+          data.items
+            .filter((item) => item.engine === "codex" && item.historyKind === "tui")
+            .map((item) => ({
+              ...item,
+              canResume: false
+            }))
         );
       } catch (err) {
         if (requestId !== engineRequestRef.current) return;
@@ -345,58 +350,16 @@ export function HistorySidebar({
       {showLaunchHistory ? (
         <Box sx={{ px: 0.5, pt: 0.5 }}>
           <Tabs
-            value={engineTab}
-            onChange={(_, v) => setEngineTab(v as EngineTab)}
-            variant="scrollable"
-            scrollButtons="auto"
-            allowScrollButtonsMobile
+            value={historyPane}
+            onChange={(_, v) => setHistoryPane(v as HistoryPane)}
+            variant="fullWidth"
             sx={{
               minHeight: 36,
-              "& .MuiTab-root": { minHeight: 36, minWidth: 52, px: 1, py: 0.5, fontSize: 11, fontWeight: 800, textTransform: "none" }
+              "& .MuiTab-root": { minHeight: 36, px: 1, py: 0.5, fontSize: 12, fontWeight: 850, textTransform: "none" }
             }}
           >
-            <Tab value="all" label={t("history.engineTabAll")} id="history-tab-all" />
-            {(engines.length
-              ? engines
-              : ([
-                  { id: "codex", label: "Codex", mark: "Cx", color: "#14b8a6", launchId: "code-launch" },
-                  { id: "claude", label: "Claude", mark: "Cl", color: "#f59e0b", launchId: "claude-launch" },
-                  { id: "agy", label: "AGY", mark: "Ag", color: "#8b5cf6", launchId: "agy-launch" },
-                  { id: "gemini", label: "Gemini", mark: "Gm", color: "#3b82f6", launchId: "gemini-launch" },
-                  { id: "crush", label: "Crush", mark: "Cr", color: "#ec4899", launchId: "crush-launch" },
-                  { id: "auggie", label: "Auggie", mark: "Au", color: "#06b6d4", launchId: "auggie-launch" },
-                  { id: "grok", label: "Grok", mark: "X", color: "#64748b", launchId: "grok-launch" },
-                  { id: "freebuff", label: "Freebuff", mark: "Fb", color: "#22c55e", launchId: "freebuff-launch" },
-                  { id: "coderabbit", label: "CodeRabbit", mark: "Rb", color: "#f97316", launchId: "coderabbit-launch" }
-                ] as EngineMeta[])
-            ).map((eng) => (
-              <Tab
-                key={eng.id}
-                value={eng.id}
-                id={`history-tab-${eng.id}`}
-                label={
-                  <Stack direction="row" spacing={0.5} alignItems="center">
-                    <Box
-                      sx={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: 0.75,
-                        bgcolor: eng.color,
-                        color: "#fff",
-                        fontSize: 8,
-                        fontWeight: 900,
-                        display: "grid",
-                        placeItems: "center",
-                        lineHeight: 1
-                      }}
-                    >
-                      {eng.mark}
-                    </Box>
-                    <span>{eng.label}</span>
-                  </Stack>
-                }
-              />
-            ))}
+            <Tab value="web" label={t("history.webTab")} id="history-tab-web" />
+            <Tab value="tui" label={t("history.tuiTab")} id="history-tab-tui" />
           </Tabs>
         </Box>
       ) : null}
@@ -417,30 +380,30 @@ export function HistorySidebar({
             {engineError}
           </Typography>
         ) : null}
-        {showLaunchHistory && !sessionToken ? (
+        {showLaunchHistory && historyPane === "tui" && !sessionToken ? (
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>
             {t("history.engineNeedToken")}
           </Typography>
         ) : null}
       </Box>
       <List dense sx={{ overflow: "auto", flex: "1 1 0", minHeight: 0, p: 1.25 }}>
-        {showCodexThreads && threads.length === 0 && filteredEngineItems.length === 0 && (
+        {showWebThreads && threads.length === 0 && (
           <Box sx={{ p: 1.25, color: "text.secondary" }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {loading || engineLoading ? t("history.loading") : t("history.empty")}
+              {loading ? t("history.loading") : t("history.empty")}
             </Typography>
             <Typography variant="caption">{searchTerm ? t("history.emptySearch") : t("history.emptyDescription")}</Typography>
           </Box>
         )}
-        {!showCodexThreads && filteredEngineItems.length === 0 && (
+        {!showWebThreads && filteredTuiItems.length === 0 && (
           <Box sx={{ p: 1.25, color: "text.secondary" }}>
             <Typography variant="body2" sx={{ fontWeight: 700 }}>
-              {engineLoading ? t("history.loading") : t("history.engineEmpty")}
+              {engineLoading ? t("history.loading") : t("history.tuiEmpty")}
             </Typography>
-            <Typography variant="caption">{t("history.engineEmptyDescription")}</Typography>
+            <Typography variant="caption">{t("history.tuiEmptyDescription")}</Typography>
           </Box>
         )}
-        {showCodexThreads && threads.map((thread) => {
+        {showWebThreads && threads.map((thread) => {
           const title = threadTitle(thread);
           const usage = threadUsage[thread.id];
           const isEditing = editingThreadId === thread.id;
@@ -562,7 +525,7 @@ export function HistorySidebar({
             </ListItemButton>
           );
         })}
-        {filteredEngineItems.map((item) => {
+        {filteredTuiItems.map((item) => {
           const meta = engineMetaById.get(item.engine);
           const color = meta?.color ?? "#64748b";
           const mark = meta?.mark ?? item.engine.slice(0, 2).toUpperCase();
