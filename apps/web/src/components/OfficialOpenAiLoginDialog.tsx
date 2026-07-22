@@ -9,12 +9,14 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  Paper,
   Stack,
   TextField,
   Typography
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import KeyIcon from "@mui/icons-material/Key";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import type { ProviderConfig } from "@codex-ui/shared";
 
 export interface OfficialOpenAiLoginDialogProps {
@@ -119,6 +121,27 @@ export function OfficialOpenAiLoginDialog({
           <Typography variant="body2" color="text.secondary">
             参照 Codex 官方鉴权机制，直接输入 OpenAI 官方 API Key (`sk-proj-...` 或 `sk-...`) 或 Access Token 登录。成功后自动添加至中转站列表并开启官方直连模式。
           </Typography>
+
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(37,99,235,0.12)" : "rgba(239,246,255,0.85)", borderColor: "primary.main" }}>
+            <Stack spacing={1.25} alignItems="flex-start">
+              <Typography variant="body2" sx={{ fontWeight: 800, color: "primary.main" }}>
+                🌐 官方网页授权登录 (OAuth / API Key)
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                点击下方按钮将直接打开 OpenAI 官方平台授权页面 (`https://platform.openai.com/api-keys` / `auth.openai.com`) 登录并快捷生成/复制官方授权 Token。
+              </Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                size="small"
+                startIcon={<OpenInNewIcon fontSize="small" />}
+                onClick={() => window.open("https://platform.openai.com/api-keys", "_blank", "noopener,noreferrer")}
+                sx={{ borderRadius: 1.5, textTransform: "none", fontWeight: 800 }}
+              >
+                跳转 OpenAI 官方授权网页
+              </Button>
+            </Stack>
+          </Paper>
 
           {errorText && (
             <Alert severity="error" variant="outlined" onClose={() => setErrorText(null)}>
