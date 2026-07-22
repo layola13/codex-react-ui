@@ -1667,6 +1667,75 @@ test("reconnects websocket after a disconnect and refreshes basics", async ({ pa
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ type?: string; method?: string }> }).__codexUiOutbound;
     return messages?.some((message) => message.type === "rpc" && message.method === "account/read");
   });
+  await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
+
+  // A delayed close from the superseded socket must not mark the live socket disconnected.
+  await page.evaluate(() => {
+    const oldSocket = (window as unknown as { __codexUiSockets: Array<EventTarget> }).__codexUiSockets[0];
+    oldSocket.dispatchEvent(new CloseEvent("close"));
+  });
+  await page.waitForTimeout(50);
+  await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
+});
+
+test("keeps TUI history search and refresh isolated from app-server history", async ({ page }) => {
+  let engineHistoryRequests = 0;
+  await page.route(/\/api\/engine-history(?:\?.*)?$/, async (route) => {
+    engineHistoryRequests += 1;
+    await route.fulfill({
+      json: {
+        engines: [
+          {
+            id: "codex",
+            label: "Codex",
+            launchId: "codex",
+            mark: "CX",
+            color: "#111827",
+            canResume: true,
+            canChat: true
+          }
+        ],
+        items: [
+          {
+            engine: "codex",
+            id: "tui-session-1",
+            title: "TUI alpha prompt",
+            preview: "alpha prompt",
+            updatedAt: Date.now(),
+            canResume: false,
+            historyKind: "tui"
+          }
+        ]
+      }
+    });
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
+  await page.getByRole("tab", { name: "TUI" }).click();
+  await expect.poll(() => engineHistoryRequests).toBe(1);
+  await expect(page.getByText("TUI alpha prompt")).toBeVisible();
+
+  await page.evaluate(() => {
+    (window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound.length = 0;
+  });
+  await page.getByLabel("Search history").fill("alpha");
+  await expect.poll(() => engineHistoryRequests).toBe(2);
+  await page.waitForTimeout(350);
+  let unexpectedMethods = await page.evaluate(() => {
+    const outbound = (window as unknown as { __codexUiOutbound: Array<{ method?: string }> }).__codexUiOutbound;
+    return outbound.filter((message) => ["account/read", "model/list", "thread/list"].includes(message.method ?? ""));
+  });
+  expect(unexpectedMethods).toEqual([]);
+
+  await page.getByTestId("history-sidebar").getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(() => engineHistoryRequests).toBe(3);
+  unexpectedMethods = await page.evaluate(() => {
+    const outbound = (window as unknown as { __codexUiOutbound: Array<{ method?: string }> }).__codexUiOutbound;
+    return outbound.filter((message) => ["account/read", "model/list", "thread/list"].includes(message.method ?? ""));
+  });
+  expect(unexpectedMethods).toEqual([]);
+  await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
 });
 
 test("searches Codex history by app-server metadata and resumes selected rows", async ({ page }) => {

@@ -131,8 +131,9 @@ export class EngineHistoryWorkerClient {
       else pending.reject(new Error(response.error));
     };
     worker.onerror = (event) => {
-      const message = event instanceof ErrorEvent && event.message
-        ? event.message
+      const eventMessage = (event as { message?: unknown }).message;
+      const message = typeof eventMessage === "string" && eventMessage
+        ? eventMessage
         : "Engine history worker crashed";
       this.failWorker(worker, new Error(message));
     };

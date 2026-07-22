@@ -1172,7 +1172,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           return;
         }
         dispatch({ type: "error", message: formatErrorText(error) });
-        setAuthStatus("loginRequired");
+        // A transport/app-server hiccup during bootstrap is transient. Keep the
+        // authenticated workbench visible while CodexSocketClient retries;
+        // only an explicit LoginRequiredError should return to the login form.
+        if (window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) {
+          setAuthStatus("authenticated");
+        } else {
+          setAuthStatus("loginRequired");
+        }
       }
     })();
     return () => {
