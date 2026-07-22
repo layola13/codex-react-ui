@@ -260,6 +260,10 @@ export interface ProviderConfig {
   channelMode?: "fast" | "advanced";
   /** Multi-group configuration for advanced mode */
   groups?: ChannelGroupConfig[];
+  /** Total quota / max usage quota in USD (null/undefined = unlimited) */
+  quotaUsd?: number | null;
+  /** Current accumulated usage in USD */
+  usedQuotaUsd?: number;
   /** Free-form notes for the relay/channel, shown in list/detail views. */
   remark?: string;
   createdAt: number;

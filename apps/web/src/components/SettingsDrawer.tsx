@@ -1049,6 +1049,7 @@ function RelaySettingsPanel({
   const [modelAliases, setModelAliases] = useState(template.modelAliases);
   const [modelRates, setModelRates] = useState(template.modelRates);
   const [remark, setRemark] = useState("");
+  const [quotaUsd, setQuotaUsd] = useState<string>("");
   const [channelMode, setChannelMode] = useState<"fast" | "advanced">("fast");
   const [groups, setGroups] = useState<ChannelGroupConfig[]>([
     {
@@ -1159,6 +1160,7 @@ function RelaySettingsPanel({
     setModelAliases(entry.modelAliases);
     setModelRates(entry.modelRates);
     setRemark("");
+    setQuotaUsd("");
     setApiKey("");
     setChannelMode("fast");
     setGroups([defaultGroupTemplate()]);
@@ -1187,6 +1189,7 @@ function RelaySettingsPanel({
     setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
     setModelRates(formatModelRates(provider.modelRates) || formatModelRates(defaultRatesForProvider(provider)));
     setRemark(provider.remark ?? "");
+    setQuotaUsd(provider.quotaUsd != null ? String(provider.quotaUsd) : "");
     setApiKey("");
     setChannelMode(provider.channelMode ?? "fast");
     if (provider.groups && provider.groups.length > 0) {
@@ -1304,6 +1307,7 @@ function RelaySettingsPanel({
           modelRates: parseModelRates(modelRates),
           channelMode,
           groups: channelMode === "advanced" ? groups : undefined,
+          quotaUsd: quotaUsd.trim() ? parseFloat(quotaUsd) : undefined,
           remark: remark.trim() || undefined,
           createdAt: editingProvider?.createdAt ?? now,
           updatedAt: now
@@ -1538,6 +1542,19 @@ function RelaySettingsPanel({
                   value={apiKey}
                   onChange={(event) => setApiKey(event.target.value)}
                   inputProps={{ "aria-label": t("settings.relay.relayApiKey") }}
+                />
+              </RelayFormRow>
+              <RelayFormRow label={t("settings.relay.quotaUsd")}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  type="number"
+                  inputProps={{ step: "0.01", min: 0 }}
+                  label={t("settings.relay.quotaUsd")}
+                  placeholder={t("settings.relay.quotaUsdPlaceholder")}
+                  value={quotaUsd}
+                  onChange={(event) => setQuotaUsd(event.target.value)}
+                  helperText={t("settings.relay.quotaUsdHelp")}
                 />
               </RelayFormRow>
               {channelMode === "advanced" && (
@@ -2225,7 +2242,7 @@ function RelaySettingsPanel({
                                 {providerTableId(provider, index)}
                               </Typography>
                               <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere", display: "block" }}>
-                                {provider.baseUrl || t("settings.relay.managedProvider")} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""}
+                                {provider.baseUrl || t("settings.relay.managedProvider")} {provider.apiKeyPreview ? `- ${provider.apiKeyPreview}` : ""} • {t("settings.relay.quotaUsd")}: {provider.quotaUsd != null ? `$${provider.quotaUsd}` : t("settings.relay.unlimitedQuota")}
                               </Typography>
                             </Stack>
                           </TableCell>
