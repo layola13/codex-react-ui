@@ -36,7 +36,7 @@ import {
   Tooltip,
   Typography
 } from "@mui/material";
-import type { ChannelGroupConfig, DangerousPermissionAuditEvent, JsonValue, ProviderConfig, TieredContextRatio } from "@codex-ui/shared";
+import type { ChannelGroupConfig, DangerousPermissionAuditEvent, JsonValue, ProviderConfig, StationType, TieredContextRatio } from "@codex-ui/shared";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import AssessmentIcon from "@mui/icons-material/Assessment";
@@ -1050,6 +1050,9 @@ function RelaySettingsPanel({
   const [modelRates, setModelRates] = useState(template.modelRates);
   const [remark, setRemark] = useState("");
   const [quotaUsd, setQuotaUsd] = useState<string>("");
+  const [stationType, setStationType] = useState<StationType>("third_party");
+  const [enableCheckin, setEnableCheckin] = useState<boolean>(true);
+  const [remindCheckin, setRemindCheckin] = useState<boolean>(true);
   const [channelMode, setChannelMode] = useState<"fast" | "advanced">("fast");
   const [groups, setGroups] = useState<ChannelGroupConfig[]>([
     {
@@ -1161,6 +1164,9 @@ function RelaySettingsPanel({
     setModelRates(entry.modelRates);
     setRemark("");
     setQuotaUsd("");
+    setStationType("third_party");
+    setEnableCheckin(true);
+    setRemindCheckin(true);
     setApiKey("");
     setChannelMode("fast");
     setGroups([defaultGroupTemplate()]);
@@ -1190,6 +1196,9 @@ function RelaySettingsPanel({
     setModelRates(formatModelRates(provider.modelRates) || formatModelRates(defaultRatesForProvider(provider)));
     setRemark(provider.remark ?? "");
     setQuotaUsd(provider.quotaUsd != null ? String(provider.quotaUsd) : "");
+    setStationType(provider.stationType ?? "third_party");
+    setEnableCheckin(provider.enableCheckin ?? true);
+    setRemindCheckin(provider.remindCheckin ?? true);
     setApiKey("");
     setChannelMode(provider.channelMode ?? "fast");
     if (provider.groups && provider.groups.length > 0) {
@@ -1308,6 +1317,9 @@ function RelaySettingsPanel({
           channelMode,
           groups: channelMode === "advanced" ? groups : undefined,
           quotaUsd: quotaUsd.trim() ? parseFloat(quotaUsd) : undefined,
+          stationType,
+          enableCheckin: stationType === "charity" ? enableCheckin : undefined,
+          remindCheckin: stationType === "charity" ? remindCheckin : undefined,
           remark: remark.trim() || undefined,
           createdAt: editingProvider?.createdAt ?? now,
           updatedAt: now
@@ -1543,6 +1555,82 @@ function RelaySettingsPanel({
                   onChange={(event) => setApiKey(event.target.value)}
                   inputProps={{ "aria-label": t("settings.relay.relayApiKey") }}
                 />
+              </RelayFormRow>
+              <RelayFormRow label={t("settings.relay.stationType")}>
+                <Stack spacing={1.25} sx={{ width: "100%" }}>
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={stationType}
+                    onChange={(_, v) => v && setStationType(v as StationType)}
+                    sx={{
+                      flexWrap: "wrap",
+                      gap: 0.5,
+                      "& .MuiToggleButton-root": {
+                        px: 1.75,
+                        py: 0.75,
+                        fontWeight: 800,
+                        borderRadius: "999px !important",
+                        border: "1px solid",
+                        borderColor: "divider"
+                      }
+                    }}
+                  >
+                    <ToggleButton value="third_party">
+                      {t("settings.relay.stationType.third_party")}
+                    </ToggleButton>
+                    <ToggleButton value="rich" sx={{ color: "#d97706 !important" }}>
+                      {t("settings.relay.stationType.rich")}
+                    </ToggleButton>
+                    <ToggleButton value="charity" sx={{ color: "#16a34a !important" }}>
+                      {t("settings.relay.stationType.charity")}
+                    </ToggleButton>
+                    <ToggleButton value="official" sx={{ color: "#2563eb !important" }}>
+                      {t("settings.relay.stationType.official")}
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+
+                  {stationType === "rich" && (
+                    <Alert severity="warning" variant="outlined" icon={<Box component="span" sx={{ fontSize: 18 }}>🪙</Box>} sx={{ borderRadius: 2 }}>
+                      已设为【富可敌国】中转站！节点将带有专属金币 Icon 🪙 与尊贵标识。
+                    </Alert>
+                  )}
+
+                  {stationType === "charity" && (
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: (theme) => theme.palette.mode === "dark" ? "rgba(22,101,52,0.15)" : "rgba(240,253,244,0.9)", borderColor: "success.main" }}>
+                      <Stack spacing={1}>
+                        <Typography variant="body2" sx={{ fontWeight: 800, color: "success.main" }}>
+                          💚 公益站专属扩展功能
+                        </Typography>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                size="small"
+                                checked={enableCheckin}
+                                onChange={(e) => setEnableCheckin(e.target.checked)}
+                              />
+                            }
+                            label={t("settings.relay.enableCheckin")}
+                          />
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                size="small"
+                                checked={remindCheckin}
+                                onChange={(e) => setRemindCheckin(e.target.checked)}
+                              />
+                            }
+                            label={t("settings.relay.remindCheckin")}
+                          />
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          {t("settings.relay.charityNotice")}
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  )}
+                </Stack>
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.quotaUsd")}>
                 <TextField
@@ -2232,10 +2320,22 @@ function RelaySettingsPanel({
                           </TableCell>
                           <TableCell sx={{ minWidth: 190 }}>
                             <Stack spacing={0.35} sx={{ minWidth: 0 }}>
-                              <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+                              <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap sx={{ minWidth: 0 }}>
                                 <Typography variant="body2" sx={{ fontWeight: 800, overflowWrap: "anywhere" }}>
                                   {provider.name}
                                 </Typography>
+                                {provider.stationType === "rich" && (
+                                  <Chip size="small" label="🪙 富可敌国" sx={{ height: 20, bgcolor: "rgba(245,158,11,0.18)", color: "#d97706", fontWeight: 800, border: "1px solid #f59e0b" }} />
+                                )}
+                                {provider.stationType === "charity" && (
+                                  <Chip size="small" label="💚 公益站 (每日签到提醒)" sx={{ height: 20, bgcolor: "rgba(34,197,94,0.18)", color: "#16a34a", fontWeight: 800, border: "1px solid #22c55e" }} />
+                                )}
+                                {provider.stationType === "official" && (
+                                  <Chip size="small" label="🔷 官方" sx={{ height: 20, bgcolor: "rgba(59,130,246,0.18)", color: "#2563eb", fontWeight: 800, border: "1px solid #3b82f6" }} />
+                                )}
+                                {(provider.stationType === "third_party" || !provider.stationType) && (
+                                  <Chip size="small" variant="outlined" label="第三方" sx={{ height: 20 }} />
+                                )}
                                 {active ? <Chip size="small" color="primary" label={t("settings.relay.active")} sx={{ height: 20, borderRadius: 1 }} /> : null}
                               </Stack>
                               <Typography variant="caption" sx={{ fontFamily: "JetBrains Mono, monospace", color: "text.secondary" }}>

@@ -234,6 +234,8 @@ export interface ChannelGroupConfig {
   tieredContextRatios?: TieredContextRatio[];
 }
 
+export type StationType = "third_party" | "rich" | "charity" | "official";
+
 export interface ProviderConfig {
   id: string;
   kind: "chatgpt" | "openai" | "responsesRelay" | "ollama" | "lmstudio" | "bedrock";
@@ -264,6 +266,12 @@ export interface ProviderConfig {
   quotaUsd?: number | null;
   /** Current accumulated usage in USD */
   usedQuotaUsd?: number;
+  /** Station Type Tag: "third_party" (default), "rich", "charity", "official" */
+  stationType?: StationType;
+  /** For Charity Station (公益站): Enable daily check-in feature */
+  enableCheckin?: boolean;
+  /** For Charity Station (公益站): Daily check-in reminder (default: true, once per day) */
+  remindCheckin?: boolean;
   /** Free-form notes for the relay/channel, shown in list/detail views. */
   remark?: string;
   createdAt: number;
