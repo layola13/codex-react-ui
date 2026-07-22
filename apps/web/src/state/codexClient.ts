@@ -1881,6 +1881,7 @@ export async function installLaunchAdapters(
     separateEnv?: Record<string, LaunchEnvValues>;
     forceEnv?: boolean;
     sourceRoot?: string;
+    skipModelTest?: boolean;
   },
   onProgress?: (logs: Array<{ time: string; text: string; level: "info" | "success" | "error" | "warn" }>) => void
 ): Promise<{ results: InstallLaunchResultItem[]; adapters: LaunchAdapterStatus[] }> {
@@ -1918,7 +1919,7 @@ export async function installLaunchAdapters(
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 350));
     const statusResp = await fetch(`/api/launch-adapters/job-status?jobId=${encodeURIComponent(jobId)}`, {
       headers: { "x-codex-ui-token": token }
     });

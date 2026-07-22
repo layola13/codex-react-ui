@@ -1,4 +1,7 @@
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -28,10 +31,12 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography
 } from "@mui/material";
-import type { DangerousPermissionAuditEvent, JsonValue } from "@codex-ui/shared";
+import type { ChannelGroupConfig, DangerousPermissionAuditEvent, JsonValue, ProviderConfig, TieredContextRatio } from "@codex-ui/shared";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import AssessmentIcon from "@mui/icons-material/Assessment";
@@ -44,6 +49,8 @@ import DashboardCustomizeIcon from "@mui/icons-material/DashboardCustomize";
 import DownloadIcon from "@mui/icons-material/Download";
 import EditIcon from "@mui/icons-material/Edit";
 import ExtensionIcon from "@mui/icons-material/Extension";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import LayersIcon from "@mui/icons-material/Layers";
 import MemoryIcon from "@mui/icons-material/Memory";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PsychologyIcon from "@mui/icons-material/Psychology";
@@ -65,7 +72,7 @@ import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ViewInArIcon from "@mui/icons-material/ViewInAr";
 import WavesIcon from "@mui/icons-material/Waves";
-import { permissionPresets, type AuthUser, type PermissionPresetId, type ProviderConfig } from "@codex-ui/shared";
+import { permissionPresets, type AuthUser, type PermissionPresetId } from "@codex-ui/shared";
 import {
   CODEX_CONFIG_FIELD_META,
   formatConfigValueForField,
@@ -1042,6 +1049,24 @@ function RelaySettingsPanel({
   const [modelAliases, setModelAliases] = useState(template.modelAliases);
   const [modelRates, setModelRates] = useState(template.modelRates);
   const [remark, setRemark] = useState("");
+  const [channelMode, setChannelMode] = useState<"fast" | "advanced">("fast");
+  const [groups, setGroups] = useState<ChannelGroupConfig[]>([
+    {
+      id: "group-default",
+      name: "default",
+      groupRatio: 1.0,
+      priority: 1,
+      keys: [],
+      enableFallback: true,
+      fallbackGroupName: "fallback",
+      tieredContextRatios: [
+        { minTokens: 0, maxTokens: 4000, ratio: 1.0 },
+        { minTokens: 4000, maxTokens: 32000, ratio: 1.2 },
+        { minTokens: 32000, maxTokens: 128000, ratio: 1.5 },
+        { minTokens: 128000, maxTokens: null, ratio: 2.0 }
+      ]
+    }
+  ]);
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1110,6 +1135,21 @@ function RelaySettingsPanel({
     setFetchModelsError(null);
   };
 
+  const defaultGroupTemplate = (): ChannelGroupConfig => ({
+    id: `group-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: "default",
+    groupRatio: 1.0,
+    priority: 1,
+    keys: [],
+    enableFallback: true,
+    fallbackGroupName: "fallback",
+    enableTieredContext: false,
+    tieredContextRatios: [
+      { minTokens: 0, maxTokens: 250000, ratio: 1.0 },
+      { minTokens: 250000, maxTokens: 1000000, ratio: 1.5 }
+    ]
+  });
+
   const resetFormFromTemplate = (entry: (typeof RELAY_PROVIDER_TEMPLATES)[number]) => {
     setTemplateId(entry.id);
     setApiFormat(entry.apiFormat);
@@ -1120,6 +1160,8 @@ function RelaySettingsPanel({
     setModelRates(entry.modelRates);
     setRemark("");
     setApiKey("");
+    setChannelMode("fast");
+    setGroups([defaultGroupTemplate()]);
     clearFetchedModelsState();
   };
 
@@ -1146,6 +1188,12 @@ function RelaySettingsPanel({
     setModelRates(formatModelRates(provider.modelRates) || formatModelRates(defaultRatesForProvider(provider)));
     setRemark(provider.remark ?? "");
     setApiKey("");
+    setChannelMode(provider.channelMode ?? "fast");
+    if (provider.groups && provider.groups.length > 0) {
+      setGroups(provider.groups);
+    } else {
+      setGroups([defaultGroupTemplate()]);
+    }
     setEditingProviderId(provider.id);
     clearFetchedModelsState();
     setRelayView("form");
@@ -1254,6 +1302,8 @@ function RelaySettingsPanel({
           nativeModels: nativeModelList,
           modelAliases: parseAliases(modelAliases),
           modelRates: parseModelRates(modelRates),
+          channelMode,
+          groups: channelMode === "advanced" ? groups : undefined,
           remark: remark.trim() || undefined,
           createdAt: editingProvider?.createdAt ?? now,
           updatedAt: now
@@ -1442,6 +1492,37 @@ function RelaySettingsPanel({
                   ) : null}
                 </Stack>
               </RelayFormRow>
+              <RelayFormRow label={t("settings.relay.channelMode")}>
+                <Stack spacing={1.25} sx={{ width: "100%" }}>
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={channelMode}
+                    onChange={(_, v) => v && setChannelMode(v)}
+                    sx={{
+                      "& .MuiToggleButton-root": {
+                        px: 2,
+                        py: 0.75,
+                        fontWeight: 800,
+                        textTransform: "none",
+                        borderRadius: "999px !important"
+                      }
+                    }}
+                  >
+                    <ToggleButton value="fast">
+                      ⚡ {t("settings.relay.modeFast")}
+                    </ToggleButton>
+                    <ToggleButton value="advanced">
+                      ⚙️ {t("settings.relay.modeAdvanced")}
+                    </ToggleButton>
+                  </ToggleButtonGroup>
+                  <Alert severity={channelMode === "fast" ? "info" : "success"} variant="outlined" sx={{ borderRadius: 2 }}>
+                    {channelMode === "fast"
+                      ? t("settings.relay.modeFastHint")
+                      : t("settings.relay.modeAdvancedHint")}
+                  </Alert>
+                </Stack>
+              </RelayFormRow>
               <RelayFormRow label={t("settings.relay.channelName")}>
                 <TextField size="small" fullWidth label={t("settings.relay.channelName")} value={name} onChange={(event) => setName(event.target.value)} inputProps={{ "aria-label": t("settings.relay.channelName") }} />
               </RelayFormRow>
@@ -1459,6 +1540,301 @@ function RelaySettingsPanel({
                   inputProps={{ "aria-label": t("settings.relay.relayApiKey") }}
                 />
               </RelayFormRow>
+              {channelMode === "advanced" && (
+                <RelayFormRow label={t("settings.relay.groups")}>
+                  <Stack spacing={2} sx={{ width: "100%" }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                        {t("settings.relay.groups")} ({groups.length})
+                      </Typography>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                          const newGroup: ChannelGroupConfig = {
+                            id: `group-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                            name: `vip_${groups.length + 1}`,
+                            groupRatio: 0.8,
+                            priority: groups.length + 1,
+                            keys: [],
+                            enableFallback: true,
+                            fallbackGroupName: "default",
+                            tieredContextRatios: [
+                              { minTokens: 0, maxTokens: 4000, ratio: 1.0 },
+                              { minTokens: 4000, maxTokens: 32000, ratio: 1.2 },
+                              { minTokens: 32000, maxTokens: 128000, ratio: 1.5 },
+                              { minTokens: 128000, maxTokens: null, ratio: 2.0 }
+                            ]
+                          };
+                          setGroups([...groups, newGroup]);
+                        }}
+                        sx={{ borderRadius: 999, fontWeight: 800 }}
+                      >
+                        {t("settings.relay.addGroup")}
+                      </Button>
+                    </Stack>
+
+                    {groups.map((group, groupIdx) => {
+                      const keyText = (group.keys || []).join("\n");
+                      return (
+                        <Paper
+                          key={group.id}
+                          variant="outlined"
+                          sx={{
+                            p: 2,
+                            borderRadius: 2.5,
+                            borderColor: "primary.main",
+                            bgcolor: (theme) => (theme.palette.mode === "dark" ? "rgba(15,23,42,0.6)" : "rgba(248,250,252,0.9)")
+                          }}
+                        >
+                          <Stack spacing={1.75}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Chip size="small" color="primary" label={`Group #${groupIdx + 1}`} sx={{ fontWeight: 800 }} />
+                                <Typography variant="subtitle1" sx={{ fontWeight: 850 }}>
+                                  {group.name}
+                                </Typography>
+                                <Chip size="small" variant="outlined" label={`Ratio: ${group.groupRatio}x`} />
+                              </Stack>
+                              {groups.length > 1 && (
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => setGroups(groups.filter((g) => g.id !== group.id))}
+                                >
+                                  <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </Stack>
+
+                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                              <TextField
+                                size="small"
+                                fullWidth
+                                label={t("settings.relay.groupName")}
+                                value={group.name}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setGroups(groups.map((g) => (g.id === group.id ? { ...g, name: val } : g)));
+                                }}
+                                placeholder="default / vip / svip / fallback"
+                              />
+                              <TextField
+                                size="small"
+                                fullWidth
+                                type="number"
+                                inputProps={{ step: "0.01" }}
+                                label={t("settings.relay.groupRatio")}
+                                value={group.groupRatio}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 1.0;
+                                  setGroups(groups.map((g) => (g.id === group.id ? { ...g, groupRatio: val } : g)));
+                                }}
+                                helperText={t("settings.relay.groupRatioHelp")}
+                              />
+                            </Stack>
+
+                            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: "background.paper" }}>
+                              <Stack spacing={1}>
+                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} justifyContent="space-between">
+                                  <FormControlLabel
+                                    control={
+                                      <Switch
+                                        size="small"
+                                        checked={group.enableFallback !== false}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setGroups(groups.map((g) => (g.id === group.id ? { ...g, enableFallback: checked } : g)));
+                                        }}
+                                      />
+                                    }
+                                    label={t("settings.relay.enableFallback")}
+                                  />
+                                  <TextField
+                                    size="small"
+                                    label={t("settings.relay.fallbackGroup")}
+                                    value={group.fallbackGroupName ?? ""}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setGroups(groups.map((g) => (g.id === group.id ? { ...g, fallbackGroupName: val } : g)));
+                                    }}
+                                    placeholder="fallback-group / default"
+                                    sx={{ maxWidth: 260 }}
+                                  />
+                                </Stack>
+                              </Stack>
+                            </Paper>
+
+                            <TextField
+                              size="small"
+                              fullWidth
+                              multiline
+                              minRows={2}
+                              maxRows={5}
+                              label={t("settings.relay.keyPool")}
+                              value={keyText}
+                              onChange={(e) => {
+                                const lines = e.target.value
+                                  .split(/\r?\n/)
+                                  .map((k) => k.trim())
+                                  .filter(Boolean);
+                                setGroups(groups.map((g) => (g.id === group.id ? { ...g, keys: lines } : g)));
+                              }}
+                              placeholder="sk-key1&#10;sk-key2&#10;sk-key3"
+                              helperText={`${t("settings.relay.keyPoolHelp")} — 当前包含 ${group.keys?.length ?? 0} 个轮询 Key`}
+                            />
+
+                            <Accordion variant="outlined" sx={{ borderRadius: "8px !important", overflow: "hidden" }}>
+                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ width: "100%", pr: 1 }}>
+                                  <Stack direction="row" spacing={1} alignItems="center">
+                                    <LayersIcon fontSize="small" color={group.enableTieredContext ? "primary" : "action"} />
+                                    <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                                      {t("settings.relay.tieredContext")}
+                                    </Typography>
+                                    <Chip
+                                      size="small"
+                                      color={group.enableTieredContext ? "primary" : "default"}
+                                      variant={group.enableTieredContext ? "filled" : "outlined"}
+                                      label={group.enableTieredContext ? `已开启 (${(group.tieredContextRatios || []).length} 个区间)` : "已关闭"}
+                                      sx={{ height: 20, fontSize: 11 }}
+                                    />
+                                  </Stack>
+                                  <FormControlLabel
+                                    control={
+                                      <Switch
+                                        size="small"
+                                        checked={group.enableTieredContext === true}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setGroups(groups.map((g) => (g.id === group.id ? { ...g, enableTieredContext: checked } : g)));
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    }
+                                    label={t("settings.relay.enableTieredContext")}
+                                    sx={{ mr: 0 }}
+                                  />
+                                </Stack>
+                              </AccordionSummary>
+                              <AccordionDetails sx={{ p: 1.5 }}>
+                                {group.enableTieredContext ? (
+                                  <Stack spacing={1.25}>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {t("settings.relay.enableTieredContextHelp")}
+                                    </Typography>
+                                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1.5 }}>
+                                      <Table size="small">
+                                        <TableHead>
+                                          <TableRow>
+                                            <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Min Token</TableCell>
+                                            <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Max Token</TableCell>
+                                            <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>{t("settings.relay.tierRatio")}</TableCell>
+                                            <TableCell align="right" sx={{ fontWeight: 800, fontSize: 11 }}>操作</TableCell>
+                                          </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                          {(group.tieredContextRatios || []).map((interval, ivIdx) => (
+                                            <TableRow key={ivIdx}>
+                                              <TableCell sx={{ py: 0.5 }}>
+                                                <TextField
+                                                  size="small"
+                                                  type="number"
+                                                  value={interval.minTokens}
+                                                  onChange={(e) => {
+                                                    const val = parseInt(e.target.value, 10) || 0;
+                                                    const nextIvs = (group.tieredContextRatios || []).map((iv, idx) =>
+                                                      idx === ivIdx ? { ...iv, minTokens: val } : iv
+                                                    );
+                                                    setGroups(groups.map((g) => (g.id === group.id ? { ...g, tieredContextRatios: nextIvs } : g)));
+                                                  }}
+                                                  sx={{ width: 100 }}
+                                                />
+                                              </TableCell>
+                                              <TableCell sx={{ py: 0.5 }}>
+                                                <TextField
+                                                  size="small"
+                                                  type="number"
+                                                  placeholder="∞ 无上限"
+                                                  value={interval.maxTokens ?? ""}
+                                                  onChange={(e) => {
+                                                    const val = e.target.value === "" ? null : parseInt(e.target.value, 10);
+                                                    const nextIvs = (group.tieredContextRatios || []).map((iv, idx) =>
+                                                      idx === ivIdx ? { ...iv, maxTokens: val } : iv
+                                                    );
+                                                    setGroups(groups.map((g) => (g.id === group.id ? { ...g, tieredContextRatios: nextIvs } : g)));
+                                                  }}
+                                                  sx={{ width: 120 }}
+                                                />
+                                              </TableCell>
+                                              <TableCell sx={{ py: 0.5 }}>
+                                                <TextField
+                                                  size="small"
+                                                  type="number"
+                                                  inputProps={{ step: "0.1" }}
+                                                  value={interval.ratio}
+                                                  onChange={(e) => {
+                                                    const val = parseFloat(e.target.value) || 1.0;
+                                                    const nextIvs = (group.tieredContextRatios || []).map((iv, idx) =>
+                                                      idx === ivIdx ? { ...iv, ratio: val } : iv
+                                                    );
+                                                    setGroups(groups.map((g) => (g.id === group.id ? { ...g, tieredContextRatios: nextIvs } : g)));
+                                                  }}
+                                                  sx={{ width: 85 }}
+                                                />
+                                              </TableCell>
+                                              <TableCell align="right" sx={{ py: 0.5 }}>
+                                                <IconButton
+                                                  size="small"
+                                                  color="error"
+                                                  onClick={() => {
+                                                    const nextIvs = (group.tieredContextRatios || []).filter((_, idx) => idx !== ivIdx);
+                                                    setGroups(groups.map((g) => (g.id === group.id ? { ...g, tieredContextRatios: nextIvs } : g)));
+                                                  }}
+                                                >
+                                                  <DeleteOutlineIcon fontSize="small" />
+                                                </IconButton>
+                                              </TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                      </Table>
+                                    </TableContainer>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<AddIcon />}
+                                      onClick={() => {
+                                        const currentIvs = group.tieredContextRatios || [];
+                                        const lastIv = currentIvs[currentIvs.length - 1];
+                                        const lastMax = lastIv ? (lastIv.maxTokens ?? 1000000) : 0;
+                                        const nextIvs: TieredContextRatio[] = [
+                                          ...currentIvs,
+                                          { minTokens: lastMax, maxTokens: lastMax + 1000000, ratio: 1.5 }
+                                        ];
+                                        setGroups(groups.map((g) => (g.id === group.id ? { ...g, tieredContextRatios: nextIvs } : g)));
+                                      }}
+                                      sx={{ borderRadius: 999, alignSelf: "flex-start" }}
+                                    >
+                                      {t("settings.relay.addTierInterval")}
+                                    </Button>
+                                  </Stack>
+                                ) : (
+                                  <Typography variant="caption" color="text.secondary" sx={{ py: 0.5, display: "block" }}>
+                                    阶梯倍率默认关闭。启用开关后将自动启用 Token 上下文区间计费（默认区间：0 ~ 250K、250K ~ 1M）。
+                                  </Typography>
+                                )}
+                              </AccordionDetails>
+                            </Accordion>
+                          </Stack>
+                        </Paper>
+                      );
+                    })}
+                  </Stack>
+                </RelayFormRow>
+              )}
               <RelayFormRow label={t("settings.relay.supportedModels")}>
                 <Stack spacing={1}>
                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }}>

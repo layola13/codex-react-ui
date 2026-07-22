@@ -710,7 +710,8 @@ async function handleApiRequest(
           sharedEnv,
           separateEnv,
           forceEnv: body.forceEnv === true,
-          sourceRoot: typeof body.sourceRoot === "string" ? body.sourceRoot : undefined
+          sourceRoot: typeof body.sourceRoot === "string" ? body.sourceRoot : undefined,
+          skipModelTest: body.skipModelTest === true
         };
         const jobId = createInstallJob(installRequest);
         return jsonResponse({ jobId, status: "running" }, 202, headers);

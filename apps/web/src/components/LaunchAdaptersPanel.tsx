@@ -250,10 +250,10 @@ export function LaunchAdaptersCatalog({
   const [detectError, setDetectError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [envMode, setEnvMode] = useState<"shared" | "separate" | "none">("shared");
-  const [sharedEnv, setSharedEnv] = useState<LaunchEnvValues>({ baseUrl: "", model: "", apiKey: "" });
+  const [sharedEnv, setSharedEnv] = useState<LaunchEnvValues>({ baseUrl: "", model: "gpt-5.5", apiKey: "" });
   const [separateEnv, setSeparateEnv] = useState<Record<string, LaunchEnvValues>>({});
   const [skipCli, setSkipCli] = useState(true);
-  const [forceEnv, setForceEnv] = useState(false);
+  const [forceEnv, setForceEnv] = useState(true);
   const [installing, setInstalling] = useState(false);
   const [installingIds, setInstallingIds] = useState<string[]>([]);
   const [installProgressStep, setInstallProgressStep] = useState<string>("");
@@ -375,7 +375,9 @@ export function LaunchAdaptersCatalog({
     const targetIds = ids && ids.length ? ids : selectedIds;
     if (targetIds.length === 0) return;
 
-    if (!bypassValidation && envMode !== "none") {
+    const isSingleInstall = targetIds.length === 1;
+
+    if (!bypassValidation && envMode !== "none" && !isSingleInstall) {
       const firstId = targetIds[0] || "";
       const envToTest = envMode === "shared" ? sharedEnv : (separateEnv[firstId] ?? {});
       if (envToTest.baseUrl && envToTest.apiKey) {
@@ -413,9 +415,12 @@ export function LaunchAdaptersCatalog({
     const targetDir = customSourceRoot || "~/projects";
     addLiveLog(`开始一键安装与配置：选定 ${targetIds.length} 个适配器 [${targetIds.join(", ")}]`, "info");
     addLiveLog(`源码将被克隆并安装至：${targetDir}`, "info");
-    addLiveLog(`.env 模式：${envMode === "shared" ? "全部统一" : envMode === "separate" ? "分开填写" : "不写 .env"}，跳过 CLI：${skipCli ? "是" : "否"}`, "info");
+    addLiveLog(`.env 模式：${envMode === "shared" ? "全部统一" : envMode === "separate" ? "分开填写" : "不写 .env"}，跳过 CLI：${skipCli ? "已安装则跳过" : "否"}`, "info");
 
-    if (envMode !== "none") {
+    if (isSingleInstall) {
+      addLiveLog(`直接执行单个适配器安装（跳过模型连通性检测步骤）`, "info");
+      setInstallProgressStep("正在执行 git clone 与 ./install.sh...");
+    } else if (envMode !== "none") {
       setInstallProgressStep("1/2: 正在验证 OpenAI API 模型连通性...");
       addLiveLog(`正在通过 OpenAI API 校验模型配置...`, "warn");
     } else {
@@ -431,7 +436,8 @@ export function LaunchAdaptersCatalog({
         sharedEnv: envMode === "shared" ? sharedEnv : undefined,
         separateEnv: envMode === "separate" ? separateEnv : undefined,
         forceEnv,
-        sourceRoot: targetDir
+        sourceRoot: targetDir,
+        skipModelTest: isSingleInstall || bypassValidation
       };
       const result = await installLaunchAdapters(token, payload, (serverLogs) => {
         setLiveLogs(serverLogs);
@@ -881,7 +887,7 @@ export function LaunchAdaptersCatalog({
                   label={t("settings.launch.envModel")}
                   value={sharedEnv.model ?? ""}
                   onChange={(e) => setSharedEnv((s) => ({ ...s, model: e.target.value }))}
-                  placeholder="grok-4.5"
+                  placeholder="gpt-5.5"
                 />
                 <TextField
                   size="small"
@@ -955,7 +961,7 @@ export function LaunchAdaptersCatalog({
                             [adapter.id]: { ...s[adapter.id], model: e.target.value }
                           }))
                         }
-                        placeholder="grok-4.5"
+                        placeholder="gpt-5.5"
                       />
                       <TextField
                         size="small"

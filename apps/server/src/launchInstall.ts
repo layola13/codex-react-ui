@@ -600,9 +600,23 @@ async function installOne(
     const sourceDir = await ensureCloned(spec, steps, opts.sourceRoot, onSubLog);
     onSubLog?.(`✓ 源码目录就绪: ${sourceDir}`, "success");
 
-    const skipCli = opts.skipCli !== false; // default true
-    onSubLog?.(`正在运行 bash ./install.sh ${skipCli ? "--skip-cli" : ""} ...`, "info");
-    await runInstallSh(sourceDir, skipCli, steps, onSubLog);
+    let effectiveSkipCli = false;
+    const isProductInstalled = Boolean(findOnPath(spec.productBins));
+    if (opts.skipCli !== false) {
+      if (isProductInstalled) {
+        effectiveSkipCli = true;
+        onSubLog?.(`[${id}] 检测到 ${spec.productBins.join("/")} CLI 已在 PATH 中，将使用 --skip-cli 跳过 CLI 重复安装`, "info");
+      } else {
+        effectiveSkipCli = false;
+        onSubLog?.(`[${id}] 未检测到 ${spec.productBins.join("/")} CLI，将正常执行 CLI 安装`, "info");
+      }
+    } else {
+      effectiveSkipCli = false;
+      onSubLog?.(`[${id}] 用户设置不跳过，将安装/重新安装 CLI`, "info");
+    }
+
+    onSubLog?.(`正在运行 bash ./install.sh ${effectiveSkipCli ? "--skip-cli" : ""} ...`, "info");
+    await runInstallSh(sourceDir, effectiveSkipCli, steps, onSubLog);
     onSubLog?.(`✓ ./install.sh 执行完成`, "success");
 
     if (opts.envMode && opts.envMode !== "none") {
@@ -651,7 +665,7 @@ export type TestOpenAiApiResult = {
 export async function testOpenAiApi(values: TestOpenAiApiRequest): Promise<TestOpenAiApiResult> {
   const rawBaseUrl = (values.baseUrl ?? "").trim();
   const apiKey = (values.apiKey ?? "").trim();
-  const model = (values.model ?? "").trim() || "gpt-3.5-turbo";
+  const model = (values.model ?? "").trim() || "gpt-5.5";
 
   if (!rawBaseUrl) {
     return { ok: false, step1Ok: false, step2Ok: false, message: "需填写 Base URL 才能发起模型测试。" };

@@ -211,6 +211,29 @@ function sandboxModeToPolicy(sandbox: CodexSandboxMode, cwd: string): CodexSandb
   }
 }
 
+export interface TieredContextRatio {
+  minTokens: number;
+  maxTokens: number | null; // null = infinity
+  ratio: number;
+  inputUsdPerMillion?: number;
+  outputUsdPerMillion?: number;
+  cacheWriteUsdPerMillion?: number;
+  cacheReadUsdPerMillion?: number;
+}
+
+export interface ChannelGroupConfig {
+  id: string;
+  name: string;
+  groupRatio: number;
+  priority?: number;
+  keys: string[];
+  enableFallback?: boolean;
+  fallbackChannelId?: string;
+  fallbackGroupName?: string;
+  enableTieredContext?: boolean;
+  tieredContextRatios?: TieredContextRatio[];
+}
+
 export interface ProviderConfig {
   id: string;
   kind: "chatgpt" | "openai" | "responsesRelay" | "ollama" | "lmstudio" | "bedrock";
@@ -233,6 +256,10 @@ export interface ProviderConfig {
     outputUsdPerMillion: number;
     multiplier: number;
   }>;
+  /** Relay Channel Mode: "fast" (default) or "advanced" */
+  channelMode?: "fast" | "advanced";
+  /** Multi-group configuration for advanced mode */
+  groups?: ChannelGroupConfig[];
   /** Free-form notes for the relay/channel, shown in list/detail views. */
   remark?: string;
   createdAt: number;

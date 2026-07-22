@@ -1,4 +1,4 @@
-const CACHE_NAME = "codex-react-ui-pwa-v4";
+const CACHE_NAME = "codex-react-ui-pwa-v5";
 const APP_SHELL = ["/manifest.webmanifest", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -10,7 +10,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      Promise.all(keys.map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
 });
