@@ -666,28 +666,27 @@ const SCANNERS: Record<EngineId, () => EngineHistoryItem[]> = {
   coderabbit: listCoderabbit
 };
 
-export function listEngineHistory(
-  engine: EngineId | "all",
+export function scanEngineHistory(engine: EngineId): EngineHistoryItem[] {
+  try {
+    const scanned = SCANNERS[engine]?.() ?? [];
+    // *-launch / non-Codex history is list+transcript only; never resume into main chat.
+    return scanned.map((item) => ({
+      ...item,
+      canResume: engine === "codex" ? Boolean(item.canResume) : false
+    }));
+  } catch (error) {
+    console.warn(`[engine-history] scanner failed for ${engine}:`, error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
+export function formatEngineHistory(
+  sourceItems: EngineHistoryItem[],
   opts: { q?: string; limit?: number } = {}
 ): { engines: EngineMeta[]; items: EngineHistoryItem[] } {
   const limit = Math.min(Math.max(opts.limit ?? 200, 1), 500);
   const q = (opts.q ?? "").trim().toLowerCase();
-  const ids: EngineId[] = engine === "all" ? ENGINE_CATALOG.map((e) => e.id) : [engine];
-  let items: EngineHistoryItem[] = [];
-  for (const id of ids) {
-    try {
-      const scanned = SCANNERS[id]?.() ?? [];
-      // *-launch / non-Codex history is list+transcript only; never resume into main chat.
-      items.push(
-        ...scanned.map((item) => ({
-          ...item,
-          canResume: id === "codex" ? Boolean(item.canResume) : false
-        }))
-      );
-    } catch (error) {
-      console.warn(`[engine-history] scanner failed for ${id}:`, error instanceof Error ? error.message : error);
-    }
-  }
+  let items = sourceItems;
   if (q) {
     items = items.filter((item) => {
       const hay = `${item.title} ${item.preview ?? ""} ${item.cwd ?? ""} ${item.engine}`.toLowerCase();
@@ -701,6 +700,14 @@ export function listEngineHistory(
     preview: item.preview ? redact(item.preview) : undefined
   }));
   return { engines: ENGINE_CATALOG, items };
+}
+
+export function listEngineHistory(
+  engine: EngineId | "all",
+  opts: { q?: string; limit?: number } = {}
+): { engines: EngineMeta[]; items: EngineHistoryItem[] } {
+  const ids: EngineId[] = engine === "all" ? ENGINE_CATALOG.map((e) => e.id) : [engine];
+  return formatEngineHistory(ids.flatMap((id) => scanEngineHistory(id)), opts);
 }
 
 // --- transcripts ------------------------------------------------------------
@@ -1007,7 +1014,8 @@ function transcriptCoderabbit(id: string): EngineTranscript | null {
   };
 }
 
-function transcriptCodex(id: string): EngineTranscript | null {
+function transcriptCodex(id: string, historyKind?: EngineHistoryItem["historyKind"]): EngineTranscript | null {
+  if (historyKind === "tui") return transcriptCodexTuiHistory(id);
   const sessions = join(home(), ".codex", "sessions");
   const files = walkFiles(sessions, (n) => n.includes(id) && n.endsWith(".jsonl"), 10);
   const file = files[0];
@@ -1058,7 +1066,7 @@ function transcriptCodexTuiHistory(id: string): EngineTranscript | null {
   };
 }
 
-const TRANSCRIPTS: Record<EngineId, (id: string) => EngineTranscript | null> = {
+const TRANSCRIPTS: Record<EngineId, (id: string, historyKind?: EngineHistoryItem["historyKind"]) => EngineTranscript | null> = {
   codex: transcriptCodex,
   claude: transcriptClaude,
   agy: transcriptAgy,
@@ -1070,9 +1078,13 @@ const TRANSCRIPTS: Record<EngineId, (id: string) => EngineTranscript | null> = {
   coderabbit: transcriptCoderabbit
 };
 
-export function getEngineTranscript(engine: EngineId, id: string): EngineTranscript | null {
+export function getEngineTranscript(
+  engine: EngineId,
+  id: string,
+  historyKind?: EngineHistoryItem["historyKind"]
+): EngineTranscript | null {
   try {
-    return TRANSCRIPTS[engine](id);
+    return TRANSCRIPTS[engine](id, historyKind);
   } catch {
     return null;
   }
