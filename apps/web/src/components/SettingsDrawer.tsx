@@ -58,6 +58,7 @@ import PetsIcon from "@mui/icons-material/Pets";
 import LightModeIcon from "@mui/icons-material/LightMode";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import HubIcon from "@mui/icons-material/Hub";
 import SaveIcon from "@mui/icons-material/Save";
 import SearchIcon from "@mui/icons-material/Search";
 import SecurityIcon from "@mui/icons-material/Security";
@@ -917,7 +918,41 @@ export function SettingsDrawer({
   );
 }
 
-type RelayTemplateId = "openai" | "deepseek" | "gemini" | "anthropic" | "moonshot" | "zhipu" | "minimax";
+type RelayTemplateId =
+  | "openai"
+  | "deepseek"
+  | "gemini"
+  | "anthropic"
+  | "moonshot"
+  | "zhipu"
+  | "minimax"
+  | "mistral"
+  | "nvidia"
+  | "groq"
+  | "openrouter"
+  | "siliconflow"
+  | "xai"
+  | "cohere"
+  | "together"
+  | "fireworks"
+  | "cerebras"
+  | "github-models"
+  | "huggingface"
+  | "modelscope"
+  | "ppio"
+  | "aihubmix"
+  | "dmxapi"
+  | "302ai"
+  | "baichuan"
+  | "stepfun"
+  | "dashscope"
+  | "perplexity"
+  | "yi"
+  | "infini"
+  | "ollama"
+  | "lmstudio";
+
+const CHAT_COMPLETIONS_MODEL_RATES = "";
 
 const RELAY_PROVIDER_TEMPLATES: Array<{
   id: RelayTemplateId;
@@ -945,12 +980,12 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     id: "deepseek",
     label: "DeepSeek",
     icon: <SearchIcon fontSize="small" />,
-    kind: "responsesRelay",
-    apiFormat: "responsesRelay",
+    kind: "openai",
+    apiFormat: "openai",
     baseUrl: "https://api.deepseek.com/v1",
-    nativeModels: "deepseek-chat",
+    nativeModels: "deepseek-chat,deepseek-reasoner",
     modelAliases: "codex=deepseek-chat",
-    modelRates: ""
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
   },
   {
     id: "gemini",
@@ -959,7 +994,7 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     kind: "responsesRelay",
     apiFormat: "responsesRelay",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-    nativeModels: "gemini-2.5-pro",
+    nativeModels: "gemini-2.5-pro,gemini-2.5-flash",
     modelAliases: "codex=gemini-2.5-pro",
     modelRates: ""
   },
@@ -970,46 +1005,338 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     kind: "responsesRelay",
     apiFormat: "responsesRelay",
     baseUrl: "https://api.anthropic.com/v1",
-    nativeModels: "claude-opus-4-6",
-    modelAliases: "codex=claude-opus-4-6",
+    nativeModels: "claude-opus-4-6,claude-sonnet-4-5",
+    modelAliases: "codex=claude-sonnet-4-5",
     modelRates: ""
   },
   {
     id: "moonshot",
     label: "Moonshot",
     icon: <DarkModeIcon fontSize="small" />,
-    kind: "responsesRelay",
-    apiFormat: "responsesRelay",
+    kind: "openai",
+    apiFormat: "openai",
     baseUrl: "https://api.moonshot.cn/v1",
-    nativeModels: "kimi-k2",
+    nativeModels: "kimi-k2,kimi-latest",
     modelAliases: "codex=kimi-k2",
-    modelRates: ""
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
   },
   {
     id: "zhipu",
     label: "Zhipu",
     icon: <PsychologyIcon fontSize="small" />,
-    kind: "responsesRelay",
-    apiFormat: "responsesRelay",
+    kind: "openai",
+    apiFormat: "openai",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
-    nativeModels: "glm-4.5",
+    nativeModels: "glm-4.5,glm-4.5-air,glm-4-plus",
     modelAliases: "codex=glm-4.5",
-    modelRates: ""
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
   },
   {
     id: "minimax",
-    label: "Minimax",
+    label: "MiniMax",
     icon: <WavesIcon fontSize="small" />,
-    kind: "responsesRelay",
-    apiFormat: "responsesRelay",
+    kind: "openai",
+    apiFormat: "openai",
     baseUrl: "https://api.minimax.chat/v1",
-    nativeModels: "minimax-m1",
+    nativeModels: "minimax-m1,abab6.5s-chat",
     modelAliases: "codex=minimax-m1",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "mistral",
+    label: "Mistral",
+    icon: <AutoAwesomeIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.mistral.ai/v1",
+    nativeModels: "mistral-large-latest,codestral-latest,ministral-8b-latest",
+    modelAliases: "codex=mistral-large-latest",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "nvidia",
+    label: "NVIDIA",
+    icon: <MemoryIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    nativeModels: "meta/llama-3.1-405b-instruct,nvidia/llama-3.1-nemotron-70b-instruct",
+    modelAliases: "codex=meta/llama-3.1-405b-instruct",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    icon: <RocketLaunchIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.groq.com/openai/v1",
+    nativeModels: "llama-3.3-70b-versatile,moonshotai/kimi-k2-instruct",
+    modelAliases: "codex=llama-3.3-70b-versatile",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    icon: <LayersIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://openrouter.ai/api/v1",
+    nativeModels: "openai/gpt-5,anthropic/claude-sonnet-4.5,google/gemini-2.5-pro",
+    modelAliases: "codex=openai/gpt-5",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "siliconflow",
+    label: "SiliconFlow",
+    icon: <HubIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.siliconflow.cn/v1",
+    nativeModels: "deepseek-ai/DeepSeek-V3.2,Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    modelAliases: "codex=deepseek-ai/DeepSeek-V3.2",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "xai",
+    label: "xAI",
+    icon: <PsychologyIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.x.ai/v1",
+    nativeModels: "grok-4,grok-code-fast-1",
+    modelAliases: "codex=grok-code-fast-1",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "cohere",
+    label: "Cohere",
+    icon: <TokenIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.cohere.com/compatibility/v1",
+    nativeModels: "command-a-03-2025,command-r-plus-08-2024",
+    modelAliases: "codex=command-a-03-2025",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "together",
+    label: "Together",
+    icon: <HubIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.together.xyz/v1",
+    nativeModels: "meta-llama/Llama-3.3-70B-Instruct-Turbo,Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+    modelAliases: "codex=meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "fireworks",
+    label: "Fireworks",
+    icon: <RocketLaunchIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.fireworks.ai/inference/v1",
+    nativeModels: "accounts/fireworks/models/llama-v3p1-405b-instruct,accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+    modelAliases: "codex=accounts/fireworks/models/llama-v3p1-405b-instruct",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "cerebras",
+    label: "Cerebras",
+    icon: <MemoryIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.cerebras.ai/v1",
+    nativeModels: "llama3.1-8b,llama-4-scout-17b-16e-instruct",
+    modelAliases: "codex=llama-4-scout-17b-16e-instruct",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "github-models",
+    label: "GitHub Models",
+    icon: <ExtensionIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://models.github.ai/inference/v1",
+    nativeModels: "openai/gpt-4.1,meta/llama-4-scout-17b-16e-instruct",
+    modelAliases: "codex=openai/gpt-4.1",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "huggingface",
+    label: "Hugging Face",
+    icon: <StorageIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://router.huggingface.co/v1",
+    nativeModels: "Qwen/Qwen3-Coder-480B-A35B-Instruct,meta-llama/Llama-3.3-70B-Instruct",
+    modelAliases: "codex=Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "modelscope",
+    label: "ModelScope",
+    icon: <StorageIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api-inference.modelscope.cn/v1",
+    nativeModels: "Qwen/Qwen3-Coder-480B-A35B-Instruct,deepseek-ai/DeepSeek-V3.2",
+    modelAliases: "codex=Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "ppio",
+    label: "PPIO",
+    icon: <MemoryIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.ppinfra.com/v3/openai/v1",
+    nativeModels: "deepseek/deepseek-v3.1,qwen/qwen3-coder",
+    modelAliases: "codex=deepseek/deepseek-v3.1",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "aihubmix",
+    label: "AiHubMix",
+    icon: <HubIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://aihubmix.com/v1",
+    nativeModels: "gpt-4o,claude-sonnet-4-5,gemini-2.5-pro",
+    modelAliases: "codex=gpt-4o",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "dmxapi",
+    label: "DMXAPI",
+    icon: <HubIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://www.dmxapi.cn/v1",
+    nativeModels: "gpt-4o,claude-sonnet-4-5,gemini-2.5-pro",
+    modelAliases: "codex=gpt-4o",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "302ai",
+    label: "302.AI",
+    icon: <HubIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.302.ai/v1",
+    nativeModels: "gpt-4o,claude-sonnet-4-5,gemini-2.5-pro",
+    modelAliases: "codex=gpt-4o",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "baichuan",
+    label: "Baichuan",
+    icon: <AutoAwesomeIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.baichuan-ai.com/v1",
+    nativeModels: "Baichuan4-Turbo,Baichuan4-Air",
+    modelAliases: "codex=Baichuan4-Turbo",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "stepfun",
+    label: "StepFun",
+    icon: <KeyboardArrowRightIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.stepfun.com/v1",
+    nativeModels: "step-2-mini,step-2-16k,step-1-8k",
+    modelAliases: "codex=step-2-mini",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "dashscope",
+    label: "DashScope",
+    icon: <AutoAwesomeIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    nativeModels: "qwen3-coder-plus,qwen-plus,qwen-max",
+    modelAliases: "codex=qwen3-coder-plus",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "perplexity",
+    label: "Perplexity",
+    icon: <SearchIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.perplexity.ai/v1",
+    nativeModels: "sonar-pro,sonar-reasoning-pro",
+    modelAliases: "codex=sonar-pro",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "yi",
+    label: "LingYiWanWu",
+    icon: <PsychologyIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://api.lingyiwanwu.com/v1",
+    nativeModels: "yi-large,yi-lightning",
+    modelAliases: "codex=yi-large",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "infini",
+    label: "Infini",
+    icon: <HubIcon fontSize="small" />,
+    kind: "openai",
+    apiFormat: "openai",
+    baseUrl: "https://cloud.infini-ai.com/maas/v1",
+    nativeModels: "deepseek-v3.1,qwen3-coder",
+    modelAliases: "codex=deepseek-v3.1",
+    modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "ollama",
+    label: "Ollama",
+    icon: <ComputerIcon fontSize="small" />,
+    kind: "ollama",
+    apiFormat: "ollama",
+    baseUrl: "http://localhost:11434/v1",
+    nativeModels: "llama3.3,qwen3-coder",
+    modelAliases: "codex=llama3.3",
+    modelRates: ""
+  },
+  {
+    id: "lmstudio",
+    label: "LM Studio",
+    icon: <ComputerIcon fontSize="small" />,
+    kind: "lmstudio",
+    apiFormat: "lmstudio",
+    baseUrl: "http://localhost:1234/v1",
+    nativeModels: "local-model",
+    modelAliases: "codex=local-model",
     modelRates: ""
   }
 ];
 
 const DEFAULT_RELAY_PROVIDER_TEMPLATE = RELAY_PROVIDER_TEMPLATES[0]!;
+
+type RelayProviderTemplate = (typeof RELAY_PROVIDER_TEMPLATES)[number];
+
+function normalizeTemplateBaseUrl(value?: string): string {
+  return (value ?? "").trim().toLowerCase().replace(/\/+$/, "").replace(/\/v1$/, "");
+}
+
+function findRelayProviderTemplate(provider: ProviderConfig): RelayProviderTemplate {
+  const providerBaseUrl = normalizeTemplateBaseUrl(provider.baseUrl);
+  if (providerBaseUrl) {
+    const baseMatch = RELAY_PROVIDER_TEMPLATES.find((entry) => normalizeTemplateBaseUrl(entry.baseUrl) === providerBaseUrl);
+    if (baseMatch) {
+      return baseMatch;
+    }
+  }
+  return RELAY_PROVIDER_TEMPLATES.find((entry) => entry.kind === provider.kind) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
+}
 
 function RelaySettingsPanel({
   providers,
@@ -1073,6 +1400,7 @@ function RelaySettingsPanel({
   ]);
   const [providerModels, setProviderModels] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [templateSearch, setTemplateSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [busyProviderId, setBusyProviderId] = useState<string | null>(null);
   const [testStatuses, setTestStatuses] = useState<Record<string, TestStatus>>({});
@@ -1128,6 +1456,18 @@ function RelaySettingsPanel({
     }
     return models;
   }, [activeModelList, fetchedModels, fetchedModelsSearch, showNotAddedModelsOnly]);
+
+  const filteredRelayProviderTemplates = useMemo(() => {
+    const needle = templateSearch.trim().toLowerCase();
+    if (!needle) {
+      return RELAY_PROVIDER_TEMPLATES;
+    }
+    return RELAY_PROVIDER_TEMPLATES.filter((entry) =>
+      [entry.id, entry.label, entry.kind, entry.apiFormat, entry.baseUrl, entry.nativeModels, entry.modelAliases]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [templateSearch]);
 
   const clearFetchedModelsState = () => {
     setFetchedModels([]);
@@ -1186,7 +1526,7 @@ function RelaySettingsPanel({
     if (!canManage) {
       return;
     }
-    const matchingTemplate = RELAY_PROVIDER_TEMPLATES.find((entry) => entry.kind === provider.kind) ?? DEFAULT_RELAY_PROVIDER_TEMPLATE;
+    const matchingTemplate = findRelayProviderTemplate(provider);
     setTemplateId(matchingTemplate.id);
     setApiFormat(provider.kind);
     setName(provider.name);
@@ -1413,12 +1753,23 @@ function RelaySettingsPanel({
       >
         <Box sx={{ borderRight: { lg: "1px solid" }, borderBottom: { xs: "1px solid", lg: 0 }, borderColor: "divider", bgcolor: "background.default" }}>
           <Box sx={{ px: 1.5, py: 1.25, borderBottom: "1px solid", borderColor: "divider" }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-              {t("settings.relay.serviceProvider")}
-            </Typography>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                {t("settings.relay.serviceProvider")}
+              </Typography>
+              <TextField
+                size="small"
+                fullWidth
+                value={templateSearch}
+                onChange={(event) => setTemplateSearch(event.target.value)}
+                placeholder="Search providers"
+                inputProps={{ "aria-label": "Search service providers" }}
+                InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.75, color: "text.secondary" }} /> }}
+              />
+            </Stack>
           </Box>
-          <Stack spacing={1} sx={{ p: 1.25 }}>
-            {RELAY_PROVIDER_TEMPLATES.map((entry) => {
+          <Stack spacing={1} sx={{ p: 1.25, maxHeight: { lg: "calc(100vh - 270px)" }, overflowY: "auto" }}>
+            {filteredRelayProviderTemplates.map((entry) => {
               const selected = entry.id === templateId;
               return (
                 <Button
@@ -1497,15 +1848,7 @@ function RelaySettingsPanel({
                       />
                     ))}
                   </Stack>
-                  {apiFormat === "openai" ||
-                  relayLikelyNeedsCodeLaunch({
-                    kind: apiFormat,
-                    baseUrl,
-                    name,
-                    id: editingProviderId ?? undefined
-                  }) ? (
-                    <CodeLaunchRelayBanner t={t} />
-                  ) : null}
+                  {apiFormat !== "responsesRelay" ? <CodeLaunchRelayBanner t={t} /> : null}
                 </Stack>
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.channelMode")}>

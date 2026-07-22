@@ -79,7 +79,7 @@ export class ProviderStore {
         apiKeyStorage = "memory";
       }
     }
-    const clean: ProviderConfig = {
+    const clean = normalizeProvider({
       ...provider,
       id,
       apiKeyRef,
@@ -87,7 +87,10 @@ export class ProviderStore {
       apiKeyStorage,
       createdAt: provider.createdAt || now,
       updatedAt: now
-    };
+    });
+    if (!clean) {
+      throw new Error("Invalid provider config");
+    }
     const store = await this.read();
     const next = store.providers.filter((entry) => entry.id !== id);
     next.push(clean);
@@ -182,7 +185,9 @@ export class ProviderStore {
     try {
       const raw = await readFile(this.file, "utf8");
       const parsed = JSON.parse(raw) as StoreShape;
-      const providers = Array.isArray(parsed.providers) ? parsed.providers.filter(isProviderLike) : [];
+      const providers = Array.isArray(parsed.providers)
+        ? parsed.providers.map((provider) => normalizeProvider(provider)).filter((provider): provider is ProviderConfig => Boolean(provider))
+        : [];
       if (providers.length > 0) {
         await this.write({ providers });
       }
@@ -194,16 +199,46 @@ export class ProviderStore {
 
 function parseProvider(payload: string): ProviderConfig | null {
   try {
-    const provider = JSON.parse(payload) as ProviderConfig;
-    return isProviderLike(provider) ? provider : null;
+    return normalizeProvider(JSON.parse(payload));
   } catch {
     return null;
   }
 }
 
-function isProviderLike(value: unknown): value is ProviderConfig {
+function isProviderLike(value: unknown): boolean {
   const record = asRecord(value);
   return typeof record.id === "string" && typeof record.name === "string" && typeof record.kind === "string";
+}
+
+function normalizeProvider(value: unknown): ProviderConfig | null {
+  if (!isProviderLike(value)) {
+    return null;
+  }
+  const record = asRecord(value);
+  const now = Date.now();
+  return {
+    id: stringValue(record.id) ?? randomUUID(),
+    kind: providerKindValue(record.kind),
+    name: stringValue(record.name) ?? "Provider",
+    baseUrl: stringValue(record.baseUrl),
+    apiKeyRef: envKeyRefValue(record.apiKeyRef),
+    apiKeyPreview: stringValue(record.apiKeyPreview),
+    apiKeyStorage: apiKeyStorageValue(record.apiKeyStorage),
+    defaultModel: stringValue(record.defaultModel),
+    nativeModels: stringArray(record.nativeModels),
+    modelAliases: aliasArray(record.modelAliases),
+    modelRates: modelRateArray(record.modelRates),
+    channelMode: channelModeValue(record.channelMode),
+    groups: groupArray(record.groups),
+    quotaUsd: nullableNumberValue(record.quotaUsd),
+    usedQuotaUsd: numberValue(record.usedQuotaUsd),
+    stationType: stationTypeValue(record.stationType),
+    enableCheckin: booleanValue(record.enableCheckin),
+    remindCheckin: booleanValue(record.remindCheckin),
+    remark: stringValue(record.remark),
+    createdAt: numberValue(record.createdAt) ?? now,
+    updatedAt: numberValue(record.updatedAt) ?? now
+  };
 }
 
 const KEYRING_SERVICE = "codex-react-ui";
@@ -249,23 +284,22 @@ function normalizeProfileProvider(value: unknown, existing?: ProviderConfig): Pr
   const kind = providerKindValue(record.kind);
   const apiKeyRef = envKeyRefValue(record.apiKeyRef) ?? existing?.apiKeyRef;
   const preserveExistingKey = existing?.apiKeyRef && apiKeyRef === existing.apiKeyRef;
-
-  return {
+  const normalized = normalizeProvider({
+    ...record,
     id,
     kind,
     name,
-    baseUrl: stringValue(record.baseUrl),
     apiKeyRef,
     apiKeyPreview: preserveExistingKey ? existing.apiKeyPreview : undefined,
     apiKeyStorage: preserveExistingKey ? existing.apiKeyStorage : "none",
-    defaultModel: stringValue(record.defaultModel),
-    nativeModels: stringArray(record.nativeModels),
-    modelAliases: aliasArray(record.modelAliases),
-    modelRates: modelRateArray(record.modelRates),
     remark: stringValue(record.remark) ?? existing?.remark,
     createdAt: numberValue(record.createdAt) ?? existing?.createdAt ?? now,
     updatedAt: now
-  };
+  });
+  if (!normalized) {
+    throw new Error("Invalid provider profile");
+  }
+  return normalized;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -280,8 +314,61 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function nullableNumberValue(value: unknown): number | null | undefined {
+  return value === null ? null : numberValue(value);
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return typeof value === "number" && (value === 0 || value === 1) ? Boolean(value) : undefined;
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.map(stringValue).filter((entry): entry is string => Boolean(entry)) : [];
+}
+
+function groupArray(value: unknown): ProviderConfig["groups"] {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const groups = value
+    .map((entry, index) => {
+      const record = asRecord(entry);
+      const id = stringValue(record.id) ?? `group-${index + 1}`;
+      const name = stringValue(record.name) ?? "default";
+      return {
+        id,
+        name,
+        groupRatio: numberValue(record.groupRatio) ?? 1,
+        priority: numberValue(record.priority),
+        keys: stringArray(record.keys),
+        enableFallback: booleanValue(record.enableFallback),
+        fallbackChannelId: stringValue(record.fallbackChannelId),
+        fallbackGroupName: stringValue(record.fallbackGroupName),
+        enableTieredContext: booleanValue(record.enableTieredContext),
+        tieredContextRatios: tieredContextRatioArray(record.tieredContextRatios)
+      };
+    })
+    .filter((entry) => entry.id && entry.name);
+  return groups.length > 0 ? groups : undefined;
+}
+
+function tieredContextRatioArray(value: unknown): Array<{ minTokens: number; maxTokens: number | null; ratio: number }> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const ratios = value
+    .map((entry) => {
+      const record = asRecord(entry);
+      const minTokens = numberValue(record.minTokens);
+      const maxTokens = nullableNumberValue(record.maxTokens);
+      const ratio = numberValue(record.ratio);
+      return minTokens != null && maxTokens !== undefined && ratio != null ? { minTokens, maxTokens, ratio } : null;
+    })
+    .filter((entry): entry is { minTokens: number; maxTokens: number | null; ratio: number } => Boolean(entry));
+  return ratios.length > 0 ? ratios : undefined;
 }
 
 function aliasArray(value: unknown): ProviderConfig["modelAliases"] {
@@ -304,16 +391,16 @@ function modelRateArray(value: unknown): ProviderConfig["modelRates"] {
   }
   const rates: NonNullable<ProviderConfig["modelRates"]> = [];
   for (const entry of value) {
-      const record = asRecord(entry);
-      const model = stringValue(record.model);
-      const inputUsdPerMillion = numberValue(record.inputUsdPerMillion);
-      const cachedInputUsdPerMillion = numberValue(record.cachedInputUsdPerMillion);
-      const cacheWriteUsdPerMillion = numberValue(record.cacheWriteUsdPerMillion);
-      const outputUsdPerMillion = numberValue(record.outputUsdPerMillion);
-      const multiplier = numberValue(record.multiplier) ?? 1;
-      if (model && inputUsdPerMillion != null && outputUsdPerMillion != null) {
-        rates.push({ model, inputUsdPerMillion, cachedInputUsdPerMillion, cacheWriteUsdPerMillion, outputUsdPerMillion, multiplier });
-      }
+    const record = asRecord(entry);
+    const model = stringValue(record.model);
+    const inputUsdPerMillion = numberValue(record.inputUsdPerMillion);
+    const cachedInputUsdPerMillion = numberValue(record.cachedInputUsdPerMillion);
+    const cacheWriteUsdPerMillion = numberValue(record.cacheWriteUsdPerMillion);
+    const outputUsdPerMillion = numberValue(record.outputUsdPerMillion);
+    const multiplier = numberValue(record.multiplier) ?? 1;
+    if (model && inputUsdPerMillion != null && outputUsdPerMillion != null) {
+      rates.push({ model, inputUsdPerMillion, cachedInputUsdPerMillion, cacheWriteUsdPerMillion, outputUsdPerMillion, multiplier });
+    }
   }
   return rates.length > 0 ? rates : undefined;
 }
@@ -321,6 +408,39 @@ function modelRateArray(value: unknown): ProviderConfig["modelRates"] {
 function envKeyRefValue(value: unknown): string | undefined {
   const ref = stringValue(value);
   return ref?.startsWith("env:") ? ref : undefined;
+}
+
+function apiKeyStorageValue(value: unknown): ProviderConfig["apiKeyStorage"] {
+  switch (value) {
+    case "keyring":
+    case "memory":
+    case "none":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function channelModeValue(value: unknown): ProviderConfig["channelMode"] {
+  switch (value) {
+    case "fast":
+    case "advanced":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function stationTypeValue(value: unknown): ProviderConfig["stationType"] {
+  switch (value) {
+    case "third_party":
+    case "rich":
+    case "charity":
+    case "official":
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function providerKindValue(value: unknown): ProviderConfig["kind"] {

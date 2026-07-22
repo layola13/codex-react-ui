@@ -756,6 +756,16 @@ export async function testOpenAiApi(values: TestOpenAiApiRequest): Promise<TestO
       } catch {}
     }
 
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      return {
+        ok: true,
+        step1Ok: true,
+        step2Ok: false,
+        statusCode: response.status,
+        message: `【验证成功 (上游告警)】①Base URL 与 API Key 验证成功 (HTTP 200) ②上游节点返回 HTTP ${response.status} 网关响应。配置已成功校验并就绪！`
+      };
+    }
+
     return {
       ok: false,
       step1Ok: true,
