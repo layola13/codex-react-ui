@@ -113,6 +113,8 @@ import { SideChatPanel, type SideChatTab } from "./components/SideChatPanel";
 import { ThemeBackgroundMedia } from "./components/ThemeBackgroundMedia";
 import { RightWorkspacePanel, type RightWorkspaceTab } from "./components/RightWorkspacePanel";
 import { SettingsDrawer, type ReasoningOption, type SettingsSectionId } from "./components/SettingsDrawer";
+import { OfficialOpenAiLoginDialog } from "./components/OfficialOpenAiLoginDialog";
+import { TopBarRelayTreeSelector } from "./components/TopBarRelayTreeSelector";
 import type { CodexPluginSettingsTab } from "./components/CodexPluginSettingsPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
 import { localeOptions, useI18n, type Locale } from "./i18n";
@@ -323,6 +325,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [historySearchTerm, setHistorySearchTerm] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [officialLoginOpen, setOfficialLoginOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("codex");
   const [settingsPluginTab, setSettingsPluginTab] = useState<CodexPluginSettingsTab>("marketplace");
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
@@ -2451,6 +2454,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           t={t}
           onPromptSelect={usePromptSuggestion}
           onOpenOnboardingSection={(section) => openSettings(section)}
+          onOpenOfficialLogin={() => setOfficialLoginOpen(true)}
           onAgentThreadSelect={(threadId) => void loadThreadIntoCache(threadId)}
           onStatsClose={() => setStatsPanelScope(null)}
           onSlashNoticeClose={() => setSlashNotice(null)}
@@ -2826,23 +2830,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               {selectedReasoning?.label ?? reasoningEffort}
             </Button>
           </Tooltip>
-          <Tooltip title={t("app.currentRelay", { provider: activeProviderLabel })}>
-            <Chip
-              size="small"
-              icon={<CloudQueueIcon />}
-              label={activeProvider ? activeProvider.name : t("app.defaultRelay")}
-              data-testid="topbar-provider-chip"
-              sx={{
-                maxWidth: { xs: 130, sm: 220, lg: 280 },
-                display: { xs: "none", sm: "inline-flex" },
-                "& .MuiChip-label": {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap"
-                }
-              }}
-            />
-          </Tooltip>
+          <TopBarRelayTreeSelector
+            providers={state.providers}
+            activeProviderId={activeProviderId}
+            onActivateProvider={activateProvider}
+            onOpenOfficialLogin={() => setOfficialLoginOpen(true)}
+          />
           {fastModeEnabled && (
             <Tooltip title={t("app.fastTooltip", { effort: reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort)) })}>
               <Chip
@@ -3490,6 +3483,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onUpdateMember={handleUpdateMember}
         onDeleteMember={handleDeleteMember}
         onAllocateMemberBalance={handleAllocateMemberBalance}
+      />
+      <OfficialOpenAiLoginDialog
+        open={officialLoginOpen}
+        onClose={() => setOfficialLoginOpen(false)}
+        onSaveProvider={saveProvider}
+        onActivateProvider={activateProvider}
       />
       <Snackbar
         open={state.errors.length > 0}

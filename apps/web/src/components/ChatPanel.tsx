@@ -14,6 +14,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import FlagIcon from "@mui/icons-material/Flag";
 import ForumIcon from "@mui/icons-material/Forum";
 import KeyIcon from "@mui/icons-material/Key";
+import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import MemoryIcon from "@mui/icons-material/Memory";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
@@ -135,6 +136,7 @@ type Props = {
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
   onOpenOnboardingSection?: (section: OnboardingSectionId) => void;
+  onOpenOfficialLogin?: () => void;
   onAgentThreadSelect?: (threadId: string) => void;
   onStatsClose?: () => void;
   onSlashNoticeClose?: () => void;
@@ -196,6 +198,7 @@ export function ChatPanel({
   t,
   onPromptSelect,
   onOpenOnboardingSection,
+  onOpenOfficialLogin,
   onAgentThreadSelect,
   onStatsClose,
   onSlashNoticeClose,
@@ -366,6 +369,7 @@ export function ChatPanel({
                   t={t}
                   onPromptSelect={onPromptSelect}
                   onOpenOnboardingSection={onOpenOnboardingSection}
+                  onOpenOfficialLogin={onOpenOfficialLogin}
                 />
               )}
             </Stack>
@@ -758,7 +762,8 @@ function EmptyConversation({
   welcomeBackgroundImage,
   t,
   onPromptSelect,
-  onOpenOnboardingSection
+  onOpenOnboardingSection,
+  onOpenOfficialLogin
 }: {
   selectedAgent: AgentSession | null;
   activeThemePlugin?: ThemePlugin | null;
@@ -766,9 +771,19 @@ function EmptyConversation({
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
   onOpenOnboardingSection?: (section: OnboardingSectionId) => void;
+  onOpenOfficialLogin?: () => void;
 }) {
   if (!selectedAgent) {
-    return <DefaultWorkbenchEmpty activeThemePlugin={activeThemePlugin} welcomeBackgroundImage={welcomeBackgroundImage} t={t} onPromptSelect={onPromptSelect} onOpenOnboardingSection={onOpenOnboardingSection} />;
+    return (
+      <DefaultWorkbenchEmpty
+        activeThemePlugin={activeThemePlugin}
+        welcomeBackgroundImage={welcomeBackgroundImage}
+        t={t}
+        onPromptSelect={onPromptSelect}
+        onOpenOnboardingSection={onOpenOnboardingSection}
+        onOpenOfficialLogin={onOpenOfficialLogin}
+      />
+    );
   }
   return (
     <Paper
@@ -795,13 +810,15 @@ function DefaultWorkbenchEmpty({
   welcomeBackgroundImage,
   t,
   onPromptSelect,
-  onOpenOnboardingSection
+  onOpenOnboardingSection,
+  onOpenOfficialLogin
 }: {
   activeThemePlugin?: ThemePlugin | null;
   welcomeBackgroundImage?: string;
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
   onOpenOnboardingSection?: (section: OnboardingSectionId) => void;
+  onOpenOfficialLogin?: () => void;
 }) {
   const heroImage =
     activeThemePlugin?.layout?.heroEnabled === false
@@ -868,7 +885,7 @@ function DefaultWorkbenchEmpty({
               {t("chat.emptySubtitle")}
             </Typography>
           </Stack>
-          <OnboardingGuide t={t} onPromptSelect={onPromptSelect} onOpenSection={onOpenOnboardingSection} />
+          <OnboardingGuide t={t} onPromptSelect={onPromptSelect} onOpenSection={onOpenOnboardingSection} onOpenOfficialLogin={onOpenOfficialLogin} />
           <Box
             sx={{
               display: "grid",
@@ -938,8 +955,17 @@ function DefaultWorkbenchEmpty({
 function onboardingSteps(t: TranslateFn) {
   return [
     {
-      id: "relay",
+      id: "official",
       step: "1",
+      icon: <VpnKeyIcon fontSize="small" />,
+      title: t("onboarding.codex.official.title"),
+      detail: t("onboarding.codex.official.detail"),
+      action: t("onboarding.codex.official.action"),
+      isOfficial: true
+    },
+    {
+      id: "relay",
+      step: "2",
       icon: <MemoryIcon fontSize="small" />,
       title: t("onboarding.codex.relay.title"),
       detail: t("onboarding.codex.relay.detail"),
@@ -948,7 +974,7 @@ function onboardingSteps(t: TranslateFn) {
     },
     {
       id: "test",
-      step: "2",
+      step: "3",
       icon: <BoltIcon fontSize="small" />,
       title: t("onboarding.codex.test.title"),
       detail: t("onboarding.codex.test.detail"),
@@ -957,7 +983,7 @@ function onboardingSteps(t: TranslateFn) {
     },
     {
       id: "auth",
-      step: "3",
+      step: "4",
       icon: <KeyIcon fontSize="small" />,
       title: t("onboarding.codex.auth.title"),
       detail: t("onboarding.codex.auth.detail"),
@@ -970,11 +996,13 @@ function onboardingSteps(t: TranslateFn) {
 function OnboardingGuide({
   t,
   onPromptSelect,
-  onOpenSection
+  onOpenSection,
+  onOpenOfficialLogin
 }: {
   t: TranslateFn;
   onPromptSelect?: (text: string) => void;
   onOpenSection?: (section: OnboardingSectionId) => void;
+  onOpenOfficialLogin?: () => void;
 }) {
   const steps = onboardingSteps(t);
   return (
@@ -1000,13 +1028,17 @@ function OnboardingGuide({
           </Box>
           <Chip size="small" color="primary" label={t("onboarding.codex.priority")} sx={{ fontWeight: 800, alignSelf: { xs: "flex-start", sm: "center" } }} />
         </Stack>
-        <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" } }}>
+        <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" } }}>
           {steps.map((item) => (
             <Button
               key={item.id}
               variant="outlined"
               color="inherit"
               onClick={() => {
+                if (item.isOfficial) {
+                  onOpenOfficialLogin?.();
+                  return;
+                }
                 if (item.prompt) {
                   onPromptSelect?.(item.prompt);
                   return;
