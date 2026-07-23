@@ -174,13 +174,8 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 async function refreshPwaCache() {
-  const registrations = await navigator.serviceWorker.getRegistrations();
-  await Promise.all(registrations.map((registration) => registration.unregister()));
-  if ("caches" in window) {
-    const cacheNames = await caches.keys();
-    await Promise.all(cacheNames.map((name) => caches.delete(name)));
-  }
-  await navigator.serviceWorker.register("/sw.js");
+  const registration = await navigator.serviceWorker.register("/sw.js");
+  await registration.update();
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

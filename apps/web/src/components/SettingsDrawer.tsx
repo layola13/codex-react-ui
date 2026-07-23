@@ -4659,15 +4659,7 @@ function CustomThemePluginEditor({
               </Stack>
             </Stack>
           </Paper>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <TextField
-              size="small"
-              label={t("settings.theme.mainChatBackground")}
-              value={appBackgroundImage}
-              onChange={(event) => setAppBackgroundImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.mainChatBackground") }}
-            />
+          <ThemeMediaField label={t("settings.theme.mainChatBackground")} value={appBackgroundImage} onChange={setAppBackgroundImage} onClear={() => setAppBackgroundImage("")} t={t}>
             <Button
               size="small"
               variant="outlined"
@@ -4694,65 +4686,20 @@ function CustomThemePluginEditor({
                   .then((url) => {
                     setAppBackgroundImage(url);
                     setAppBackgroundVideo("");
-                    const plugin = buildThemePluginDraft({
-                      appBackgroundImage: url,
-                      appBackgroundVideo: ""
-                    });
-                    if (plugin) {
-                      onSave(plugin);
-                    }
                   })
                   .catch((imageError) => {
                     setError(imageError instanceof Error ? imageError.message : String(imageError));
                   });
               }}
             />
-            <TextField
-              size="small"
-              label={t("settings.theme.welcomeBackground")}
-              value={welcomeBackgroundImage}
-              onChange={(event) => setWelcomeBackgroundImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.welcomeBackground") }}
-            />
+          </ThemeMediaField>
+          <ThemeMediaField label={t("settings.theme.welcomeBackground")} value={welcomeBackgroundImage} onChange={setWelcomeBackgroundImage} onClear={() => setWelcomeBackgroundImage("")} t={t} />
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
+            <ThemeMediaField label={t("settings.theme.composerBackground")} value={composerBackgroundImage} onChange={setComposerBackgroundImage} onClear={() => setComposerBackgroundImage("")} t={t} />
+            <ThemeMediaField label={t("settings.theme.historyBackground")} value={historyBackgroundImage} onChange={setHistoryBackgroundImage} onClear={() => setHistoryBackgroundImage("")} t={t} />
           </Stack>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <TextField
-              size="small"
-              label={t("settings.theme.composerBackground")}
-              value={composerBackgroundImage}
-              onChange={(event) => setComposerBackgroundImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.composerBackground") }}
-            />
-            <TextField
-              size="small"
-              label={t("settings.theme.historyBackground")}
-              value={historyBackgroundImage}
-              onChange={(event) => setHistoryBackgroundImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.historyBackground") }}
-            />
-          </Stack>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <TextField
-              size="small"
-              label={t("settings.theme.legacyHeroImage")}
-              value={heroImage}
-              onChange={(event) => setHeroImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.legacyHeroImage") }}
-            />
-          </Stack>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-            <TextField
-              size="small"
-              label={t("settings.theme.workbenchVideo")}
-              value={appBackgroundVideo}
-              onChange={(event) => setAppBackgroundVideo(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.workbenchVideo") }}
-            />
+          <ThemeMediaField label={t("settings.theme.legacyHeroImage")} value={heroImage} onChange={setHeroImage} onClear={() => setHeroImage("")} t={t} />
+          <ThemeMediaField label={t("settings.theme.workbenchVideo")} value={appBackgroundVideo} onChange={setAppBackgroundVideo} onClear={() => setAppBackgroundVideo("")} t={t}>
             <Button
               size="small"
               variant="outlined"
@@ -4785,24 +4732,10 @@ function CustomThemePluginEditor({
                   });
               }}
             />
-          </Stack>
+          </ThemeMediaField>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-            <TextField
-              size="small"
-              label={t("settings.theme.cornerImage")}
-              value={cornerImage}
-              onChange={(event) => setCornerImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.cornerImage") }}
-            />
-            <TextField
-              size="small"
-              label={t("settings.theme.petImage")}
-              value={petImage}
-              onChange={(event) => setPetImage(event.target.value)}
-              sx={{ flex: 1 }}
-              inputProps={{ "aria-label": t("settings.theme.petImage") }}
-            />
+            <ThemeMediaField label={t("settings.theme.cornerImage")} value={cornerImage} onChange={setCornerImage} onClear={() => setCornerImage("")} t={t} />
+            <ThemeMediaField label={t("settings.theme.petImage")} value={petImage} onChange={setPetImage} onClear={() => setPetImage("")} t={t} />
           </Stack>
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
             <FormControl size="small" sx={{ minWidth: 190 }}>
@@ -4979,6 +4912,43 @@ function ThemeNumberField({
       onChange={(event) => onChange(clampDecimal(Number(event.target.value), value, min, max))}
       inputProps={{ min, max, step, "aria-label": `Theme ${label.toLowerCase()}` }}
     />
+  );
+}
+
+function ThemeMediaField({
+  label,
+  value,
+  onChange,
+  onClear,
+  t,
+  children
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onClear: () => void;
+  t: TranslateFn;
+  children?: ReactNode;
+}) {
+  return (
+    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }} sx={{ width: "100%", minWidth: 0 }}>
+      <TextField
+        size="small"
+        label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        sx={{ flex: 1, minWidth: 0 }}
+        inputProps={{ "aria-label": label }}
+      />
+      <Tooltip title={t("settings.theme.clear")}>
+        <span>
+          <IconButton size="small" aria-label={t("settings.theme.clear")} disabled={!value.trim()} onClick={onClear}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      {children}
+    </Stack>
   );
 }
 

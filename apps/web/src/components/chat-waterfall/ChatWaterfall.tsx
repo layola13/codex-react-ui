@@ -31,6 +31,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
   const [searchTerm, setSearchTerm] = useState("");
   const [searchScope, setSearchScope] = useState<ChatSearchScope>("all");
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
+  const expandedRowSignature = useMemo(() => [...expandedRowKeys].sort().join("\u0000"), [expandedRowKeys]);
   const beforeOffset = before ? 1 : 0;
   const virtualCount = rows.length + beforeOffset;
   const liveIndexes = useMemo(
@@ -133,6 +134,14 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
     });
   }, [rows]);
 
+  useLayoutEffect(() => {
+    virtualizer.measure();
+    const frame = window.requestAnimationFrame(() => {
+      virtualizer.measure();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [expandedRowSignature, virtualizer]);
+
   useEffect(() => {
     setSelectedSearchIndex(0);
   }, [searchScope, searchTerm]);
@@ -212,7 +221,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
     setSelectedSearchIndex((index + searchResults.length) % searchResults.length);
   }
 
-  function toggleRowExpanded(rowKey: string, rowIndex: number) {
+  function toggleRowExpanded(rowKey: string) {
     setExpandedRowKeys((current) => {
       const next = new Set(current);
       if (next.has(rowKey)) {
@@ -221,10 +230,6 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
         next.add(rowKey);
       }
       return next;
-    });
-    requestAnimationFrame(() => {
-      virtualizer.measure();
-      virtualizer.scrollToIndex(rowIndex + beforeOffset, { align: "start" });
     });
   }
 
@@ -390,7 +395,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
                   row={row}
                   t={t}
                   expanded={expandedRowKeys.has(row.key)}
-                  onToggleExpanded={() => toggleRowExpanded(row.key, virtualRow.index - beforeOffset)}
+                  onToggleExpanded={() => toggleRowExpanded(row.key)}
                   assistantUsageDisplay={assistantUsageDisplay}
                 />
               </Box>
