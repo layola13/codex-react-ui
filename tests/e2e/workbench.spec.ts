@@ -1386,6 +1386,7 @@ test("renders the workbench and tooling panels", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Side chat" }).first()).toBeVisible();
   await expect(page.getByRole("tab", { name: "Browser" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Terminal" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Web Dev" })).toBeVisible();
 
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Plugins settings").click();
@@ -3451,6 +3452,72 @@ test("runs terminal commands with stdin resize and terminate controls", async ({
     return messages?.some((message) => message.type === "rpc" && message.method === "command/exec/terminate");
   });
   await expect(page.getByText("terminated 143")).toBeVisible();
+});
+
+test("opens Web Dev workspace and manages a preview server", async ({ page }) => {
+  const previewUrl = "http://127.0.0.1:4173/";
+  const webDevSession = {
+    id: "webdev-e2e",
+    command: "bun run dev -- --host 127.0.0.1",
+    cwd: "/root/projects",
+    status: "running",
+    output: `$ bun run dev -- --host 127.0.0.1\nVITE ready at ${previewUrl}\n`,
+    url: previewUrl,
+    pid: 4242,
+    startedAt: 1710000100,
+    updatedAt: 1710000101
+  };
+  let sessions: typeof webDevSession[] = [];
+  let startRequest: { command?: string; cwd?: string } | null = null;
+  let probeRequest: { url?: string } | null = null;
+
+  await page.route("/api/webdev/servers", (route) => route.fulfill({ json: { data: sessions } }));
+  await page.route("/api/webdev/servers/start", async (route) => {
+    startRequest = route.request().postDataJSON() as { command?: string; cwd?: string };
+    sessions = [{ ...webDevSession, command: startRequest.command ?? webDevSession.command, cwd: startRequest.cwd ?? webDevSession.cwd }];
+    await route.fulfill({ status: 201, json: { data: sessions[0] } });
+  });
+  await page.route("/api/webdev/servers/stop", async (route) => {
+    const body = route.request().postDataJSON() as { id?: string };
+    sessions = sessions.map((session) => (session.id === body.id ? { ...session, status: "terminated", updatedAt: 1710000102 } : session));
+    await route.fulfill({ json: { data: sessions[0] } });
+  });
+  await page.route("/api/webdev/probe", async (route) => {
+    probeRequest = route.request().postDataJSON() as { url?: string };
+    await route.fulfill({
+      json: {
+        ok: probeRequest.url === previewUrl,
+        url: probeRequest.url ?? previewUrl,
+        status: probeRequest.url === previewUrl ? 200 : 503,
+        contentType: "text/html",
+        title: "WebDev Preview",
+        elapsedMs: 12
+      }
+    });
+  });
+
+  await page.goto("/");
+  await confirmWorkspace(page, "/root/projects");
+  await page.getByLabel("Open right workspace").click();
+  await page.getByRole("tab", { name: "Web Dev" }).click();
+
+  await expect(page.getByTestId("webdev-panel")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Explorer" })).toBeVisible();
+  await expect(page.getByTestId("webdev-preview-frame")).toBeVisible();
+
+  await page.getByLabel("Command", { exact: true }).fill("bun run dev -- --host 127.0.0.1");
+  await page.getByLabel("Command cwd").fill("/root/projects");
+  await page.getByTestId("webdev-run-server").click();
+
+  await expect.poll(() => startRequest).toMatchObject({
+    command: "bun run dev -- --host 127.0.0.1",
+    cwd: "/root/projects"
+  });
+  await expect(page.getByTestId("webdev-managed-server-session")).toContainText(previewUrl);
+  await expect(page.getByTestId("webdev-preview-url").locator("input")).toHaveValue(previewUrl);
+  await expect(page.getByTestId("webdev-preview-status")).toContainText("HTTP 200");
+  await expect.poll(() => probeRequest).toMatchObject({ url: previewUrl });
+  await expect(page.getByTestId("webdev-preview-frame")).toHaveAttribute("src", previewUrl);
 });
 
 test("matches desktop and mobile workbench screenshots", async ({ page }) => {
