@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { constants, accessSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, constants, accessSync, existsSync, statSync, rmSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
@@ -118,7 +118,9 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
         phase: "error",
         transport: "daemon-unix",
         realtimeSync: "unavailable",
+        connectionEpoch: this.connectionEpoch,
         codexBin,
+        codexHome: resolveCodexHome(),
         message
       });
       throw new Error(message);
@@ -197,16 +199,12 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
   }
 
   private async ensureDaemonRunning(codexBin: string): Promise<void> {
-    if (existsSync(this.socketPath)) {
-      try {
-        const stat = statSync(this.socketPath);
-        if (stat.isSocket()) {
-          return;
-        }
-      } catch {}
+    if (this.hasUsableSocket()) {
+      return;
     }
 
     const socketDir = path.dirname(this.socketPath);
+    mkdirSync(socketDir, { recursive: true, mode: 0o700 });
     const spawnArgs = ["app-server", "daemon", "start"];
 
     await new Promise<void>((resolve, reject) => {
@@ -216,16 +214,21 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
         stdio: ["ignore", "pipe", "pipe"]
       });
 
+      let output = "";
       let errOutput = "";
+      daemonProc.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString("utf8");
+      });
       daemonProc.stderr.on("data", (chunk: Buffer) => {
         errOutput += chunk.toString("utf8");
       });
 
       daemonProc.once("exit", (code) => {
-        if (code === 0 || existsSync(this.socketPath)) {
+        if (code === 0 || this.hasUsableSocket()) {
           resolve();
         } else {
-          reject(new Error(`Failed to start daemon (code ${code}): ${errOutput.trim()}`));
+          const details = [errOutput.trim(), output.trim()].filter(Boolean).join("\n");
+          reject(new Error(`Failed to start daemon (code ${code}): ${redactSecrets(details)}`));
         }
       });
 
@@ -234,15 +237,40 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
       });
     });
 
-    for (let i = 0; i < 20; i++) {
-      if (existsSync(this.socketPath)) {
-        break;
+    for (let i = 0; i < 40; i += 1) {
+      if (this.hasUsableSocket()) {
+        return;
       }
       await new Promise((r) => setTimeout(r, 250));
     }
+
+    throw new Error(`Codex daemon socket did not become ready: ${this.socketPath}`);
+  }
+
+  private hasUsableSocket(): boolean {
+    if (!existsSync(this.socketPath)) {
+      return false;
+    }
+    try {
+      const stat = statSync(this.socketPath);
+      if (stat.isSocket()) {
+        return true;
+      }
+      rmSync(this.socketPath, { force: true, recursive: false });
+    } catch {
+      return false;
+    }
+    return false;
   }
 
   private async connectWebSocket(): Promise<void> {
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`ws+unix://${this.socketPath}:/`, {
         perMessageDeflate: false
@@ -278,8 +306,8 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
             codexVersion,
             appServerUserAgent: typeof init.userAgent === "string" ? init.userAgent : undefined,
             codexHome: typeof init.codexHome === "string" ? init.codexHome : resolveCodexHome(),
-            startedAt: Date.now(),
-            message: "Connected to Codex app-server daemon"
+            message: `Connected to Codex app-server daemon at ${this.socketPath}`,
+            startedAt: Date.now()
           });
 
           if (!resolved) {

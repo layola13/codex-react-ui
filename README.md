@@ -55,6 +55,8 @@ bun run dev
 
 `bun run dev` builds the web UI once with Bun, then starts the Bun server on `127.0.0.1:43110`.
 
+By default the server connects to the shared Codex app-server daemon over the default Unix socket so Web and TUI clients can share live thread state. The bridge starts the daemon if the socket is missing, then reports `transport: daemon-unix` and `realtimeSync: available` in engine status. Set `CODEX_UI_APP_SERVER_MODE=stdio` only for legacy private app-server debugging; stdio mode still shares persisted history but cannot provide live Web/TUI turn synchronization.
+
 By default the server tries these Codex binaries:
 
 1. `CODEX_BIN`

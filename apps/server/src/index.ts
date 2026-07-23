@@ -1177,7 +1177,8 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
               // Also index by thread for notifications that only carry threadId.
               const threadId = stringValue(asRecord(params).threadId);
               if (threadId) {
-                trackTurnStart(user.id, `thread-active:${threadId}`);
+                const threadActiveKey = `thread-active:${threadId}`;
+                trackTurnStart(user.id, threadActiveKey);
               }
             }
             if (user.role !== "admin") {
@@ -1193,6 +1194,14 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
                 console.warn("Balance debit failed after turn/start", error);
               }
             }
+          }
+        }
+
+        if (message.method === "turn/start") {
+          const threadId = stringValue(asRecord(params).threadId);
+          const turnKey = extractTurnKey(result, asRecord(params)) ?? (threadId ? `thread-active:${threadId}` : null);
+          if (threadId && turnKey) {
+            subscriptionRegistry.addTurnHold(threadId, turnKey);
           }
         }
 
@@ -1303,13 +1312,24 @@ function routeCodexNotification(message: JsonRpcMessage & { method: string; para
     method.endsWith("turn/error") ||
     method === "turn/completed" ||
     method === "turn/failed";
+  if (isTerminal && threadId) {
+    if (turnId) {
+      subscriptionRegistry.removeTurnHold(threadId, `turn:${turnId}`);
+    }
+    subscriptionRegistry.removeTurnHold(threadId, `thread-active:${threadId}`);
+  }
+
   if (isTerminal && authStore) {
     for (const client of clients) {
       const user = client.data.user;
       if (!user) continue;
       if (threadId && (user.role === "admin" || authStore.ownsThread(threadId, user.id))) {
-        if (turnId) trackTurnEnd(user.id, `turn:${turnId}`);
-        if (threadId) trackTurnEnd(user.id, `thread-active:${threadId}`);
+        if (turnId) {
+          trackTurnEnd(user.id, `turn:${turnId}`);
+        }
+        if (threadId) {
+          trackTurnEnd(user.id, `thread-active:${threadId}`);
+        }
       }
     }
   }

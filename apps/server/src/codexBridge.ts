@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { constants, accessSync, existsSync } from "node:fs";
+import { constants, accessSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import {
@@ -299,15 +299,12 @@ function redactSecrets(value: string): string {
 export function createCodexRuntimeClient(
   runtimeEnv: () => NodeJS.ProcessEnv = () => ({})
 ): CodexRuntimeClient {
-  const mode = process.env.CODEX_UI_APP_SERVER_MODE;
-  if (mode === "daemon") {
-    return new DaemonCodexBridge(resolveDefaultSocketPath(), runtimeEnv);
-  }
-  if (mode === "stdio") {
+  const mode = (process.env.CODEX_UI_APP_SERVER_MODE ?? "daemon").trim().toLowerCase();
+  if (mode === "stdio" || mode === "legacy-stdio") {
     return new CodexBridge(runtimeEnv);
   }
-  if (process.env.CODEX_APP_SERVER_SOCKET || existsSync(resolveDefaultSocketPath())) {
+  if (mode === "daemon" || mode === "auto" || mode === "") {
     return new DaemonCodexBridge(resolveDefaultSocketPath(), runtimeEnv);
   }
-  return new CodexBridge(runtimeEnv);
+  throw new Error(`Unsupported CODEX_UI_APP_SERVER_MODE '${process.env.CODEX_UI_APP_SERVER_MODE}'. Use 'daemon' or 'stdio'.`);
 }

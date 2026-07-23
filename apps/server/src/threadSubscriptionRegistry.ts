@@ -6,6 +6,7 @@ type ThreadEntry = {
   watchers: Set<string>;
   activeTurnHolds: Set<string>;
   subscribed: boolean;
+  retryTimer: ReturnType<typeof setTimeout> | null;
 };
 
 export class ThreadSubscriptionRegistry extends EventEmitter {
@@ -30,7 +31,8 @@ export class ThreadSubscriptionRegistry extends EventEmitter {
         threadId,
         watchers: new Set<string>(),
         activeTurnHolds: new Set<string>(),
-        subscribed: false
+        subscribed: false,
+        retryTimer: null
       };
       this.threads.set(threadId, entry);
     }
@@ -61,7 +63,8 @@ export class ThreadSubscriptionRegistry extends EventEmitter {
         threadId,
         watchers: new Set<string>(),
         activeTurnHolds: new Set<string>(),
-        subscribed: false
+        subscribed: false,
+        retryTimer: null
       };
       this.threads.set(threadId, entry);
     }
@@ -78,6 +81,7 @@ export class ThreadSubscriptionRegistry extends EventEmitter {
 
   private async ensureSubscribed(entry: ThreadEntry): Promise<void> {
     if (entry.subscribed) return;
+    if (entry.retryTimer) return;
     const client = this.getClient();
     const status = client.getStatus();
     if (status.phase !== "ready") return;
@@ -87,12 +91,27 @@ export class ThreadSubscriptionRegistry extends EventEmitter {
       await client.request("thread/resume", { threadId: entry.threadId });
     } catch (error) {
       entry.subscribed = false;
-      this.emit("error", { threadId: entry.threadId, error });
+      this.emit("subscriptionError", { threadId: entry.threadId, error });
+      this.scheduleRetry(entry);
     }
+  }
+
+  private scheduleRetry(entry: ThreadEntry): void {
+    if (entry.retryTimer) return;
+    if (entry.watchers.size === 0 && entry.activeTurnHolds.size === 0) return;
+    entry.retryTimer = setTimeout(() => {
+      entry.retryTimer = null;
+      if (this.threads.get(entry.threadId) !== entry) return;
+      void this.ensureSubscribed(entry);
+    }, 500);
   }
 
   private async evaluateUnsubscribe(entry: ThreadEntry): Promise<void> {
     if (entry.watchers.size > 0 || entry.activeTurnHolds.size > 0) return;
+    if (entry.retryTimer) {
+      clearTimeout(entry.retryTimer);
+      entry.retryTimer = null;
+    }
     if (!entry.subscribed) {
       this.threads.delete(entry.threadId);
       return;
@@ -113,6 +132,10 @@ export class ThreadSubscriptionRegistry extends EventEmitter {
   private async reAttachAll(client: CodexRuntimeClient): Promise<void> {
     for (const entry of this.threads.values()) {
       if (entry.watchers.size > 0 || entry.activeTurnHolds.size > 0) {
+        if (entry.retryTimer) {
+          clearTimeout(entry.retryTimer);
+          entry.retryTimer = null;
+        }
         entry.subscribed = false;
         await this.ensureSubscribed(entry);
       }

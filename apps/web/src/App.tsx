@@ -268,18 +268,20 @@ function reducer(state: ClientState, action: Action): ClientState {
       const next = applyNotification(state, action.message);
       return { ...next, activeThreadId };
     }
-    case "serverRequest":
+    case "serverRequest": {
+      const request = {
+        id: action.message.id,
+        method: action.message.method,
+        params: action.message.params
+      };
       return {
         ...state,
         pendingRequests: [
-          {
-            id: action.message.id,
-            method: action.message.method,
-            params: action.message.params
-          },
-          ...state.pendingRequests
+          request,
+          ...state.pendingRequests.filter((existing) => existing.id !== request.id)
         ]
       };
+    }
     case "serverRequestResolved":
       return {
         ...state,
@@ -816,13 +818,22 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }, [historySearchTerm, loadHistory, state.connected, state.token]);
 
   useEffect(() => {
-    if (!client || !state.activeThreadId) return;
+    if (!client || !state.connected || !state.activeThreadId) return;
     const threadId = state.activeThreadId;
-    client.watchThread(threadId);
+    try {
+      client.watchThread(threadId);
+    } catch (error) {
+      dispatch({ type: "error", message: errorMessage("Watch thread", error) });
+      return;
+    }
     return () => {
-      client.unwatchThread(threadId);
+      try {
+        client.unwatchThread(threadId);
+      } catch {
+        // The socket may already be disconnected; server-side close cleanup handles stale watches.
+      }
     };
-  }, [client, state.activeThreadId]);
+  }, [client, state.activeThreadId, state.connected]);
 
   const loadCodexConfig = useCallback(async () => {
     setCodexConfigLoading(true);
@@ -1345,6 +1356,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (cancelled) return;
         const activeThreadId = activeThreadIdRef.current;
         if (activeThreadId) {
+          try {
+            await client.rpc("thread/resume", { threadId: activeThreadId });
+          } catch (error) {
+            dispatch({ type: "error", message: errorMessage("Reconnect thread subscription", error) });
+          }
           await loadThreadIntoCache(activeThreadId);
         }
       } catch (error) {
@@ -1356,7 +1372,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return () => {
       cancelled = true;
     };
-  }, [loadBasics, loadThreadIntoCache, refreshProviders, state.connected, state.token]);
+  }, [client, loadBasics, loadThreadIntoCache, refreshProviders, state.connected, state.token]);
 
   const selectTaskTab = useCallback(
     (threadId: string | null) => {
