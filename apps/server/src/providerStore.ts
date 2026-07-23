@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Database } from "bun:sqlite";
-import { AsyncEntry } from "@napi-rs/keyring";
+import type { AsyncEntry } from "@napi-rs/keyring";
 import type { ImageGenerationProtocol, ProviderConfig, UiProfile, UiProfileImportResult } from "@codex-ui/shared";
 import { codexUiDataDir, LocalDatabase } from "./localDatabase.js";
 
@@ -33,7 +33,8 @@ export class ProviderStore {
         continue;
       }
       try {
-        const secret = await keyringEntry(provider.id).getPassword();
+        const entry = keyringEntry(provider.id);
+        const secret = entry ? await entry.getPassword() : null;
         if (secret) {
           this.memorySecrets.set(provider.id, secret);
           if (provider.apiKeyStorage !== "keyring") {
@@ -72,8 +73,13 @@ export class ProviderStore {
     if (apiKey) {
       this.memorySecrets.set(id, apiKey);
       try {
-        await keyringEntry(id).setPassword(apiKey);
-        apiKeyStorage = "keyring";
+        const entry = keyringEntry(id);
+        if (entry) {
+          await entry.setPassword(apiKey);
+          apiKeyStorage = "keyring";
+        } else {
+          apiKeyStorage = "memory";
+        }
       } catch {
         apiKeyStorage = "memory";
       }
@@ -113,7 +119,10 @@ export class ProviderStore {
   public async delete(id: string): Promise<void> {
     this.memorySecrets.delete(id);
     try {
-      await keyringEntry(id).deleteCredential();
+      const entry = keyringEntry(id);
+      if (entry) {
+        await entry.deleteCredential();
+      }
     } catch {
       // Missing or unavailable keyrings do not block provider deletion.
     }
@@ -248,8 +257,21 @@ function normalizeProvider(value: unknown): ProviderConfig | null {
 
 const KEYRING_SERVICE = "codex-react-ui";
 
-function keyringEntry(id: string): AsyncEntry {
-  return new AsyncEntry(KEYRING_SERVICE, `provider:${id}`);
+let SafeAsyncEntryClass: (new (service: string, user: string) => AsyncEntry) | null = null;
+try {
+  const keyringPkg = require("@napi-rs/keyring");
+  SafeAsyncEntryClass = keyringPkg.AsyncEntry || null;
+} catch {
+  SafeAsyncEntryClass = null;
+}
+
+function keyringEntry(id: string): AsyncEntry | null {
+  if (!SafeAsyncEntryClass) return null;
+  try {
+    return new SafeAsyncEntryClass(KEYRING_SERVICE, `provider:${id}`);
+  } catch {
+    return null;
+  }
 }
 
 function providerIdFromName(name: string): string {
