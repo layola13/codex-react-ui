@@ -253,6 +253,11 @@ export interface ProviderConfig {
   apiKeyPreview?: string;
   apiKeyStorage?: "keyring" | "memory" | "none";
   defaultModel?: string;
+  image?: {
+    generations?: boolean;
+    edits?: boolean;
+    defaultModel?: string;
+  };
   nativeModels: string[];
   modelAliases: Array<{
     alias: string;

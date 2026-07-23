@@ -24,6 +24,7 @@ export type ChatRowKind =
   | "fileChange"
   | "commandExecution"
   | "commandGroup"
+  | "imageGeneration"
   | "status"
   | "error"
   | "checkpoint"

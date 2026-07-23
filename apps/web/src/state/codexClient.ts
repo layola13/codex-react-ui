@@ -265,6 +265,9 @@ export type WorkbenchImage = {
   url: string;
   name?: string;
   detail?: string;
+  revisedPrompt?: string;
+  model?: string;
+  providerName?: string;
 };
 
 export type WorkbenchFile = {
@@ -945,6 +948,67 @@ export async function testProvider(
 /** @deprecated Use testProvider. */
 export const testProviderChat = testProvider;
 
+export type ImageApiResult = {
+  data: Array<{
+    url?: string;
+    b64Json?: string;
+    revisedPrompt?: string;
+  }>;
+  created?: number;
+  providerId?: string;
+  providerName?: string;
+  model?: string;
+  prompt?: string;
+  endpoint?: string;
+  raw?: JsonValue;
+};
+
+export async function generateProviderImage(
+  token: string,
+  input: { providerId: string; prompt: string; model?: string; size?: string; n?: number }
+): Promise<ImageApiResult> {
+  const response = await fetch("/api/images/generations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as ImageApiResult & { error?: string };
+  if (!response.ok) {
+    throw new Error(body.error ?? `Image generation failed (${response.status})`);
+  }
+  return body;
+}
+
+export async function editProviderImage(
+  token: string,
+  input: { providerId: string; prompt: string; model?: string; images: File[]; size?: string; n?: number }
+): Promise<ImageApiResult> {
+  const form = new FormData();
+  form.set("providerId", input.providerId);
+  form.set("prompt", input.prompt);
+  if (input.model) form.set("model", input.model);
+  if (input.size) form.set("size", input.size);
+  if (input.n != null) form.set("n", String(input.n));
+  for (const image of input.images) {
+    form.append("image", image, image.name || "image.png");
+  }
+  const response = await fetch("/api/images/edits", {
+    method: "POST",
+    headers: {
+      "x-codex-ui-token": token
+    },
+    body: form
+  });
+  const body = (await response.json().catch(() => ({}))) as ImageApiResult & { error?: string };
+  if (!response.ok) {
+    throw new Error(body.error ?? `Image edit failed (${response.status})`);
+  }
+  return body;
+}
+
 export async function exportProfile(token: string): Promise<UiProfile> {
   const response = await fetch("/api/profile/export", {
     headers: { "x-codex-ui-token": token }
@@ -1071,7 +1135,7 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
     }
     const nextItem: WorkbenchItem = {
       id: itemId,
-      type: stringValue(item.type) ?? inferItemType(item),
+      type: normalizeWorkbenchItemType(stringValue(item.type) ?? inferItemType(item), item),
       title: itemTitle(item),
       text: itemText(item),
       images: itemImages(item),
@@ -1653,7 +1717,8 @@ function threadItemToWorkbenchItem(item: Record<string, unknown>): WorkbenchItem
   if (!id) {
     return null;
   }
-  const type = stringValue(item.type) ?? inferItemType(item);
+  const rawType = stringValue(item.type) ?? inferItemType(item);
+  const type = normalizeWorkbenchItemType(rawType, item);
   return {
     id,
     type,
@@ -1668,11 +1733,24 @@ function threadItemToWorkbenchItem(item: Record<string, unknown>): WorkbenchItem
 }
 
 function inferItemType(item: Record<string, unknown>): string {
+  if ("result" in item && ("revised_prompt" in item || "revisedPrompt" in item)) return "imageGeneration";
   if ("text" in item) return "agentMessage";
   if ("command" in item) return "commandExecution";
   if ("changes" in item) return "fileChange";
   if ("summary" in item) return "reasoning";
   return "item";
+}
+
+function normalizeWorkbenchItemType(type: string, item: Record<string, unknown>): string {
+  if (type === "message") {
+    const role = stringValue(item.role);
+    if (role === "user") return "userMessage";
+    if (role === "assistant") return "agentMessage";
+  }
+  if (type === "image_generation_call") {
+    return "imageGeneration";
+  }
+  return type;
 }
 
 function itemTitle(item: Record<string, unknown>): string {
@@ -1696,12 +1774,19 @@ function itemTitle(item: Record<string, unknown>): string {
       return "Parallel agent";
     case "subAgentActivity":
       return "Agent activity";
+    case "image_generation_call":
+    case "imageGeneration":
+      return "Image generation";
     default:
       return type;
   }
 }
 
 function itemText(item: Record<string, unknown>): string {
+  const itemType = stringValue(item.type);
+  if (itemType === "image_generation_call" || itemType === "imageGeneration") {
+    return stringValue(item.revised_prompt) ?? stringValue(item.revisedPrompt) ?? "";
+  }
   if (stringValue(item.type) === "mcpToolCall") {
     const payload = asRecord(item.result);
     const error = asRecord(item.error);
@@ -1737,6 +1822,9 @@ function itemText(item: Record<string, unknown>): string {
           return "[image]";
         }
         if (blockType === "image") {
+          return "[image]";
+        }
+        if (blockType === "input_image" || blockType === "inputImage") {
           return "[image]";
         }
         if (blockType === "skill" || blockType === "mention") {
@@ -1779,6 +1867,21 @@ function itemText(item: Record<string, unknown>): string {
 }
 
 function itemImages(item: Record<string, unknown>): WorkbenchImage[] | undefined {
+  const itemType = stringValue(item.type);
+  if (itemType === "image_generation_call" || itemType === "imageGeneration") {
+    const b64 = stringValue(item.result);
+    const savedPath = stringValue(item.savedPath) ?? stringValue(item.saved_path);
+    const url = b64 ? `data:image/png;base64,${b64}` : savedPath;
+    return url
+      ? [{
+          url,
+          name: "generated-image.png",
+          revisedPrompt: stringValue(item.revised_prompt) ?? stringValue(item.revisedPrompt),
+          model: stringValue(item.model),
+          providerName: stringValue(item.provider_name) ?? stringValue(item.providerName)
+        }]
+      : undefined;
+  }
   if (!Array.isArray(item.content)) {
     return undefined;
   }
@@ -1787,6 +1890,10 @@ function itemImages(item: Record<string, unknown>): WorkbenchImage[] | undefined
       const block = asRecord(entry);
       if (block.type === "image") {
         const url = stringValue(block.url);
+        return url ? { url, detail: stringValue(block.detail) } : null;
+      }
+      if (block.type === "input_image" || block.type === "inputImage") {
+        const url = stringValue(block.image_url) ?? stringValue(block.imageUrl) ?? stringValue(block.url);
         return url ? { url, detail: stringValue(block.detail) } : null;
       }
       if (block.type === "localImage") {

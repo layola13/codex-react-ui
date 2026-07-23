@@ -224,6 +224,7 @@ function normalizeProvider(value: unknown): ProviderConfig | null {
     apiKeyPreview: stringValue(record.apiKeyPreview),
     apiKeyStorage: apiKeyStorageValue(record.apiKeyStorage),
     defaultModel: stringValue(record.defaultModel),
+    image: imageProviderConfig(record.image),
     nativeModels: stringArray(record.nativeModels),
     modelAliases: aliasArray(record.modelAliases),
     modelRates: modelRateArray(record.modelRates),
@@ -417,6 +418,17 @@ function modelRateArray(value: unknown): ProviderConfig["modelRates"] {
     }
   }
   return rates.length > 0 ? rates : undefined;
+}
+
+function imageProviderConfig(value: unknown): ProviderConfig["image"] {
+  const record = asRecord(value);
+  const generations = booleanValue(record.generations);
+  const edits = booleanValue(record.edits);
+  const defaultModel = stringValue(record.defaultModel);
+  if (generations == null && edits == null && !defaultModel) {
+    return undefined;
+  }
+  return { generations, edits, defaultModel };
 }
 
 function envKeyRefValue(value: unknown): string | undefined {

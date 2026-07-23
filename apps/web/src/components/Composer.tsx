@@ -25,6 +25,7 @@ import EditNoteIcon from "@mui/icons-material/EditNote";
 import FlagIcon from "@mui/icons-material/Flag";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import PanToolAltIcon from "@mui/icons-material/PanToolAlt";
 import RateReviewIcon from "@mui/icons-material/RateReview";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
@@ -552,6 +553,38 @@ export function Composer({
               <Typography variant="body2">{t("composer.imageButton")}</Typography>
               <Typography variant="caption" color="text.secondary">
                 {t("composer.attachTooltip")}
+              </Typography>
+            </Box>
+          </MenuItem>
+          <MenuItem
+            disabled={disabled}
+            onClick={() => {
+              setMenuAnchorEl(null);
+              setSlashTemplate("/image ");
+            }}
+            sx={{ borderRadius: 2, minHeight: 42 }}
+          >
+            <AutoAwesomeIcon fontSize="small" style={{ marginRight: 14 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2">Generate image</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Create a new image from text
+              </Typography>
+            </Box>
+          </MenuItem>
+          <MenuItem
+            disabled={disabled || images.length === 0}
+            onClick={() => {
+              setMenuAnchorEl(null);
+              setSlashTemplate("/edit-image ");
+            }}
+            sx={{ borderRadius: 2, minHeight: 42 }}
+          >
+            <ImageIcon fontSize="small" style={{ marginRight: 14 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2">Edit selected image</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Use attached images as input
               </Typography>
             </Box>
           </MenuItem>

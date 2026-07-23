@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { Alert, Box, Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import DownloadIcon from "@mui/icons-material/Download";
+import ImageIcon from "@mui/icons-material/Image";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PersonIcon from "@mui/icons-material/Person";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
@@ -33,6 +35,8 @@ export function ChatRow({ row, t, expanded, onToggleExpanded, assistantUsageDisp
       return <CommandGroupRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     case "fileChange":
       return <FileChangeRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
+    case "imageGeneration":
+      return <ImageGenerationRow row={row} />;
     case "toolCall":
       return <ToolCallRow row={row} expanded={expanded} onToggleExpanded={onToggleExpanded} />;
     default:
@@ -746,6 +750,90 @@ function StatusRow({ row }: { row: ChatWaterfallRow }) {
           <StatusChip status={row.status} />
           {row.text && <Typography variant="caption">{row.text}</Typography>}
         </Stack>
+      </Paper>
+    </Box>
+  );
+}
+
+function ImageGenerationRow({ row }: { row: ChatWaterfallRow }) {
+  const image = row.item.images?.[0];
+  const [copied, setCopied] = useState(false);
+  if (!image) {
+    return <StatusRow row={row} />;
+  }
+  const detailBits = [image.providerName, image.model, image.detail].filter(Boolean).join(" · ");
+  const prompt = image.revisedPrompt?.trim() || row.text.trim();
+  async function copyPrompt() {
+    if (!prompt) {
+      return;
+    }
+    await navigator.clipboard.writeText(prompt);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+  return (
+    <Box data-testid={`workbench-item-${sanitizeTestId(row.item.type)}`} sx={{ display: "flex", justifyContent: "center" }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          width: "100%",
+          maxWidth: { xs: "100%", xl: "min(86vw, 1240px)" },
+          p: 1,
+          borderRadius: 1,
+          bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.54 : 0.86),
+          borderColor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.24 : 0.16),
+          boxShadow: (theme) => theme.customShadows?.z1
+        }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+          <ImageIcon fontSize="small" color="primary" />
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {row.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {detailBits || image.revisedPrompt || row.text}
+            </Typography>
+          </Box>
+          <StatusChip status={row.status} />
+          {prompt && (
+            <Tooltip title={copied ? "Copied" : "Copy prompt"}>
+              <IconButton size="small" aria-label="Copy image prompt" onClick={(event) => { event.stopPropagation(); void copyPrompt(); }}>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Download image">
+            <IconButton
+              size="small"
+              aria-label="Download generated image"
+              component="a"
+              href={image.url}
+              download={image.name ?? "generated-image.png"}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <DownloadIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+        {prompt && (
+          <Typography variant="body2" sx={{ mb: 1, color: "text.secondary", overflowWrap: "anywhere" }}>
+            {prompt}
+          </Typography>
+        )}
+        <Box
+          component="img"
+          src={image.url}
+          alt={image.name ?? "Generated image"}
+          sx={{
+            width: "100%",
+            maxHeight: "min(70vh, 880px)",
+            objectFit: "contain",
+            display: "block",
+            borderRadius: 1,
+            bgcolor: "background.default"
+          }}
+        />
       </Paper>
     </Box>
   );

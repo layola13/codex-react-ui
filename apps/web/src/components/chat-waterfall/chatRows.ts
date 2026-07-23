@@ -126,6 +126,7 @@ function itemKind(item: WorkbenchItem, activeThinking?: boolean): ChatRowKind {
   if (item.type === "agentMessage") return "assistantMessage";
   if (item.type === "reasoning" && activeThinking) return "reasoningPreview";
   if (item.type === "commandExecution") return "commandExecution";
+  if (item.type === "imageGeneration") return "imageGeneration";
   if (item.type === "fileChange") return "fileChange";
   if (item.type === "mcpToolCall" || item.type === "collabAgentToolCall") return "toolCall";
   if (item.type.toLowerCase().includes("error")) return "error";
@@ -211,6 +212,7 @@ function rowRole(kind: ChatRowKind): ChatRowRole {
     case "fileChange":
     case "commandExecution":
     case "commandGroup":
+    case "imageGeneration":
       return "tool";
     default:
       return "system";
@@ -218,7 +220,7 @@ function rowRole(kind: ChatRowKind): ChatRowRole {
 }
 
 function rowWidth(kind: ChatRowKind, text: string): ChatRowWidth {
-  if (kind === "commandExecution" || kind === "commandGroup" || kind === "fileChange" || kind === "toolCall" || text.includes("```")) {
+  if (kind === "commandExecution" || kind === "commandGroup" || kind === "fileChange" || kind === "toolCall" || kind === "imageGeneration" || text.includes("```")) {
     return "wide";
   }
   if (kind === "status" || kind === "notice" || kind === "checkpoint") {
@@ -282,6 +284,8 @@ function fallbackTitle(kind: ChatRowKind): string {
       return "Bash commands";
     case "fileChange":
       return "File change";
+    case "imageGeneration":
+      return "Image generation";
     case "toolCall":
       return "Tool";
     default:

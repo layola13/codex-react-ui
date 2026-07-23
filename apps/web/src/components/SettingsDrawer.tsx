@@ -1010,6 +1010,7 @@ export function SettingsDrawer({
 type RelayTemplateId =
   | "openai"
   | "deepseek"
+  | "deepkey"
   | "gemini"
   | "anthropic"
   | "moonshot"
@@ -1076,6 +1077,7 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
   nativeModels: string;
   modelAliases: string;
   modelRates: string;
+  image?: ProviderConfig["image"];
 }> = [
   {
     id: "openai",
@@ -1086,7 +1088,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     baseUrl: "https://api.openai.com/v1",
     nativeModels: "gpt-5.6-sol,gpt-5.5",
     modelAliases: "codex=gpt-5.6-sol",
-    modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.4=2.5/0.25/2.5/15/1\ngpt-5.6-sol=5/0.5/5/30/1"
+    modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.4=2.5/0.25/2.5/15/1\ngpt-5.6-sol=5/0.5/5/30/1",
+    image: { generations: true, edits: true, defaultModel: "gpt-image-2" }
   },
   {
     id: "deepseek",
@@ -1098,6 +1101,18 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     nativeModels: "deepseek-chat,deepseek-reasoner",
     modelAliases: "codex=deepseek-chat",
     modelRates: CHAT_COMPLETIONS_MODEL_RATES
+  },
+  {
+    id: "deepkey",
+    label: "DeepKey",
+    icon: <HubIcon fontSize="small" />,
+    kind: "responsesRelay",
+    apiFormat: "responsesRelay",
+    baseUrl: "https://deepkey.top/v1",
+    nativeModels: "gpt-5.6-sol,gpt-5.5",
+    modelAliases: "codex=gpt-5.6-sol",
+    modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.6-sol=5/0.5/5/30/1",
+    image: { generations: true, edits: true, defaultModel: "gpt-image-2" }
   },
   {
     id: "gemini",
@@ -1772,6 +1787,7 @@ function RelaySettingsPanel({
           apiKeyPreview: editingProvider?.apiKeyPreview,
           apiKeyStorage: editingProvider?.apiKeyStorage,
           defaultModel: nativeModelList[0] ?? editingProvider?.defaultModel ?? selectedModel,
+          image: template.image ?? editingProvider?.image,
           nativeModels: nativeModelList,
           modelAliases: parseAliases(modelAliases),
           modelRates: modelRateDraftsToProviderRates(modelRateRows, channelMode === "advanced"),

@@ -18,6 +18,7 @@ import KeyIcon from "@mui/icons-material/Key";
 import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import MemoryIcon from "@mui/icons-material/Memory";
 import RateReviewIcon from "@mui/icons-material/RateReview";
+import ImageIcon from "@mui/icons-material/Image";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import PauseCircleIcon from "@mui/icons-material/PauseCircle";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
@@ -174,6 +175,13 @@ function emptyPromptCards(t: TranslateFn) {
     detail: t("chat.prompt.fix.detail"),
     prompt: t("chat.prompt.fix.prompt"),
     icon: <BugReportIcon fontSize="small" />
+  },
+  {
+    id: "image",
+    label: "Create image",
+    detail: "Generate or edit an image",
+    prompt: "/image ",
+    icon: <ImageIcon fontSize="small" />
   }
   ];
 }

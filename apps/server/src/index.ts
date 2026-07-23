@@ -373,6 +373,91 @@ async function handleApiRequest(
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
       }
     }
+    case "POST /api/images/generations": {
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const providerId = stringValue(body.providerId);
+        const provider = await resolveImageProvider(providerId, user, "generations");
+        const apiKey = await resolveProviderApiKey(provider.id, stringValue(body.apiKey) ?? "");
+        if (!apiKey) {
+          return jsonResponse({ error: "Missing provider API key" }, 400, headers);
+        }
+        const prompt = stringValue(body.prompt)?.trim();
+        if (!prompt) {
+          return jsonResponse({ error: "Missing image prompt" }, 400, headers);
+        }
+        const model = stringValue(body.model) ?? provider.image?.defaultModel ?? "gpt-image-2";
+        const payload: Record<string, JsonValue> = {
+          model,
+          prompt
+        };
+        for (const key of ["size", "quality", "background", "moderation", "output_format", "response_format", "n"]) {
+          const value = body[key];
+          if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+            payload[key] = value;
+          }
+        }
+        const response = await fetch(`${providerBaseUrl(provider)}/images/generations`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+        const normalized = await normalizeImageApiResponse(response, { provider, model, prompt, endpoint: "images/generations" });
+        return jsonResponse(normalized, response.ok ? 200 : response.status, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/images/edits": {
+      try {
+        const form = await request.formData();
+        const providerId = stringValue(form.get("providerId"));
+        const provider = await resolveImageProvider(providerId, user, "edits");
+        const apiKey = await resolveProviderApiKey(provider.id, stringValue(form.get("apiKey")) ?? "");
+        if (!apiKey) {
+          return jsonResponse({ error: "Missing provider API key" }, 400, headers);
+        }
+        const prompt = stringValue(form.get("prompt"))?.trim();
+        if (!prompt) {
+          return jsonResponse({ error: "Missing image edit prompt" }, 400, headers);
+        }
+        const imageFiles = form.getAll("image").filter((entry): entry is File => entry instanceof File);
+        if (imageFiles.length === 0) {
+          return jsonResponse({ error: "Missing source image" }, 400, headers);
+        }
+        const model = stringValue(form.get("model")) ?? provider.image?.defaultModel ?? "gpt-image-2";
+        const upstream = new FormData();
+        upstream.set("model", model);
+        upstream.set("prompt", prompt);
+        for (const file of imageFiles) {
+          upstream.append("image", file, file.name || "image.png");
+        }
+        const mask = form.get("mask");
+        if (mask instanceof File) {
+          upstream.set("mask", mask, mask.name || "mask.png");
+        }
+        for (const key of ["size", "quality", "background", "output_format", "response_format", "n"]) {
+          const value = form.get(key);
+          if (typeof value === "string" && value.trim()) {
+            upstream.set(key, value);
+          }
+        }
+        const response = await fetch(`${providerBaseUrl(provider)}/images/edits`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: upstream
+        });
+        const normalized = await normalizeImageApiResponse(response, { provider, model, prompt, endpoint: "images/edits" });
+        return jsonResponse(normalized, response.ok ? 200 : response.status, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
     case "GET /api/providers": {
       const data = await providerStore.list();
       if (user && user.role !== "admin") {
@@ -1121,7 +1206,7 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
           if (message.method === "turn/start") {
             authStore.assertCanStartTurn(user);
           }
-          if (message.method === "turn/start" || message.method === "thread/resume" || message.method === "thread/read" || message.method === "thread/archive" || message.method === "thread/delete" || message.method === "thread/name/set" || message.method === "thread/goal/set" || message.method === "thread/goal/get" || message.method === "thread/goal/clear") {
+          if (message.method === "turn/start" || message.method === "thread/resume" || message.method === "thread/read" || message.method === "thread/archive" || message.method === "thread/delete" || message.method === "thread/name/set" || message.method === "thread/goal/set" || message.method === "thread/goal/get" || message.method === "thread/goal/clear" || message.method === "thread/inject_items") {
             const threadId = stringValue(asRecord(params).threadId);
             if (threadId && !authStore.ownsThread(threadId, user.id) && user.role !== "admin") {
               throw new Error("Thread belongs to another member");
@@ -1380,6 +1465,95 @@ async function resolveProviderApiKey(providerId: string | undefined, explicitApi
     return "";
   }
   return providerStore.runtimeEnv()[envKey] ?? "";
+}
+
+async function resolveImageProvider(
+  providerId: string | undefined,
+  user: AuthUser | null,
+  capability: "generations" | "edits"
+): Promise<ProviderConfig> {
+  if (!providerId) {
+    throw new Error("Missing providerId");
+  }
+  if (user && user.role !== "admin" && !securityStore.isProviderAllowed(user.id, providerId, false)) {
+    throw new Error("Relay not assigned to this member");
+  }
+  const provider = await providerStore.get(providerId);
+  if (!provider) {
+    throw new Error(`Provider not found: ${providerId}`);
+  }
+  if (!provider.image?.[capability]) {
+    throw new Error(`Provider does not support image ${capability}`);
+  }
+  if (!provider.baseUrl) {
+    throw new Error("Provider is missing baseUrl");
+  }
+  return provider;
+}
+
+function providerBaseUrl(provider: ProviderConfig): string {
+  const baseUrl = provider.baseUrl?.trim();
+  if (!baseUrl) {
+    throw new Error("Provider is missing baseUrl");
+  }
+  return baseUrl.replace(/\/+$/, "");
+}
+
+async function normalizeImageApiResponse(
+  response: Response,
+  context: { provider: ProviderConfig; model: string; prompt: string; endpoint: string }
+): Promise<JsonValue> {
+  const text = await response.text();
+  let body: unknown = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { error: text || `Upstream returned ${response.status}` };
+  }
+  const record = asRecord(body);
+  if (!response.ok) {
+    const error = asRecord(record.error);
+    return {
+      error: stringValue(error.message) ?? stringValue(record.error) ?? stringValue(record.message) ?? `Image API failed (${response.status})`,
+      statusCode: response.status,
+      endpoint: context.endpoint
+    };
+  }
+  const data = Array.isArray(record.data) ? record.data.map((entry) => normalizeImageData(asRecord(entry))).filter(Boolean) : [];
+  const normalized: Record<string, JsonValue> = {
+    data,
+    providerId: context.provider.id,
+    providerName: context.provider.name,
+    model: context.model,
+    prompt: context.prompt,
+    endpoint: context.endpoint,
+    raw: body as JsonValue
+  };
+  const created = numberValue(record.created);
+  if (created != null) {
+    normalized.created = created;
+  }
+  return normalized;
+}
+
+function normalizeImageData(entry: Record<string, unknown>): JsonValue | null {
+  const b64 = stringValue(entry.b64_json) ?? stringValue(entry.b64Json);
+  const url = stringValue(entry.url) ?? (b64 ? `data:image/png;base64,${b64}` : undefined);
+  if (!url && !b64) {
+    return null;
+  }
+  const normalized: Record<string, JsonValue> = {};
+  if (url) {
+    normalized.url = url;
+  }
+  if (b64) {
+    normalized.b64Json = b64;
+  }
+  const revisedPrompt = stringValue(entry.revised_prompt) ?? stringValue(entry.revisedPrompt);
+  if (revisedPrompt) {
+    normalized.revisedPrompt = revisedPrompt;
+  }
+  return normalized;
 }
 
 async function activateProvider(providerId: string, model?: string): Promise<ProviderActivation> {

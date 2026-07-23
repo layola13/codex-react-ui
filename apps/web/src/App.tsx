@@ -56,8 +56,10 @@ import {
 } from "@codex-ui/shared";
 import {
   CodexSocketClient,
+  editProviderImage,
   applyNotification,
   composerInputToUserInput,
+  generateProviderImage,
   exportProfile,
   createMember,
   deleteMember,
@@ -191,6 +193,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 type ComposerSlashCommand =
   | { type: "fast"; enabled?: boolean }
   | { type: "stats"; scope: "status" | "stats" }
+  | { type: "image"; mode: "generate" | "edit"; prompt: string }
   | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string };
 
 type SlashCommandNotice = {
@@ -1861,9 +1864,85 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [activeProviderId, client, cwdForThread, loadHistory, loadThread, permission, selectedModel, state.providers]
   );
 
+  const runImageCommand = useCallback(
+    async (command: Extract<ComposerSlashCommand, { type: "image" }>, images: ComposerImageAttachment[]) => {
+      const prompt = command.prompt.trim();
+      if (!prompt) {
+        setComposerSuggestion({ id: `image-${Date.now()}`, text: command.mode === "edit" ? "/edit-image " : "/image " });
+        return;
+      }
+      if (!state.token) {
+        dispatch({ type: "error", message: "Image generation requires an active session" });
+        return;
+      }
+      const provider = state.providers.find((entry) => entry.id === activeProviderId);
+      if (!provider) {
+        dispatch({ type: "error", message: "Select a relay before generating images" });
+        return;
+      }
+      if (command.mode === "generate" && !provider.image?.generations) {
+        dispatch({ type: "error", message: `${provider.name} does not advertise /images/generations` });
+        return;
+      }
+      if (command.mode === "edit" && !provider.image?.edits) {
+        dispatch({ type: "error", message: `${provider.name} does not advertise /images/edits` });
+        return;
+      }
+      const imageAttachments = images.filter((image) => (image.kind ?? "image") === "image");
+      if (command.mode === "edit" && imageAttachments.length === 0) {
+        dispatch({ type: "error", message: "Attach an image before using /edit-image" });
+        return;
+      }
+
+      try {
+        const threadId = await ensureActiveThread();
+        const model = provider.image?.defaultModel ?? "gpt-image-2";
+        const result =
+          command.mode === "edit"
+            ? await editProviderImage(state.token, {
+                providerId: provider.id,
+                prompt,
+                model,
+                images: await Promise.all(imageAttachments.map(composerImageAttachmentToFile))
+              })
+            : await generateProviderImage(state.token, {
+                providerId: provider.id,
+                prompt,
+                model
+              });
+        if (!result.data?.length) {
+          throw new Error("Image API returned no images");
+        }
+        await client.rpc("thread/inject_items", {
+          threadId,
+          items: buildImageThreadItems({
+            prompt,
+            mode: command.mode,
+            sourceImages: imageAttachments,
+            result,
+            provider
+          })
+        });
+        await loadThread(threadId);
+        setSlashNotice({
+          id: `image-${Date.now()}`,
+          title: command.mode === "edit" ? "Image edit completed" : "Image generated",
+          message: `${provider.name} · ${model}`,
+          severity: "success"
+        });
+      } catch (error) {
+        dispatch({ type: "error", message: errorMessage(command.mode === "edit" ? "Image edit" : "Image generation", error) });
+      }
+    },
+    [activeProviderId, client, ensureActiveThread, loadThread, state.providers, state.token]
+  );
+
   const handleComposerSlashCommand = useCallback(
-    async (command: ComposerSlashCommand) => {
+    async (command: ComposerSlashCommand, images: ComposerImageAttachment[]) => {
       switch (command.type) {
+        case "image":
+          await runImageCommand(command, images);
+          return;
         case "fast":
           setFastModeEnabled((current) => command.enabled ?? !current);
           return;
@@ -1902,6 +1981,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     },
     [
       clearActiveGoal,
+      runImageCommand,
       setActiveGoalStatus,
       setGoalForActiveThread,
       state.activeThreadId,
@@ -1914,7 +1994,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       setWelcomeDismissed(true);
       const slashCommand = parseComposerSlashCommand(text, images, mentions);
       if (slashCommand) {
-        await handleComposerSlashCommand(slashCommand);
+        await handleComposerSlashCommand(slashCommand, images);
         return;
       }
       await startCodexTurn(text, images, mentions);
@@ -3831,9 +3911,6 @@ function parseComposerSlashCommand(
   images: ComposerImageAttachment[],
   mentions: ComposerMention[]
 ): ComposerSlashCommand | null {
-  if (images.length > 0 || mentions.length > 0) {
-    return null;
-  }
   const trimmed = text.trim();
   if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
     return null;
@@ -3844,12 +3921,26 @@ function parseComposerSlashCommand(
   }
   const name = match[1]?.toLowerCase() ?? "";
   const rest = match[2]?.trim() ?? "";
+  const hasImageAttachments = images.some((image) => (image.kind ?? "image") === "image");
+  if (mentions.length > 0 && name !== "image" && name !== "edit-image") {
+    return null;
+  }
   switch (name) {
+    case "image":
+    case "img":
+      return { type: "image", mode: hasImageAttachments ? "edit" : "generate", prompt: rest };
+    case "edit-image":
+    case "image-edit":
+    case "img-edit":
+      return { type: "image", mode: "edit", prompt: rest };
     case "fast":
+      if (images.length > 0 || mentions.length > 0) return null;
       return { type: "fast", enabled: parseOptionalBoolean(rest) };
     case "stats":
+      if (images.length > 0 || mentions.length > 0) return null;
       return { type: "stats", scope: "stats" };
     case "goal": {
+      if (images.length > 0 || mentions.length > 0) return null;
       const normalized = rest.toLowerCase();
       if (!rest) {
         return { type: "goal", action: "show", objective: "" };
@@ -3888,6 +3979,69 @@ function parseOptionalBoolean(value: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function buildImageThreadItems(input: {
+  prompt: string;
+  mode: "generate" | "edit";
+  sourceImages: ComposerImageAttachment[];
+  result: { data?: Array<{ url?: string; b64Json?: string; revisedPrompt?: string }>; model?: string; providerName?: string; prompt?: string } | null;
+  provider: ProviderConfig;
+}): JsonValue[] {
+  const items: JsonValue[] = [];
+  const userContent: JsonValue[] = [{ type: "input_text", text: input.prompt }];
+  if (input.mode === "edit") {
+    for (const image of input.sourceImages) {
+      userContent.push({
+        type: "input_image",
+        image_url: image.url,
+        detail: "auto"
+      });
+    }
+  }
+  items.push({
+    type: "message",
+    role: "user",
+    content: userContent
+  });
+  for (const image of input.result?.data ?? []) {
+    const b64 = image.b64Json ?? dataUrlToBase64(image.url);
+    if (!b64) {
+      continue;
+    }
+    items.push({
+      type: "image_generation_call",
+      id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      status: "completed",
+      revised_prompt: image.revisedPrompt ?? input.prompt,
+      result: b64,
+      provider_name: input.provider.name,
+      model: input.result?.model ?? input.provider.image?.defaultModel ?? "gpt-image-2"
+    });
+  }
+  return items;
+}
+
+async function composerImageAttachmentToFile(image: ComposerImageAttachment): Promise<File> {
+  const response = await fetch(image.url);
+  if (!response.ok) {
+    throw new Error(`Failed to read image attachment: ${image.name}`);
+  }
+  const blob = await response.blob();
+  const extension = blob.type.split("/")[1] || image.name.split(".").pop() || "png";
+  const name = image.name || `image.${extension}`;
+  return new File([blob], name, { type: blob.type || "image/png" });
+}
+
+function dataUrlToBase64(url?: string): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+  if (!url.startsWith("data:")) {
+    return undefined;
+  }
+  const parts = url.split(",", 2);
+  return parts.length === 2 ? parts[1] : undefined;
 }
 
 function parseNewChatPermission(value: string): PermissionPresetId | undefined {
