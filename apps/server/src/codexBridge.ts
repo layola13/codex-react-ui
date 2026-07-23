@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { constants, accessSync } from "node:fs";
+import { constants, accessSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { EventEmitter } from "node:events";
 import {
@@ -31,11 +31,14 @@ function stringifyError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export class CodexBridge extends EventEmitter {
+import { DaemonCodexBridge, resolveDefaultSocketPath, type CodexRuntimeClient } from "./daemonCodexBridge.js";
+export type { CodexRuntimeClient };
+
+export class CodexBridge extends EventEmitter implements CodexRuntimeClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
   private pending = new Map<string, PendingRequest>();
-  private status: EngineStatus = { phase: "idle" };
+  private status: EngineStatus = { phase: "idle", transport: "stdio" };
 
   public constructor(private readonly runtimeEnv: () => NodeJS.ProcessEnv = () => ({})) {
     super();
@@ -291,4 +294,20 @@ function redactSecrets(value: string): string {
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-***")
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]{12,}/gi, "Bearer ***")
     .replace(/api[_-]?key["'=:\s]+[A-Za-z0-9._~+/=-]{8,}/gi, "api_key=***");
+}
+
+export function createCodexRuntimeClient(
+  runtimeEnv: () => NodeJS.ProcessEnv = () => ({})
+): CodexRuntimeClient {
+  const mode = process.env.CODEX_UI_APP_SERVER_MODE;
+  if (mode === "daemon") {
+    return new DaemonCodexBridge(resolveDefaultSocketPath(), runtimeEnv);
+  }
+  if (mode === "stdio") {
+    return new CodexBridge(runtimeEnv);
+  }
+  if (process.env.CODEX_APP_SERVER_SOCKET || existsSync(resolveDefaultSocketPath())) {
+    return new DaemonCodexBridge(resolveDefaultSocketPath(), runtimeEnv);
+  }
+  return new CodexBridge(runtimeEnv);
 }

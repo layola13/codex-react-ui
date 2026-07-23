@@ -107,7 +107,7 @@ import type {
   SkillEntry,
   ToolingState
 } from "../state/codexClient";
-import { fetchProviderModels, testProviderChat } from "../state/codexClient";
+import { fetchProviderModels, testProvider } from "../state/codexClient";
 import { CodexPluginSettingsPanel, type CodexPluginSettingsTab } from "./CodexPluginSettingsPanel";
 import { PetDock } from "./PetDock";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
@@ -150,7 +150,7 @@ type Props = {
   customThemePlugins: ThemePlugin[];
   leftPanelVisible: boolean;
   showAssistantUsageDetails: boolean;
-  showLaunchHistory?: boolean;
+  includeAutomationHistory?: boolean;
   petDockEnabled: boolean;
   cwd: string;
   permission: PermissionPresetId;
@@ -195,7 +195,7 @@ type Props = {
   onRemoveCustomThemePlugin: (id: ThemeId) => void;
   onLeftPanelVisibleChange: (visible: boolean) => void;
   onShowAssistantUsageDetailsChange: (visible: boolean) => void;
-  onShowLaunchHistoryChange?: (enabled: boolean) => void;
+  onIncludeAutomationHistoryChange?: (enabled: boolean) => void;
   onPetDockEnabledChange: (enabled: boolean) => void;
   onCwdChange: (cwd: string) => void;
   onPermissionChange: (permission: PermissionPresetId) => void;
@@ -208,6 +208,7 @@ type Props = {
   onCodexConfigValueChange: (keyPath: string, value: JsonValue) => void;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => Promise<void>;
   onActivateProvider: (providerId: string, model?: string) => Promise<void>;
+  onTestProviderWithCodex: (providerId: string, model?: string) => Promise<void>;
   onDeleteProvider: (providerId: string) => Promise<void>;
   onReloadTooling: () => void;
   onReloadMcp: () => void;
@@ -278,7 +279,7 @@ export function SettingsDrawer({
   customThemePlugins,
   leftPanelVisible,
   showAssistantUsageDetails,
-  showLaunchHistory = false,
+  includeAutomationHistory = false,
   petDockEnabled,
   cwd,
   permission,
@@ -324,7 +325,7 @@ export function SettingsDrawer({
   onRemoveCustomThemePlugin,
   onLeftPanelVisibleChange,
   onShowAssistantUsageDetailsChange,
-  onShowLaunchHistoryChange,
+  onIncludeAutomationHistoryChange,
   onPetDockEnabledChange,
   onCwdChange,
   onPermissionChange,
@@ -337,6 +338,7 @@ export function SettingsDrawer({
   onCodexConfigValueChange,
   onSaveProvider,
   onActivateProvider,
+  onTestProviderWithCodex,
   onDeleteProvider,
   onReloadTooling,
   onReloadMcp,
@@ -879,6 +881,7 @@ export function SettingsDrawer({
                 t={t}
                 onSaveProvider={onSaveProvider}
                 onActivateProvider={onActivateProvider}
+                onTestProviderWithCodex={onTestProviderWithCodex}
                 onDeleteProvider={onDeleteProvider}
               />
             )}
@@ -891,8 +894,8 @@ export function SettingsDrawer({
                     fullPage
                     token={sessionToken}
                     isAdmin={!currentUser || currentUser.role === "admin"}
-                    showLaunchHistory={showLaunchHistory}
-                    onShowLaunchHistoryChange={onShowLaunchHistoryChange}
+                    includeAutomationHistory={includeAutomationHistory}
+                    onIncludeAutomationHistoryChange={onIncludeAutomationHistoryChange}
                   />
                 </Box>
               </SettingsSection>
@@ -1456,6 +1459,7 @@ function RelaySettingsPanel({
   t,
   onSaveProvider,
   onActivateProvider,
+  onTestProviderWithCodex,
   onDeleteProvider
 }: {
   providers: ProviderConfig[];
@@ -1467,6 +1471,7 @@ function RelaySettingsPanel({
   t: TranslateFn;
   onSaveProvider: (provider: ProviderConfig, apiKey?: string) => Promise<void>;
   onActivateProvider: (providerId: string, model?: string) => Promise<void>;
+  onTestProviderWithCodex: (providerId: string, model?: string) => Promise<void>;
   onDeleteProvider: (providerId: string) => Promise<void>;
 }) {
   type RelayView = "list" | "form";
@@ -1800,13 +1805,20 @@ function RelaySettingsPanel({
   };
 
   const testChannel = async (provider: ProviderConfig, model?: string) => {
+    const usesResponses = provider.kind === "responsesRelay";
     setBusyProviderId(provider.id);
-    setTestStatuses((current) => ({ ...current, [provider.id]: { state: "passed", message: t("settings.relay.testingChat") } }));
+    setTestStatuses((current) => ({
+      ...current,
+      [provider.id]: {
+        state: "passed",
+        message: t(usesResponses ? "settings.relay.testingResponses" : "settings.relay.testingChat")
+      }
+    }));
     try {
       if (!sessionToken) {
-        throw new Error(t("settings.relay.testChatFailed"));
+        throw new Error(t(usesResponses ? "settings.relay.testResponsesFailed" : "settings.relay.testChatFailed"));
       }
-      const result = await testProviderChat(sessionToken, {
+      const result = await testProvider(sessionToken, {
         baseUrl: provider.baseUrl ?? "",
         kind: provider.kind,
         providerId: provider.id,
@@ -1816,9 +1828,32 @@ function RelaySettingsPanel({
         ...current,
         [provider.id]: {
           state: result.ok ? "passed" : "failed",
-          message: result.ok ? t("settings.relay.testChatPassed", { model: result.model ?? model ?? "-", ms: result.elapsedMs ?? 0 }) : result.message
+          message: result.ok
+            ? t(usesResponses ? "settings.relay.testResponsesPassed" : "settings.relay.testChatPassed", {
+                model: result.model ?? model ?? "-",
+                ms: result.elapsedMs ?? 0
+              })
+            : result.message
         }
       }));
+    } catch (error) {
+      setTestStatuses((current) => ({
+        ...current,
+        [provider.id]: { state: "failed", message: formatRelayErrorText(error) }
+      }));
+    } finally {
+      setBusyProviderId(null);
+    }
+  };
+
+  const testChannelWithCodex = async (provider: ProviderConfig, model?: string) => {
+    setBusyProviderId(provider.id);
+    setTestStatuses((current) => ({
+      ...current,
+      [provider.id]: { state: "passed", message: t("settings.relay.startingCodexTest") }
+    }));
+    try {
+      await onTestProviderWithCodex(provider.id, model || provider.defaultModel || provider.nativeModels[0]);
     } catch (error) {
       setTestStatuses((current) => ({
         ...current,
@@ -2934,7 +2969,7 @@ function RelaySettingsPanel({
                               {formatProviderCreatedAt(provider.createdAt)}
                             </Typography>
                           </TableCell>
-                          <TableCell align="right" sx={{ minWidth: 238 }}>
+                          <TableCell align="right" sx={{ minWidth: 390 }}>
                             <Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center">
                               <FormControl size="small" sx={{ minWidth: 112 }}>
                                 <InputLabel>{t("settings.relay.model")}</InputLabel>
@@ -2961,6 +2996,21 @@ function RelaySettingsPanel({
                               >
                                 {t("settings.relay.activate")}
                               </Button>
+                              <Tooltip title={t("settings.relay.testWithCodexHint")}>
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="secondary"
+                                    startIcon={<PsychologyIcon />}
+                                    onClick={() => void testChannelWithCodex(provider, selectedProviderModel)}
+                                    disabled={busyProviderId === provider.id}
+                                    sx={{ whiteSpace: "nowrap" }}
+                                  >
+                                    {t("settings.relay.testWithCodex")}
+                                  </Button>
+                                </span>
+                              </Tooltip>
                               <Button
                                 size="small"
                                 variant="outlined"
@@ -2968,7 +3018,7 @@ function RelaySettingsPanel({
                                 onClick={() => void testChannel(provider, selectedProviderModel)}
                                 disabled={busyProviderId === provider.id}
                               >
-                                {t("settings.relay.test")}
+                                {t(provider.kind === "responsesRelay" ? "settings.relay.testResponses" : "settings.relay.test")}
                               </Button>
                               {canManage ? (
                                 <>

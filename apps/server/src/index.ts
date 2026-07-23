@@ -10,12 +10,15 @@ import {
   type AuthUser,
   type ClientToServerMessage,
   type JsonRpcMessage,
+  type JsonRpcNotification,
+  type JsonRpcRequest,
   type JsonValue,
   type ProviderActivation,
   type ProviderConfig,
   type ServerToClientMessage
 } from "@codex-ui/shared";
-import { CodexBridge } from "./codexBridge.js";
+import { createCodexRuntimeClient, type CodexRuntimeClient } from "./codexBridge.js";
+import { ThreadSubscriptionRegistry } from "./threadSubscriptionRegistry.js";
 import { LocalDatabase } from "./localDatabase.js";
 import { ProviderStore } from "./providerStore.js";
 import { AuditLogStore } from "./auditLogStore.js";
@@ -36,13 +39,7 @@ import {
   type InstallLaunchRequest,
   type LaunchEnvValues
 } from "./launchInstall.js";
-import {
-  ENGINE_CATALOG,
-  isEngineId,
-  type EngineId
-} from "./engineHistory.js";
-import { EngineHistoryWorkerClient } from "./engineHistoryWorkerClient.js";
-import { fetchProviderModels, testProviderChat } from "./providerModels.js";
+import { fetchProviderModels, testProvider } from "./providerModels.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -101,9 +98,10 @@ const providerStore = new ProviderStore(localDatabase);
 const auditLogStore = new AuditLogStore(localDatabase);
 const authStore = AuthStore.fromEnv(process.env, localDatabase);
 const securityStore = new SecurityStore(localDatabase);
-const bridge = new CodexBridge(() => providerStore.runtimeEnv());
+const bridge: CodexRuntimeClient = createCodexRuntimeClient(() => providerStore.runtimeEnv());
+const subscriptionRegistry = new ThreadSubscriptionRegistry(() => bridge);
+subscriptionRegistry.registerClient(bridge);
 const clients = new Set<ServerWebSocket<SocketData>>();
-const engineHistoryWorker = new EngineHistoryWorkerClient();
 const execFileAsync = promisify(execFile);
 
 await providerStore.initialize();
@@ -120,10 +118,9 @@ bridge.on("status", (status) => {
 
 bridge.on("message", (message: JsonRpcMessage) => {
   if ("method" in message && "id" in message) {
-    // Server requests may need operator confirmation; fan out only to connected sessions.
-    broadcast({ type: "codex.serverRequest", message });
+    routeServerRequest(message as JsonRpcRequest);
   } else if ("method" in message) {
-    routeCodexNotification(message);
+    routeCodexNotification(message as JsonRpcNotification & { method: string });
   }
 });
 
@@ -159,6 +156,8 @@ const server = Bun.serve<SocketData>({
     },
     close(ws) {
       clients.delete(ws);
+      const clientId = String(ws.data.token || ws.remoteAddress || ws);
+      subscriptionRegistry.unwatchAllForClient(clientId);
       if (ws.data.user?.id) {
         releaseAllTurnsForUser(ws.data.user.id);
       }
@@ -439,9 +438,10 @@ async function handleApiRequest(
         return jsonResponse({ models: [], error: errorToMessage(error) }, 400, headers);
       }
     }
+    case "POST /api/provider/test":
     case "POST /api/provider/test-chat": {
       if (user && user.role !== "admin") {
-        return jsonResponse({ error: "Admin only: test provider chat" }, 403, headers);
+        return jsonResponse({ error: "Admin only: test provider" }, 403, headers);
       }
       try {
         const body = asRecord(await request.json().catch(() => ({})));
@@ -451,7 +451,7 @@ async function handleApiRequest(
         const providerId = stringValue(body.providerId) ?? stringValue(body.channelID);
         const model = stringValue(body.model) ?? "";
         const resolvedKey = await resolveProviderApiKey(providerId, apiKey);
-        const result = await testProviderChat({
+        const result = await testProvider({
           baseUrl,
           apiKey: resolvedKey || undefined,
           kind,
@@ -698,23 +698,6 @@ async function handleApiRequest(
         }
       }, 200, headers);
     }
-    case "GET /api/engine-history": {
-      const engineParam = url.searchParams.get("engine") || "all";
-      const q = url.searchParams.get("q") || undefined;
-      const limitRaw = url.searchParams.get("limit");
-      const limit = limitRaw ? Number(limitRaw) : undefined;
-      if (engineParam !== "all" && !isEngineId(engineParam)) {
-        return jsonResponse({ error: `Unknown engine: ${engineParam}` }, 400, headers);
-      }
-      const data = await engineHistoryWorker.list(engineParam as EngineId | "all", {
-        q,
-        limit: Number.isFinite(limit) ? limit : undefined
-      });
-      return jsonResponse(data, 200, headers);
-    }
-    case "GET /api/engine-history/engines": {
-      return jsonResponse({ engines: ENGINE_CATALOG }, 200, headers);
-    }
     case "GET /api/launch-adapters": {
       // Host-local install detection; any authenticated session (or token mode) may read.
       return jsonResponse(detectAll(), 200, headers);
@@ -800,25 +783,6 @@ async function handleApiRequest(
       }
     }
     default: {
-      // GET /api/engine-history/:engine/:id — read-only transcript
-      const engineHistMatch = url.pathname.match(/^\/api\/engine-history\/([^/]+)\/([^/]+)$/);
-      if (engineHistMatch && request.method === "GET") {
-        const engine = decodeURIComponent(engineHistMatch[1] ?? "");
-        const id = decodeURIComponent(engineHistMatch[2] ?? "");
-        if (!isEngineId(engine)) {
-          return jsonResponse({ error: `Unknown engine: ${engine}` }, 400, headers);
-        }
-        if (!id) {
-          return jsonResponse({ error: "Missing history id" }, 400, headers);
-        }
-        const kindParam = url.searchParams.get("kind");
-        const historyKind = kindParam === "session" || kindParam === "tui" ? kindParam : undefined;
-        const transcript = await engineHistoryWorker.transcript(engine, id, historyKind);
-        if (!transcript) {
-          return jsonResponse({ error: "Transcript not found" }, 404, headers);
-        }
-        return jsonResponse(transcript, 200, headers);
-      }
       // POST /api/members/:id/balance  admin allocate credit
       const balanceMatch = url.pathname.match(/^\/api\/members\/([^/]+)\/balance$/);
       if (balanceMatch && request.method === "POST" && authStore) {
@@ -1285,6 +1249,16 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
       }
       return;
     }
+    case "thread.watch": {
+      const clientId = String(ws.data.token || ws.remoteAddress || ws);
+      subscriptionRegistry.watch(message.threadId, clientId);
+      return;
+    }
+    case "thread.unwatch": {
+      const clientId = String(ws.data.token || ws.remoteAddress || ws);
+      subscriptionRegistry.unwatch(message.threadId, clientId);
+      return;
+    }
   }
 }
 
@@ -1293,6 +1267,19 @@ function extractThreadId(result: JsonValue): string | null {
   const thread = asRecord(record.thread);
   const id = stringValue(thread.id) ?? stringValue(record.id) ?? stringValue(record.threadId);
   return id ?? null;
+}
+
+function routeServerRequest(message: JsonRpcRequest): void {
+  const params = asRecord(message.params);
+  const threadId = stringValue(params.threadId) ?? stringValue(asRecord(params.thread).id);
+  for (const client of clients) {
+    const user = client.data.user;
+    if (!authStore || !user || user.role === "admin") {
+      send(client, { type: "codex.serverRequest", message });
+    } else if (threadId && authStore.ownsThread(threadId, user.id)) {
+      send(client, { type: "codex.serverRequest", message });
+    }
+  }
 }
 
 function routeCodexNotification(message: JsonRpcMessage & { method: string; params?: JsonValue }): void {

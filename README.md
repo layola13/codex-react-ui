@@ -15,7 +15,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 - Only explicit Web-local composer commands are intercepted before `turn/start`: `/fast`, `/stats`, and the sticky-goal `/goal` controls.
 - Main composer attachments now support images plus PDF/Office/text documents. Images render as previews without exposing raw base64 in chat, while documents upload to the local server and send as file mentions with compact file cards.
 - New chat workspace selection supports local folders and SSH workspaces. SSH mode accepts commands such as `ssh user@192.168.11.1`, shows key setup help, lets users browse remote folders, and sends remote workspace metadata with new turns.
-- Codex history rail lists app-server threads by Codex metadata semantics, searches title/preview/cwd/provider/source fields, resumes selected rows through `thread/resume`, and supports row rename/archive/delete through Codex thread RPCs.
+- Unified Web & Codex TUI history sidebar powered by Codex canonical thread store (`sessions/rollout-*.jsonl` + SQLite index). Lists resumable threads via `thread/list` (defaulting to `Cli` and `VSCode` sources, with an optional toggle for automation threads `Exec` and `AppServer`), searches title/preview/cwd/provider/source fields, restores full conversation and tool execution context through `thread/resume`, and supports row rename/archive/delete through Codex thread RPCs.
 - Main chat uses a dedicated virtualized waterfall row model with lighter assistant prose, compact user bubbles, inline completed-thinking panels, compact clickable tool/file/command audit rows (`Bash`, `Read`, `Edit`, `New`, etc.) with status dots, folded old Bash runs, expandable file diffs rendered through `@git-diff-view`, desktop prompt-floor navigation, a searchable prompt map, data-driven transcript search, bottom-follow behavior, and a Jump to latest control for long transcripts.
 - Sidechat workbench panel with multiple isolated tabs; each tab owns its Codex thread and slash-command-shaped text such as `/goal ...` is forwarded unchanged.
 - User theme plugins with editable preview colors, image/GIF/video backgrounds, optional dynamic Canvas/Three.js scenes, background tuning controls, and JSON plus ZIP import/export.
@@ -251,6 +251,31 @@ Dangerous `thread/start` and `turn/start` calls are appended to SQLite in `~/.co
 Sidechat tabs remain separate from the main workbench focus. Opening a sidechat tab starts a separate Codex thread on first send, keeps that thread out of the main task tabs/history view, and does not change the selected main conversation while sidechat notifications stream over the shared websocket.
 
 Slash-command-shaped sidechat input is not parsed, blocked, or rewritten by the browser UI. Text such as `/goal ...` is sent as normal Codex text input exactly as typed; commands that only exist in the terminal TUI still need app-server support before they can perform TUI-specific behavior here.
+
+## Web & Codex TUI Resumable History
+
+Codex React UI provides bidirectional, full-context session history sharing between the Web workbench and the official Codex TUI/CLI without modifying Codex upstream storage formats or spoofing fake TUI files.
+
+### Session History vs. Prompt Recall
+
+- **Canonical Thread Store (`sessions/rollout-*.jsonl` & SQLite index)**: Stores complete session state including user prompts, assistant responses, tool calls, execution outputs, and context. Both Web and authentic Codex TUI rely on this store to restore complete sessions.
+- **TUI Prompt Recall (`~/.codex/history.jsonl`)**: Contains only raw input line prompt history for TUI input box recall (`Up`/`Down` arrows). It lacks responses, tool calls, or context, and cannot be used for session recovery.
+
+### Unified Thread Source (`thread/list`)
+
+The history sidebar uses `thread/list` as its single source of truth and deprecates legacy read-only prompt scanning routes (`/api/engine-history`):
+
+- **Default Sources**: `Cli` (created by terminal TUI) and `VSCode` (created by Web app-server sessions). Web-created threads appear in TUI default resume lists (`codex resume`), and TUI-created threads appear in the Web history sidebar.
+- **Automation History Toggle**: Enabling `includeAutomationHistory` (persisted setting, default `false`) includes `Exec` and `AppServer` automated sessions in the history list. Obsolete settings like `showLaunchHistory` are purged without semantic migration.
+- **Strictly Filtered Out**: `subagent` and `unknown` sources are always excluded from the history list.
+
+### Requirements & Permissions
+
+- **Shared Environment**: History sharing requires the Web server and local TUI to operate under the same OS user, sharing `CODEX_HOME` and SQLite database locations.
+- **Thread Ownership & Access Control**:
+  - **Single-User / Admin Mode**: Accesses all canonical threads belonging to the current OS user.
+  - **Web Member Mode**: Enforces `thread_owners` mapping; non-admin members only see canonical threads assigned to their account.
+  - **Local TUI Access**: The terminal TUI operates directly on the host's canonical store without Web member ACL restrictions.
 
 ## Launch Adapters (`*-launch`)
 

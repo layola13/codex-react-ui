@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { fetchProviderModels } from "../../apps/server/src/providerModels.ts";
+import { fetchProviderModels, testProvider } from "../../apps/server/src/providerModels.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -7,12 +7,14 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function mockJsonFetch(payload: unknown, status = 200): Array<{ url: string; headers: Headers }> {
-  const calls: Array<{ url: string; headers: Headers }> = [];
+function mockJsonFetch(payload: unknown, status = 200): Array<{ url: string; method: string; headers: Headers; body: unknown }> {
+  const calls: Array<{ url: string; method: string; headers: Headers; body: unknown }> = [];
   globalThis.fetch = (async (input, init) => {
     calls.push({
       url: String(input),
-      headers: new Headers(init?.headers)
+      method: init?.method ?? "GET",
+      headers: new Headers(init?.headers),
+      body: typeof init?.body === "string" ? JSON.parse(init.body) : init?.body ?? null
     });
     return new Response(JSON.stringify(payload), { status });
   }) as typeof fetch;
@@ -88,4 +90,54 @@ test("fetchProviderModels reports upstream HTTP failures", async () => {
   expect(result.endpoint).toBe("https://relay.example/v1/models");
   expect(result.error).toContain("HTTP 401");
   expect(result.error).toContain("bad key");
+});
+
+test("testProvider uses the Responses endpoint and request shape for responsesRelay", async () => {
+  const calls = mockJsonFetch({
+    id: "resp_test",
+    output: [
+      {
+        type: "message",
+        content: [{ type: "output_text", text: "pong" }]
+      }
+    ]
+  });
+
+  const result = await testProvider({
+    baseUrl: "https://relay.example/v1",
+    apiKey: "sk-relay",
+    kind: "responsesRelay",
+    model: "gpt-5.6-sol"
+  });
+
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.url).toBe("https://relay.example/v1/responses");
+  expect(calls[0]?.method).toBe("POST");
+  expect(calls[0]?.headers.get("Authorization")).toBe("Bearer sk-relay");
+  expect(calls[0]?.body).toEqual({
+    model: "gpt-5.6-sol",
+    input: "Reply with exactly: pong",
+    max_output_tokens: 24
+  });
+  expect(calls[0]?.body).not.toHaveProperty("messages");
+  expect(result.ok).toBe(true);
+  expect(result.endpoint).toBe("https://relay.example/v1/responses");
+  expect(result.message).toContain("Responses test passed");
+});
+
+test("testProvider reports Responses failures without falling back to chat completions", async () => {
+  const calls = mockJsonFetch({ error: { message: "responses unavailable" } }, 404);
+
+  const result = await testProvider({
+    baseUrl: "https://relay.example/v1",
+    apiKey: "sk-relay",
+    kind: "responsesRelay",
+    model: "gpt-5.6-sol"
+  });
+
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.url).toBe("https://relay.example/v1/responses");
+  expect(result.ok).toBe(false);
+  expect(result.message).toContain("Responses test failed: HTTP 404");
+  expect(result.message).not.toContain("Chat Completions");
 });

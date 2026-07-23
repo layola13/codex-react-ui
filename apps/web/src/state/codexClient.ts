@@ -455,6 +455,14 @@ export class CodexSocketClient extends EventTarget {
     this.send({ type: "serverResponse", requestId: id, result, error });
   }
 
+  public watchThread(threadId: string): void {
+    this.send({ type: "thread.watch", threadId });
+  }
+
+  public unwatchThread(threadId: string): void {
+    this.send({ type: "thread.unwatch", threadId });
+  }
+
   public saveProvider(provider: ProviderConfig, apiKey?: string): Promise<ProviderConfig> {
     const id = `provider-${this.nextClientId++}`;
     this.send({ type: "provider.save", id, provider, apiKey });
@@ -889,8 +897,7 @@ export async function fetchProviderModels(
     endpoint: body.endpoint
   };
 }
-
-export type TestProviderChatResponse = {
+export type TestProviderResponse = {
   ok: boolean;
   model?: string;
   prompt?: string;
@@ -900,11 +907,11 @@ export type TestProviderChatResponse = {
   elapsedMs?: number;
 };
 
-export async function testProviderChat(
+export async function testProvider(
   token: string,
   input: { baseUrl: string; apiKey?: string; kind?: string; providerId?: string; model?: string }
-): Promise<TestProviderChatResponse> {
-  const response = await fetch("/api/provider/test-chat", {
+): Promise<TestProviderResponse> {
+  const response = await fetch("/api/provider/test", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -912,11 +919,11 @@ export async function testProviderChat(
     },
     body: JSON.stringify(input)
   });
-  const body = (await response.json().catch(() => ({}))) as Partial<TestProviderChatResponse> & { error?: string };
+  const body = (await response.json().catch(() => ({}))) as Partial<TestProviderResponse> & { error?: string };
   if (!response.ok) {
     return {
       ok: false,
-      message: body.message || body.error || `Chat test failed (${response.status})`,
+      message: body.message || body.error || `Provider test failed (${response.status})`,
       model: body.model,
       prompt: body.prompt,
       endpoint: body.endpoint,
@@ -926,7 +933,7 @@ export async function testProviderChat(
   }
   return {
     ok: Boolean(body.ok),
-    message: body.message || "Chat test passed",
+    message: body.message || "Provider test passed",
     model: body.model,
     prompt: body.prompt,
     endpoint: body.endpoint,
@@ -934,6 +941,9 @@ export async function testProviderChat(
     elapsedMs: body.elapsedMs
   };
 }
+
+/** @deprecated Use testProvider. */
+export const testProviderChat = testProvider;
 
 export async function exportProfile(token: string): Promise<UiProfile> {
   const response = await fetch("/api/profile/export", {
@@ -2160,126 +2170,4 @@ export async function testLaunchAdapterModel(
     message: body.message || (response.ok ? "Test succeeded" : `HTTP ${response.status}`),
     statusCode: body.statusCode ?? response.status
   };
-}
-
-export type EngineId =
-  | "codex"
-  | "claude"
-  | "agy"
-  | "gemini"
-  | "crush"
-  | "auggie"
-  | "grok"
-  | "freebuff"
-  | "coderabbit";
-
-export type EngineMeta = {
-  id: EngineId;
-  label: string;
-  launchId: string;
-  mark: string;
-  color: string;
-  /** True when UI can resume this engine session (Codex only today) */
-  canResume?: boolean;
-  /** True when multi-agent chat runtime will support this engine */
-  canChat?: boolean;
-};
-
-export type EngineHistoryItem = {
-  engine: EngineId;
-  id: string;
-  title: string;
-  preview?: string;
-  cwd?: string;
-  model?: string;
-  updatedAt?: number;
-  createdAt?: number;
-  sourcePath?: string;
-  canResume: boolean;
-  messageCount?: number;
-  historyKind?: "session" | "tui";
-};
-
-export type EngineMessage = {
-  role: "user" | "assistant" | "system" | "tool" | "other";
-  text: string;
-  timestamp?: number;
-};
-
-export type EngineTranscript = {
-  engine: EngineId;
-  id: string;
-  title: string;
-  messages: EngineMessage[];
-  sourcePath?: string;
-};
-
-export async function fetchEngineHistory(
-  token: string,
-  opts: { engine?: EngineId | "all"; q?: string; limit?: number; signal?: AbortSignal; timeoutMs?: number } = {}
-): Promise<{ engines: EngineMeta[]; items: EngineHistoryItem[] }> {
-  const params = new URLSearchParams();
-  if (opts.engine) params.set("engine", opts.engine);
-  if (opts.q) params.set("q", opts.q);
-  if (opts.limit) params.set("limit", String(opts.limit));
-  const qs = params.toString();
-  const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? 12_000;
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  const onAbort = () => controller.abort();
-  opts.signal?.addEventListener("abort", onAbort, { once: true });
-  try {
-    const response = await fetch(`/api/engine-history${qs ? `?${qs}` : ""}`, {
-      headers: { "x-codex-ui-token": token },
-      signal: controller.signal
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error || `engine-history failed: ${response.status}`);
-    }
-    return (await response.json()) as { engines: EngineMeta[]; items: EngineHistoryItem[] };
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error(`engine-history timed out after ${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timer);
-    opts.signal?.removeEventListener("abort", onAbort);
-  }
-}
-
-export async function fetchEngineTranscript(
-  token: string,
-  engine: EngineId,
-  id: string,
-  opts: { historyKind?: EngineHistoryItem["historyKind"]; signal?: AbortSignal; timeoutMs?: number } = {}
-): Promise<EngineTranscript> {
-  const controller = new AbortController();
-  const timeoutMs = opts.timeoutMs ?? 12_000;
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  const onAbort = () => controller.abort();
-  opts.signal?.addEventListener("abort", onAbort, { once: true });
-  try {
-    const params = new URLSearchParams();
-    if (opts.historyKind) params.set("kind", opts.historyKind);
-    const qs = params.toString();
-    const response = await fetch(`/api/engine-history/${encodeURIComponent(engine)}/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`, {
-      headers: { "x-codex-ui-token": token },
-      signal: controller.signal
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(body.error || `transcript failed: ${response.status}`);
-    }
-    return (await response.json()) as EngineTranscript;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error(`transcript timed out after ${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timer);
-    opts.signal?.removeEventListener("abort", onAbort);
-  }
 }

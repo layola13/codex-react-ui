@@ -45,10 +45,16 @@ export type EnginePhase =
   | "ready"
   | "stopped"
   | "error"
+  | "reconnecting"
+  | "degraded"
   | "incompatible";
 
 export interface EngineStatus {
   phase: EnginePhase;
+  transport?: "stdio" | "daemon-unix";
+  realtimeSync?: "available" | "degraded" | "unavailable";
+  connectionEpoch?: number;
+  daemonPid?: number;
   codexBin?: string;
   codexVersion?: string;
   appServerUserAgent?: string;
@@ -378,6 +384,14 @@ export type ClientToServerMessage =
       id: string;
       providerId: string;
       model?: string;
+    }
+  | {
+      type: "thread.watch";
+      threadId: string;
+    }
+  | {
+      type: "thread.unwatch";
+      threadId: string;
     };
 
 export type ServerToClientMessage =

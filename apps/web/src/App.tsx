@@ -98,7 +98,7 @@ import {
   type SkillEntry,
   type TerminalSession
 } from "./state/codexClient";
-import { HistorySidebar, type HistoryPane, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
+import { HistorySidebar, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
 import {
   ChatPanel,
   type GoalBannerState,
@@ -134,7 +134,7 @@ const UI_STORAGE_KEYS = {
   installedThemes: "codex-react-ui.installed-theme-plugins",
   leftPanelVisible: "codex-react-ui.left-panel-visible",
   showAssistantUsageDetails: "codex-react-ui.show-assistant-usage-details",
-  showLaunchHistory: "codex-react-ui.show-launch-history",
+  includeAutomationHistory: "codex-react-ui.include-automation-history",
   petDockEnabled: "codex-react-ui.pet-dock-enabled",
   panelLayout: "codex-react-ui.panel-layout",
   filesPanelLayout: "codex-react-ui.files-panel-layout",
@@ -146,6 +146,7 @@ const UI_STORAGE_KEYS = {
 const DEFAULT_NEW_CHAT_CWD = "~/";
 const DEFAULT_SSH_WORKSPACE_COMMAND = "ssh user@192.168.11.1";
 const DEFAULT_SSH_WORKSPACE_CWD = "/home/user";
+const CODEX_PROVIDER_TEST_PROMPT = "Reply with exactly: CODEX_RELAY_OK";
 const DEFAULT_MODEL_RATES: NonNullable<ProviderConfig["modelRates"]> = [
   { model: "gpt-5.5", inputUsdPerMillion: 5, cachedInputUsdPerMillion: 0.5, cacheWriteUsdPerMillion: 5, outputUsdPerMillion: 30, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
   { model: "gpt-5.4", inputUsdPerMillion: 2.5, cachedInputUsdPerMillion: 0.25, cacheWriteUsdPerMillion: 2.5, outputUsdPerMillion: 15, multiplier: 1, inputMultiplier: 1, cacheReadMultiplier: 1, cacheWriteMultiplier: 1, outputMultiplier: 1 },
@@ -328,7 +329,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [threadTokenUsage, setThreadTokenUsage] = useState<Record<string, ThreadTokenUsageState>>({});
   const [turnTokenUsage, setTurnTokenUsage] = useState<Record<string, TokenUsageBreakdown>>({});
   const [historySearchTerm, setHistorySearchTerm] = useState("");
-  const [historyPane, setHistoryPane] = useState<HistoryPane>("web");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [officialLoginOpen, setOfficialLoginOpen] = useState(false);
@@ -337,7 +337,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [installedThemePluginIds, setInstalledThemePluginIds] = useState<ThemeId[]>(readInstalledThemes);
   const [leftPanelVisible, setLeftPanelVisible] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.leftPanelVisible, true));
   const [showAssistantUsageDetails, setShowAssistantUsageDetails] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showAssistantUsageDetails, false));
-  const [showLaunchHistory, setShowLaunchHistory] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.showLaunchHistory, true));
+  const [includeAutomationHistory, setIncludeAutomationHistory] = useState(() => readStoredBoolean(UI_STORAGE_KEYS.includeAutomationHistory, false));
+  const includeAutomationHistoryRef = useRef(includeAutomationHistory);
   const [rightWorkspaceVisible, setRightWorkspaceVisible] = useState(false);
   const [rightWorkspaceTab, setRightWorkspaceTab] = useState<RightWorkspaceTab>("sidechat");
   const [sideChatTabs, setSideChatTabs] = useState<SideChatTab[]>(() => [
@@ -368,6 +369,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const [reasoningAnchor, setReasoningAnchor] = useState<HTMLElement | null>(null);
   const [pendingMention, setPendingMention] = useState<ComposerMention | null>(null);
   const [composerSuggestion, setComposerSuggestion] = useState<{ id: string; text: string } | null>(null);
+  const [pendingCodexProviderTest, setPendingCodexProviderTest] = useState<{ providerId: string; prompt: string } | null>(null);
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
   const [pluginDetails, setPluginDetails] = useState<Record<string, PluginDetailEntry>>({});
   const [pluginSkillPreviews, setPluginSkillPreviews] = useState<Record<string, string>>({});
@@ -605,8 +607,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }, [showAssistantUsageDetails]);
 
   useEffect(() => {
-    localStorage.setItem(UI_STORAGE_KEYS.showLaunchHistory, JSON.stringify(showLaunchHistory));
-  }, [showLaunchHistory]);
+    try {
+      localStorage.removeItem("codex-react-ui.show-launch-history");
+    } catch {}
+    localStorage.setItem(UI_STORAGE_KEYS.includeAutomationHistory, JSON.stringify(includeAutomationHistory));
+    includeAutomationHistoryRef.current = includeAutomationHistory;
+    if (state.connected && state.token) {
+      allHistoryThreadsRef.current = [];
+      void loadHistory(historySearchTermRef.current).catch(() => {});
+    }
+  }, [includeAutomationHistory, state.connected, state.token]);
 
   useEffect(() => {
     if (!rightWorkspaceVisible || rightWorkspaceTab !== "sidechat") {
@@ -713,9 +723,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const trimmedSearch = searchTerm.trim();
         const cachedThreads = allHistoryThreadsRef.current;
+        const incAuto = includeAutomationHistoryRef.current;
         const [allThreads, searchedThreads] = await Promise.all([
-          cachedThreads.length > 0 && trimmedSearch ? Promise.resolve(cachedThreads) : loadAllThreads(client),
-          trimmedSearch ? loadAllThreads(client, { searchTerm: trimmedSearch }) : Promise.resolve<ClientState["threads"]>([])
+          cachedThreads.length > 0 && trimmedSearch ? Promise.resolve(cachedThreads) : loadAllThreads(client, { includeAutomationHistory: incAuto }),
+          trimmedSearch ? loadAllThreads(client, { searchTerm: trimmedSearch, includeAutomationHistory: incAuto }) : Promise.resolve<ClientState["threads"]>([])
         ]);
         if (requestId !== historyLoadRequestRef.current) return;
         if (!trimmedSearch) {
@@ -740,7 +751,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       const [account, modelResult, threadResult] = await Promise.all([
         client.rpc("account/read", { refreshToken: false }),
         client.rpc("model/list", {}),
-        loadAllThreads(client)
+        loadAllThreads(client, { includeAutomationHistory: includeAutomationHistoryRef.current })
       ]);
       dispatch({ type: "account", account });
       const models = asRecord(modelResult).data ?? asRecord(modelResult).models;
@@ -784,7 +795,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   }, []);
 
   useEffect(() => {
-    if (!state.connected || !state.token || historyPane !== "web") {
+    if (!state.connected || !state.token) {
       return;
     }
     const trimmedSearch = historySearchTerm.trim();
@@ -802,7 +813,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       });
     }, 240);
     return () => window.clearTimeout(timeout);
-  }, [historyPane, historySearchTerm, loadHistory, state.connected, state.token]);
+  }, [historySearchTerm, loadHistory, state.connected, state.token]);
+
+  useEffect(() => {
+    if (!client || !state.activeThreadId) return;
+    const threadId = state.activeThreadId;
+    client.watchThread(threadId);
+    return () => {
+      client.unwatchThread(threadId);
+    };
+  }, [client, state.activeThreadId]);
 
   const loadCodexConfig = useCallback(async () => {
     setCodexConfigLoading(true);
@@ -1523,7 +1543,16 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (effectiveModel) {
           turnParams.model = effectiveModel;
         }
-        await client.rpc("turn/start", turnParams);
+        const activeTurn = state.turns.slice().reverse().find((t) => t.threadId === threadId && (t.status === "pending" || t.status === "inProgress"));
+        if (activeTurn?.id) {
+          await client.rpc("turn/steer", {
+            threadId,
+            expectedTurnId: activeTurn.id,
+            input
+          });
+        } else {
+          await client.rpc("turn/start", turnParams);
+        }
         if (permission === "dangerBypass") {
           await loadAuditEvents();
         }
@@ -1772,7 +1801,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       const targetThreadId = threadId?.trim();
       if (!targetThreadId) {
         setLeftPanelVisible(true);
-        setShowLaunchHistory(true);
         setHistorySearchTerm("");
         await loadHistory("");
         setSlashNotice({
@@ -2069,6 +2097,52 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     },
     [client, loadBasics]
   );
+
+  const testProviderWithCodex = useCallback(
+    async (providerId: string, model?: string) => {
+      await activateProvider(providerId, model);
+      setSettingsOpen(false);
+      setPermission("readonlyAsk");
+      setDangerBypassConfirmed(false);
+      setFastModeEnabled(true);
+      setWorkspaceMode("local");
+      setWorkspaceSelectionPending(false);
+      setWelcomeDismissed(true);
+      dispatch({ type: "newConversation" });
+      setPendingCodexProviderTest({ providerId, prompt: CODEX_PROVIDER_TEST_PROMPT });
+    },
+    [activateProvider]
+  );
+
+  useEffect(() => {
+    if (
+      !pendingCodexProviderTest ||
+      settingsOpen ||
+      workspaceSelectionPending ||
+      state.activeThreadId !== null ||
+      activeProviderId !== pendingCodexProviderTest.providerId ||
+      !state.connected ||
+      state.engine.phase !== "ready"
+    ) {
+      return;
+    }
+    const { prompt } = pendingCodexProviderTest;
+    setPendingCodexProviderTest(null);
+    void startCodexTurn(prompt, [], [], {
+      forceEffort: fastReasoningEffort(reasoningOptions, reasoningEffort)
+    });
+  }, [
+    activeProviderId,
+    pendingCodexProviderTest,
+    reasoningEffort,
+    reasoningOptions,
+    settingsOpen,
+    startCodexTurn,
+    state.activeThreadId,
+    state.connected,
+    state.engine.phase,
+    workspaceSelectionPending
+  ]);
 
   const deleteProvider = useCallback(
     async (providerId: string) => {
@@ -3245,11 +3319,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                       loading={historyLoading}
                       installAvailable={Boolean(installPromptEvent) && !appInstalled}
                       backgroundImage={historyBackgroundImage}
-                      sessionToken={state.token}
-                      showLaunchHistory={showLaunchHistory}
-                      historyPane={historyPane}
                       t={t}
-                      onHistoryPaneChange={setHistoryPane}
                       onSearchChange={setHistorySearchTerm}
                       onRefresh={() => void loadHistory(historySearchTerm)}
                       onSelect={(threadId) => selectTaskTab(threadId)}
@@ -3293,11 +3363,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
                 loading={historyLoading}
                 installAvailable={Boolean(installPromptEvent) && !appInstalled}
                 backgroundImage={historyBackgroundImage}
-                sessionToken={state.token}
-                showLaunchHistory={showLaunchHistory}
-                historyPane={historyPane}
                 t={t}
-                onHistoryPaneChange={setHistoryPane}
                 onSearchChange={setHistorySearchTerm}
                 onRefresh={() => void loadHistory(historySearchTerm)}
                 onSelect={(threadId) => selectTaskTab(threadId)}
@@ -3629,7 +3695,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         customThemePlugins={customThemePlugins}
         leftPanelVisible={leftPanelVisible}
         showAssistantUsageDetails={showAssistantUsageDetails}
-        showLaunchHistory={showLaunchHistory}
+        includeAutomationHistory={includeAutomationHistory}
         petDockEnabled={petDockEnabled}
         cwd={cwd}
         permission={permission}
@@ -3674,7 +3740,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onRemoveCustomThemePlugin={removeCustomThemePlugin}
         onLeftPanelVisibleChange={setLeftPanelVisible}
         onShowAssistantUsageDetailsChange={setShowAssistantUsageDetails}
-        onShowLaunchHistoryChange={setShowLaunchHistory}
+        onIncludeAutomationHistoryChange={setIncludeAutomationHistory}
         onPetDockEnabledChange={setPetDockEnabled}
         onCwdChange={setCwd}
         onPermissionChange={requestPermissionChange}
@@ -3687,6 +3753,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onCodexConfigValueChange={(keyPath, value) => void writeCodexConfigValue(keyPath, value)}
         onSaveProvider={saveProvider}
         onActivateProvider={activateProvider}
+        onTestProviderWithCodex={testProviderWithCodex}
         onDeleteProvider={deleteProvider}
         onReloadTooling={() => void loadTooling({ forceSkillReload: true })}
         onReloadMcp={() => void reloadMcp()}
@@ -4832,9 +4899,15 @@ function encodeBase64Text(value: string): string {
   return window.btoa(binary);
 }
 
-async function loadAllThreads(client: CodexSocketClient, options: { searchTerm?: string } = {}): Promise<ClientState["threads"]> {
+async function loadAllThreads(
+  client: CodexSocketClient,
+  options: { searchTerm?: string; includeAutomationHistory?: boolean } = {}
+): Promise<ClientState["threads"]> {
   const threads: ClientState["threads"] = [];
   const searchTerm = options.searchTerm?.trim();
+  const sourceKinds: ("cli" | "vscode" | "exec" | "appServer")[] = options.includeAutomationHistory
+    ? ["cli", "vscode", "exec", "appServer"]
+    : ["cli", "vscode"];
   for (const archived of [false, true]) {
     let cursor: string | null = null;
     for (let guard = 0; guard < 32; guard += 1) {
@@ -4842,7 +4915,7 @@ async function loadAllThreads(client: CodexSocketClient, options: { searchTerm?:
         cursor,
         limit: 200,
         archived,
-        sourceKinds: ["cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview", "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown"],
+        sourceKinds,
         useStateDbOnly: false,
         sortKey: "recency_at",
         sortDirection: "desc"
@@ -4858,6 +4931,10 @@ async function loadAllThreads(client: CodexSocketClient, options: { searchTerm?:
           ? normalizeThreads(record.threads)
           : [];
       for (const thread of batch) {
+        const src = (thread.source || thread.threadSource || "").toLowerCase();
+        if (thread.parentThreadId || src.includes("subagent") || src === "unknown") {
+          continue;
+        }
         if (!threads.some((entry) => entry.id === thread.id)) {
           threads.push(thread);
         }

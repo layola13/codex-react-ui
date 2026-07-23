@@ -17,10 +17,10 @@ export type FetchProviderModelsResult = {
 };
 
 const FETCH_TIMEOUT_MS = 12_000;
-const CHAT_TEST_TIMEOUT_MS = 60_000;
-const DEFAULT_CHAT_TEST_PROMPT = "Reply with exactly: pong";
-const CHAT_TEST_PROMPTS = [
-  DEFAULT_CHAT_TEST_PROMPT,
+const PROVIDER_TEST_TIMEOUT_MS = 60_000;
+const DEFAULT_PROVIDER_TEST_PROMPT = "Reply with exactly: pong";
+const PROVIDER_TEST_PROMPTS = [
+  DEFAULT_PROVIDER_TEST_PROMPT,
   "Say only the word ready.",
   "Answer with one short word: ok."
 ];
@@ -79,12 +79,12 @@ export async function fetchProviderModels(input: FetchProviderModelsInput): Prom
   }
 }
 
-export type TestProviderChatInput = FetchProviderModelsInput & {
+export type TestProviderInput = FetchProviderModelsInput & {
   model?: string;
   timeoutMs?: number;
 };
 
-export type TestProviderChatResult = {
+export type TestProviderResult = {
   ok: boolean;
   model: string;
   prompt: string;
@@ -94,17 +94,112 @@ export type TestProviderChatResult = {
   elapsedMs: number;
 };
 
-export async function testProviderChat(input: TestProviderChatInput): Promise<TestProviderChatResult> {
+/**
+ * Validate a provider with the wire protocol it advertises.
+ *
+ * Responses relays must never be probed through `/chat/completions`: a number
+ * of Codex-compatible relays expose only `/responses` and may reject the same
+ * model on the legacy Chat Completions endpoint. Explicit Chat Completions
+ * channel kinds retain the legacy probe for compatibility.
+ */
+export async function testProvider(input: TestProviderInput): Promise<TestProviderResult> {
+  if (isResponsesRelayKind(input.kind)) {
+    return testResponsesProvider(input);
+  }
+  return testChatCompletionsProvider(input);
+}
+
+/** @deprecated Use testProvider; kept for callers compiled against older builds. */
+export async function testProviderChat(input: TestProviderInput): Promise<TestProviderResult> {
+  return testProvider(input);
+}
+
+async function testResponsesProvider(input: TestProviderInput): Promise<TestProviderResult> {
   const startedAt = Date.now();
   const baseUrl = (input.baseUrl ?? "").trim();
   const apiKey = (input.apiKey ?? "").trim();
   const kind = (input.kind ?? "responsesRelay").trim();
-  const prompt = CHAT_TEST_PROMPTS[Math.floor(Math.random() * CHAT_TEST_PROMPTS.length)] ?? DEFAULT_CHAT_TEST_PROMPT;
+  const prompt = DEFAULT_PROVIDER_TEST_PROMPT;
   const requestedModel = (input.model ?? "").trim();
-  const timeoutMs = normalizeTimeout(input.timeoutMs, CHAT_TEST_TIMEOUT_MS);
+  const timeoutMs = normalizeTimeout(input.timeoutMs, PROVIDER_TEST_TIMEOUT_MS);
 
   if (!baseUrl) {
-    return chatTestResult(false, requestedModel, prompt, "Base URL is required", startedAt);
+    return providerTestResult(false, requestedModel, prompt, "Base URL is required", startedAt, "Responses");
+  }
+
+  const model = requestedModel || (await firstProviderModel({ baseUrl, apiKey, kind })) || "gpt-4o-mini";
+  const { endpoint, headers } = prepareResponsesEndpoint(kind, baseUrl);
+  applyProviderAuthHeaders(headers, kind, baseUrl, apiKey);
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        input: prompt,
+        max_output_tokens: 24
+      }),
+      signal: controller.signal
+    }).finally(() => clearTimeout(timeout));
+
+    const bodyText = await response.text().catch(() => "");
+    if (!response.ok) {
+      return providerTestResult(
+        false,
+        model,
+        prompt,
+        `Responses test failed: HTTP ${response.status}${bodyText ? ` - ${extractErrorMessage(bodyText)}` : ""}`,
+        startedAt,
+        "Responses",
+        endpoint,
+        response.status
+      );
+    }
+
+    const content = extractResponsesContent(bodyText);
+    if (!content) {
+      return providerTestResult(false, model, prompt, "Responses test returned no assistant content", startedAt, "Responses", endpoint, response.status);
+    }
+
+    return providerTestResult(
+      true,
+      model,
+      prompt,
+      `Responses test passed in ${Date.now() - startedAt}ms with model ${model}: ${content.slice(0, 120)}`,
+      startedAt,
+      "Responses",
+      endpoint,
+      response.status
+    );
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "AbortError";
+    const message = error instanceof Error ? error.message : String(error);
+    return providerTestResult(
+      false,
+      model,
+      prompt,
+      timedOut ? `Responses test timed out after ${Math.round(timeoutMs / 1000)}s with no response` : `Responses test failed: ${message}`,
+      startedAt,
+      "Responses",
+      endpoint
+    );
+  }
+}
+
+async function testChatCompletionsProvider(input: TestProviderInput): Promise<TestProviderResult> {
+  const startedAt = Date.now();
+  const baseUrl = (input.baseUrl ?? "").trim();
+  const apiKey = (input.apiKey ?? "").trim();
+  const kind = (input.kind ?? "responsesRelay").trim();
+  const prompt = PROVIDER_TEST_PROMPTS[Math.floor(Math.random() * PROVIDER_TEST_PROMPTS.length)] ?? DEFAULT_PROVIDER_TEST_PROMPT;
+  const requestedModel = (input.model ?? "").trim();
+  const timeoutMs = normalizeTimeout(input.timeoutMs, PROVIDER_TEST_TIMEOUT_MS);
+
+  if (!baseUrl) {
+    return providerTestResult(false, requestedModel, prompt, "Base URL is required", startedAt, "Chat Completions");
   }
 
   const model = requestedModel || (await firstProviderModel({ baseUrl, apiKey, kind })) || "gpt-4o-mini";
@@ -128,12 +223,13 @@ export async function testProviderChat(input: TestProviderChatInput): Promise<Te
 
     const bodyText = await response.text().catch(() => "");
     if (!response.ok) {
-      return chatTestResult(
+      return providerTestResult(
         false,
         model,
         prompt,
-        `Chat test failed: HTTP ${response.status}${bodyText ? ` - ${extractErrorMessage(bodyText)}` : ""}`,
+        `Chat Completions test failed: HTTP ${response.status}${bodyText ? ` - ${extractErrorMessage(bodyText)}` : ""}`,
         startedAt,
+        "Chat Completions",
         endpoint,
         response.status
       );
@@ -141,19 +237,20 @@ export async function testProviderChat(input: TestProviderChatInput): Promise<Te
 
     const content = extractChatContent(bodyText);
     if (!content) {
-      return chatTestResult(false, model, prompt, "Chat test returned no assistant content", startedAt, endpoint, response.status);
+      return providerTestResult(false, model, prompt, "Chat Completions test returned no assistant content", startedAt, "Chat Completions", endpoint, response.status);
     }
 
-    return chatTestResult(true, model, prompt, `Chat test passed in ${Date.now() - startedAt}ms with model ${model}: ${content.slice(0, 120)}`, startedAt, endpoint, response.status);
+    return providerTestResult(true, model, prompt, `Chat Completions test passed in ${Date.now() - startedAt}ms with model ${model}: ${content.slice(0, 120)}`, startedAt, "Chat Completions", endpoint, response.status);
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "AbortError";
     const message = error instanceof Error ? error.message : String(error);
-    return chatTestResult(
+    return providerTestResult(
       false,
       model,
       prompt,
-      timedOut ? `Chat test timed out after ${Math.round(timeoutMs / 1000)}s with no response` : `Chat test failed: ${message}`,
+      timedOut ? `Chat Completions test timed out after ${Math.round(timeoutMs / 1000)}s with no response` : `Chat Completions test failed: ${message}`,
       startedAt,
+      "Chat Completions",
       endpoint
     );
   }
@@ -286,6 +383,28 @@ function kindLooksGemini(kind: string, baseUrl: string): boolean {
   return kind.toLowerCase().includes("gemini") || /generativelanguage\.googleapis\.com|gemini/i.test(baseUrl);
 }
 
+function isResponsesRelayKind(kind: string | undefined): boolean {
+  return (kind ?? "responsesRelay").trim().toLowerCase() === "responsesrelay";
+}
+
+function prepareResponsesEndpoint(kind: string, rawBaseUrl: string): { endpoint: string; headers: Headers } {
+  const headers = new Headers({ Accept: "application/json", "Content-Type": "application/json" });
+  let baseURL = rawBaseUrl.replace(/\/+$/, "");
+  if (baseURL.endsWith("#")) {
+    baseURL = baseURL.slice(0, -1).replace(/\/+$/, "");
+  }
+  if (baseURL.endsWith("/responses")) {
+    return { endpoint: baseURL, headers };
+  }
+  if (/\/v1(\/|$)/i.test(baseURL) || /\/v\d+(\/|$)/i.test(baseURL)) {
+    return { endpoint: `${baseURL}/responses`, headers };
+  }
+  if (kindLooksAnthropic(kind, baseURL)) {
+    baseURL = baseURL.replace(/\/anthropic$/i, "").replace(/\/claude$/i, "");
+  }
+  return { endpoint: `${baseURL}/v1/responses`, headers };
+}
+
 function prepareChatCompletionsEndpoint(kind: string, rawBaseUrl: string): { endpoint: string; headers: Headers } {
   const headers = new Headers({ Accept: "application/json", "Content-Type": "application/json" });
   let baseURL = rawBaseUrl.replace(/\/+$/, "");
@@ -334,7 +453,16 @@ function normalizeTimeout(value: number | undefined, fallback: number): number {
   return Math.max(1_000, Math.min(120_000, value));
 }
 
-function chatTestResult(ok: boolean, model: string, prompt: string, message: string, startedAt: number, endpoint?: string, statusCode?: number): TestProviderChatResult {
+function providerTestResult(
+  ok: boolean,
+  model: string,
+  prompt: string,
+  message: string,
+  startedAt: number,
+  _protocol: "Responses" | "Chat Completions",
+  endpoint?: string,
+  statusCode?: number
+): TestProviderResult {
   return {
     ok,
     model,
@@ -344,6 +472,45 @@ function chatTestResult(ok: boolean, model: string, prompt: string, message: str
     statusCode,
     elapsedMs: Date.now() - startedAt
   };
+}
+
+function extractResponsesContent(bodyText: string): string {
+  try {
+    const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+    const outputText = parsed.output_text;
+    if (typeof outputText === "string" && outputText.trim()) {
+      return outputText.trim();
+    }
+
+    const output = parsed.output;
+    if (Array.isArray(output)) {
+      const textParts: string[] = [];
+      for (const item of output) {
+        if (!item || typeof item !== "object") continue;
+        const itemRecord = item as Record<string, unknown>;
+        const directText = itemRecord.text;
+        if (typeof directText === "string" && directText.trim()) {
+          textParts.push(directText.trim());
+        }
+        const content = itemRecord.content;
+        if (!Array.isArray(content)) continue;
+        for (const part of content) {
+          if (!part || typeof part !== "object") continue;
+          const partRecord = part as Record<string, unknown>;
+          const text = partRecord.text;
+          if (typeof text === "string" && text.trim()) {
+            textParts.push(text.trim());
+          }
+        }
+      }
+      if (textParts.length > 0) {
+        return textParts.join("\n");
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 function extractChatContent(bodyText: string): string {

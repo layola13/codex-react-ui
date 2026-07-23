@@ -1678,64 +1678,24 @@ test("reconnects websocket after a disconnect and refreshes basics", async ({ pa
   await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
 });
 
-test("keeps TUI history search and refresh isolated from app-server history", async ({ page }) => {
+test("uses thread/list for unified history and never requests /api/engine-history", async ({ page }) => {
   let engineHistoryRequests = 0;
   await page.route(/\/api\/engine-history(?:\?.*)?$/, async (route) => {
     engineHistoryRequests += 1;
-    await route.fulfill({
-      json: {
-        engines: [
-          {
-            id: "codex",
-            label: "Codex",
-            launchId: "codex",
-            mark: "CX",
-            color: "#111827",
-            canResume: true,
-            canChat: true
-          }
-        ],
-        items: [
-          {
-            engine: "codex",
-            id: "tui-session-1",
-            title: "TUI alpha prompt",
-            preview: "alpha prompt",
-            updatedAt: Date.now(),
-            canResume: false,
-            historyKind: "tui"
-          }
-        ]
-      }
-    });
+    await route.fulfill({ status: 404, body: "Not Found" });
   });
 
   await page.goto("/");
   await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
-  await page.getByRole("tab", { name: "TUI" }).click();
-  await expect.poll(() => engineHistoryRequests).toBe(1);
-  await expect(page.getByText("TUI alpha prompt")).toBeVisible();
 
-  await page.evaluate(() => {
-    (window as unknown as { __codexUiOutbound: unknown[] }).__codexUiOutbound.length = 0;
+  const threadListCalls = await page.evaluate(() => {
+    const outbound = (window as unknown as { __codexUiOutbound: Array<{ method?: string; params?: { sourceKinds?: string[] } }> }).__codexUiOutbound;
+    return outbound.filter((message) => message.method === "thread/list");
   });
-  await page.getByLabel("Search history").fill("alpha");
-  await expect.poll(() => engineHistoryRequests).toBe(2);
-  await page.waitForTimeout(350);
-  let unexpectedMethods = await page.evaluate(() => {
-    const outbound = (window as unknown as { __codexUiOutbound: Array<{ method?: string }> }).__codexUiOutbound;
-    return outbound.filter((message) => ["account/read", "model/list", "thread/list"].includes(message.method ?? ""));
-  });
-  expect(unexpectedMethods).toEqual([]);
 
-  await page.getByTestId("history-sidebar").getByRole("button", { name: "Refresh" }).click();
-  await expect.poll(() => engineHistoryRequests).toBe(3);
-  unexpectedMethods = await page.evaluate(() => {
-    const outbound = (window as unknown as { __codexUiOutbound: Array<{ method?: string }> }).__codexUiOutbound;
-    return outbound.filter((message) => ["account/read", "model/list", "thread/list"].includes(message.method ?? ""));
-  });
-  expect(unexpectedMethods).toEqual([]);
-  await expect(page.getByTestId("topbar-conversation-status")).toHaveText("idle");
+  expect(engineHistoryRequests).toBe(0);
+  expect(threadListCalls.length).toBeGreaterThan(0);
+  expect(threadListCalls[0]?.params?.sourceKinds).toEqual(["cli", "vscode"]);
 });
 
 test("searches Codex history by app-server metadata and resumes selected rows", async ({ page }) => {
@@ -1745,15 +1705,15 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
   const sessionRow = page.getByRole("button", { name: "Open history Session Index Title" });
   await expect(sessionRow).toBeVisible();
   await expect(sessionRow).not.toContainText("rollout preview fallback");
-  await page.getByLabel("Search history").fill("indexed");
+  await page.getByLabel("Search history").first().fill("indexed");
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { searchTerm?: string } }> }).__codexUiOutbound ?? [];
     return messages.some((message) => message.method === "thread/list" && message.params?.searchTerm === "indexed");
   });
-  await expect(page.getByRole("button", { name: "Open history Session Index Title" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open history Session Index Title" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open history Mock thread" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Open history Session Index Title" }).click();
+  await page.getByRole("button", { name: "Open history Session Index Title" }).first().click();
   await page.waitForFunction(() => {
     const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string; cwd?: string } }> }).__codexUiOutbound ?? [];
     return messages.some(
@@ -2955,6 +2915,14 @@ test("exposes every bundled Codex schema setting in All config", async ({ page }
 });
 
 test("creates relay channels with fetched active models, remarks, and model activation", async ({ page }) => {
+  let directProviderProbeRequests = 0;
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/api/provider/test" || pathname === "/api/provider/test-chat") {
+      directProviderProbeRequests += 1;
+    }
+  });
+
   await page.goto("/");
   await page.getByLabel("Open settings").click();
   await page.getByLabel("Open Relay settings").click();
@@ -3018,6 +2986,34 @@ test("creates relay channels with fetched active models, remarks, and model acti
   await page.getByPlaceholder("Search relay channels, models, tags, or URLs").fill("integration smoke");
   await expect(page.getByRole("row").filter({ hasText: "Axon Relay" }).first()).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "HubProxy Grok" })).toHaveCount(0);
+
+  await axonRow.getByRole("button", { name: "Test with Codex" }).click();
+  await expect(page.getByRole("button", { name: "Close settings" })).toHaveCount(0);
+  await expect(page.getByTestId("topbar-fast-badge")).toBeVisible();
+  await page.waitForFunction(() => {
+    const messages = (
+      window as unknown as {
+        __codexUiOutbound?: Array<{
+          type?: string;
+          method?: string;
+          params?: {
+            model?: string;
+            effort?: string;
+            input?: Array<{ type?: string; text?: string }>;
+          };
+        }>;
+      }
+    ).__codexUiOutbound;
+    return messages?.some(
+      (message) =>
+        message.type === "rpc" &&
+        message.method === "turn/start" &&
+        message.params?.model === "glm-4.5" &&
+        message.params?.effort === "minimal" &&
+        message.params?.input?.some((entry) => entry.type === "text" && entry.text === "Reply with exactly: CODEX_RELAY_OK")
+    );
+  });
+  expect(directProviderProbeRequests).toBe(0);
 });
 
 test("keeps cached relay channels visible when provider reload temporarily fails", async ({ page }) => {

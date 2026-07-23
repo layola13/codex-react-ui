@@ -218,12 +218,8 @@ type CatalogProps = {
   token?: string | null;
   /** When membership is on, only admin can mutate host installs. */
   isAdmin?: boolean;
-  /**
-   * When true, the sidebar shows host *-launch history tabs (read-only).
-   * Default is false; code is kept so this can be re-enabled later.
-   */
-  showLaunchHistory?: boolean;
-  onShowLaunchHistoryChange?: (enabled: boolean) => void;
+  includeAutomationHistory?: boolean;
+  onIncludeAutomationHistoryChange?: (enabled: boolean) => void;
 };
 
 /**
@@ -235,8 +231,8 @@ export function LaunchAdaptersCatalog({
   fullPage = false,
   token = null,
   isAdmin = true,
-  showLaunchHistory = false,
-  onShowLaunchHistoryChange
+  includeAutomationHistory = false,
+  onIncludeAutomationHistoryChange
 }: CatalogProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [engine, setEngine] = useState<ChatEngineId>("codex");
@@ -714,16 +710,16 @@ export function LaunchAdaptersCatalog({
                 <FormControlLabel
                   control={
                     <Checkbox
-                      checked={showLaunchHistory}
-                      onChange={(event) => onShowLaunchHistoryChange?.(event.target.checked)}
+                      checked={includeAutomationHistory}
+                      onChange={(event) => onIncludeAutomationHistoryChange?.(event.target.checked)}
                       size="small"
                     />
                   }
-                  label={t("settings.launch.showHistory")}
+                  label={t("settings.launch.includeAutomationHistory")}
                   sx={{ m: 0, alignItems: "flex-start" }}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  {t("settings.launch.showHistoryHint")}
+                  {t("settings.launch.includeAutomationHistoryHint")}
                 </Typography>
               </Stack>
             </Stack>
