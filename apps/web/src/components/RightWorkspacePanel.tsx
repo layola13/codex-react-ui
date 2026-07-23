@@ -3,21 +3,34 @@ import { alpha } from "@mui/material/styles";
 import { Box, Button, Chip, IconButton, Paper, Stack, Tab, Tabs, TextField, Tooltip, Typography } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteIcon from "@mui/icons-material/Delete";
+import CodeIcon from "@mui/icons-material/Code";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import TerminalIcon from "@mui/icons-material/Terminal";
-import type { TerminalSession } from "../state/codexClient";
+import type { FsDirectoryEntry, TerminalSession } from "../state/codexClient";
+import type { OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
+import type { TranslateFn } from "../i18n";
+import { WebDevWorkspacePanel } from "./WebDevWorkspacePanel";
 
-export type RightWorkspaceTab = "sidechat" | "browser" | "terminal";
+export type RightWorkspaceTab = "sidechat" | "browser" | "terminal" | "webdev";
 
 type Props = {
   activeTab: RightWorkspaceTab;
   sideChat: ReactNode;
   cwd: string;
+  fileDirectories: Record<string, FsDirectoryEntry[]>;
+  openFile: OpenWorkspaceFile | null;
+  filesPanelLayout?: Record<string, number>;
   terminalSessions: TerminalSession[];
+  t: TranslateFn;
   onTabChange: (tab: RightWorkspaceTab) => void;
   onClose: () => void;
+  onFilesPanelLayoutChange?: (layout: Record<string, number>) => void;
+  onReadDirectory: (path: string) => void;
+  onReadFile: (path: string) => void;
+  onChangeOpenFileContent: (content: string) => void;
+  onSaveOpenFile: () => void;
   onRunTerminalCommand: (command: string, cwd: string, size: { rows: number; cols: number }) => void;
   onWriteTerminalInput: (processId: string, input: string) => void;
   onTerminateTerminal: (processId: string) => void;
@@ -28,9 +41,18 @@ export function RightWorkspacePanel({
   activeTab,
   sideChat,
   cwd,
+  fileDirectories,
+  openFile,
+  filesPanelLayout,
   terminalSessions,
+  t,
   onTabChange,
   onClose,
+  onFilesPanelLayoutChange,
+  onReadDirectory,
+  onReadFile,
+  onChangeOpenFileContent,
+  onSaveOpenFile,
   onRunTerminalCommand,
   onWriteTerminalInput,
   onTerminateTerminal,
@@ -74,6 +96,7 @@ export function RightWorkspacePanel({
           <Tab value="sidechat" label="Side chat" />
           <Tab value="browser" label="Browser" />
           <Tab value="terminal" label="Terminal" />
+          <Tab value="webdev" label="Web Dev" icon={<CodeIcon fontSize="small" />} iconPosition="start" />
         </Tabs>
         <Tooltip title="Hide right workspace">
           <IconButton size="small" aria-label="Hide right workspace" onClick={onClose}>
@@ -88,6 +111,25 @@ export function RightWorkspacePanel({
           <TerminalPanel
             cwd={cwd}
             terminalSessions={terminalSessions}
+            onRunTerminalCommand={onRunTerminalCommand}
+            onWriteTerminalInput={onWriteTerminalInput}
+            onTerminateTerminal={onTerminateTerminal}
+            onResizeTerminal={onResizeTerminal}
+          />
+        )}
+        {activeTab === "webdev" && (
+          <WebDevWorkspacePanel
+            cwd={cwd}
+            fileDirectories={fileDirectories}
+            openFile={openFile}
+            filesPanelLayout={filesPanelLayout}
+            terminalSessions={terminalSessions}
+            t={t}
+            onFilesPanelLayoutChange={onFilesPanelLayoutChange}
+            onReadDirectory={onReadDirectory}
+            onReadFile={onReadFile}
+            onChangeOpenFileContent={onChangeOpenFileContent}
+            onSaveOpenFile={onSaveOpenFile}
             onRunTerminalCommand={onRunTerminalCommand}
             onWriteTerminalInput={onWriteTerminalInput}
             onTerminateTerminal={onTerminateTerminal}

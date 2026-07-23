@@ -194,6 +194,7 @@ type ComposerSlashCommand =
   | { type: "fast"; enabled?: boolean }
   | { type: "stats"; scope: "status" | "stats" }
   | { type: "image"; mode: "generate" | "edit"; prompt: string }
+  | { type: "webdev"; prompt: string }
   | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string };
 
 type SlashCommandNotice = {
@@ -1864,6 +1865,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [activeProviderId, client, cwdForThread, loadHistory, loadThread, permission, selectedModel, state.providers]
   );
 
+  function openWebDevWorkspace() {
+    setRightWorkspaceVisible(true);
+    setRightWorkspaceTab("webdev");
+  }
+
   const runImageCommand = useCallback(
     async (command: Extract<ComposerSlashCommand, { type: "image" }>, images: ComposerImageAttachment[]) => {
       const prompt = command.prompt.trim();
@@ -1938,11 +1944,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   );
 
   const handleComposerSlashCommand = useCallback(
-    async (command: ComposerSlashCommand, images: ComposerImageAttachment[]) => {
+    async (command: ComposerSlashCommand, images: ComposerImageAttachment[], mentions: ComposerMention[]) => {
       switch (command.type) {
         case "image":
           await runImageCommand(command, images);
           return;
+        case "webdev": {
+          openWebDevWorkspace();
+          const prompt = command.prompt.trim();
+          if (!prompt) {
+            setComposerSuggestion({ id: `webdev-${Date.now()}`, text: buildWebDevStarterPrompt(cwd) });
+            return;
+          }
+          await startCodexTurn(buildWebDevPrompt(prompt, cwd), images, mentions);
+          return;
+        }
         case "fast":
           setFastModeEnabled((current) => command.enabled ?? !current);
           return;
@@ -1981,9 +1997,12 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     },
     [
       clearActiveGoal,
+      cwd,
+      openWebDevWorkspace,
       runImageCommand,
       setActiveGoalStatus,
       setGoalForActiveThread,
+      startCodexTurn,
       state.activeThreadId,
       threadGoals
     ]
@@ -1994,7 +2013,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       setWelcomeDismissed(true);
       const slashCommand = parseComposerSlashCommand(text, images, mentions);
       if (slashCommand) {
-        await handleComposerSlashCommand(slashCommand, images);
+        await handleComposerSlashCommand(slashCommand, images, mentions);
         return;
       }
       await startCodexTurn(text, images, mentions);
@@ -2930,9 +2949,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         activeTab={rightWorkspaceTab}
         sideChat={renderSideChatPanel()}
         cwd={cwd}
+        fileDirectories={fileDirectories}
+        openFile={openFile}
+        filesPanelLayout={filesPanelLayout}
         terminalSessions={terminalSessions}
+        t={t}
         onTabChange={setRightWorkspaceTab}
         onClose={() => setRightWorkspaceVisible(false)}
+        onFilesPanelLayoutChange={(layout) => {
+          setFilesPanelLayout(layout);
+          localStorage.setItem(UI_STORAGE_KEYS.filesPanelLayout, JSON.stringify(layout));
+        }}
+        onReadDirectory={(path) => void readDirectory(path)}
+        onReadFile={(path) => void readFile(path)}
+        onChangeOpenFileContent={changeOpenFileContent}
+        onSaveOpenFile={() => void saveOpenFile()}
         onRunTerminalCommand={(command, commandCwd, size) => void runTerminalCommand(command, commandCwd, size)}
         onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
         onTerminateTerminal={(processId) => void terminateTerminal(processId)}
@@ -3979,6 +4010,44 @@ function parseOptionalBoolean(value: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function buildWebDevPrompt(description: string, cwd: string): string {
+  const request = description.trim();
+  const stack = chooseWebDevStack(request);
+  const lines = [
+    `Create the requested web app in the current workspace at ${cwd}.`,
+    `Use Bun for package management and local scripts.`,
+    stack === "react"
+      ? `Scaffold a React app when the request implies a UI framework or component library.`
+      : `Use a plain HTML + JavaScript setup when the request is simple, static, or explicitly vanilla.`,
+    /\b(3d|three\.js|threejs|webgl)\b/i.test(request)
+      ? `Add three.js for any requested 3D or WebGL work.`
+      : `Do not add three.js unless the request explicitly asks for 3D.`,
+    `Keep the workspace easy to inspect from the file explorer and easy to run from the terminal.`,
+    `Create the minimal starter files first, then wire a runnable dev server and a previewable entry point.`,
+    `Use the terminal to install dependencies, start the server, and verify the app locally.`,
+    request ? `User request: ${request}` : `User request: build a sensible web-dev starter for this workspace.`
+  ];
+  return lines.join("\n");
+}
+
+function buildWebDevStarterPrompt(cwd: string): string {
+  return buildWebDevPrompt(
+    "Create a Bun web-dev starter. Default to React when a UI framework is wanted, add three.js when 3D is mentioned, and use HTML + JavaScript for a simple vanilla app.",
+    cwd
+  );
+}
+
+function chooseWebDevStack(request: string): "react" | "html-js" {
+  const normalized = request.toLowerCase();
+  if (/\b(html\s*\+?\s*js|plain html|vanilla|static site|simple site|no framework)\b/.test(normalized)) {
+    return "html-js";
+  }
+  if (/\b(react|vue|svelte|solid|preact|next|nuxt|ui framework|ui library|component library|tailwind|antd|mui|chakra)\b/.test(normalized)) {
+    return "react";
+  }
+  return "html-js";
 }
 
 function buildImageThreadItems(input: {

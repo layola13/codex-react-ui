@@ -15,6 +15,8 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ImageIcon from "@mui/icons-material/Image";
+import CodeIcon from "@mui/icons-material/Code";
+import MovieIcon from "@mui/icons-material/Movie";
 import CloseIcon from "@mui/icons-material/Close";
 import DescriptionIcon from "@mui/icons-material/Description";
 import StopIcon from "@mui/icons-material/Stop";
@@ -585,6 +587,34 @@ export function Composer({
               <Typography variant="body2">Edit selected image</Typography>
               <Typography variant="caption" color="text.secondary">
                 Use attached images as input
+              </Typography>
+            </Box>
+          </MenuItem>
+          <MenuItem
+            disabled
+            sx={{ borderRadius: 2, minHeight: 42 }}
+          >
+            <MovieIcon fontSize="small" style={{ marginRight: 14 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2">Create video</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Coming soon
+              </Typography>
+            </Box>
+          </MenuItem>
+          <MenuItem
+            disabled={disabled}
+            onClick={() => {
+              setMenuAnchorEl(null);
+              setSlashTemplate("/webdev ");
+            }}
+            sx={{ borderRadius: 2, minHeight: 42 }}
+          >
+            <CodeIcon fontSize="small" style={{ marginRight: 14 }} />
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2">Web Dev</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Bun, React, three.js, HTML + JS
               </Typography>
             </Box>
           </MenuItem>

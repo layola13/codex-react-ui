@@ -8,6 +8,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import BoltIcon from "@mui/icons-material/Bolt";
 import BugReportIcon from "@mui/icons-material/BugReport";
 import BuildIcon from "@mui/icons-material/Build";
+import CodeIcon from "@mui/icons-material/Code";
 import ChecklistIcon from "@mui/icons-material/Checklist";
 import CloseIcon from "@mui/icons-material/Close";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -182,6 +183,13 @@ function emptyPromptCards(t: TranslateFn) {
     detail: "Generate or edit an image",
     prompt: "/image ",
     icon: <ImageIcon fontSize="small" />
+  },
+  {
+    id: "webdev",
+    label: "Web Dev",
+    detail: "Scaffold a Bun app with explorer, preview, and server",
+    prompt: "/webdev ",
+    icon: <CodeIcon fontSize="small" />
   }
   ];
 }
