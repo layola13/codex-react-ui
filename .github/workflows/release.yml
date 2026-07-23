@@ -1,0 +1,69 @@
+name: Build & Release Windows Preview
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build and Upload Windows Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build web & server assets
+        run: bun run build
+
+      - name: Compile Windows executable (.exe)
+        run: |
+          mkdir -p dist-release
+          bun build --compile --target=bun-windows-x64 ./apps/server/src/index.ts --outfile dist-release/codex-react-ui-windows-x64.exe
+
+      - name: Generate Release Tag & Name
+        id: release_info
+        run: |
+          RELEASE_TAG="preview-$(date +'%Y%m%d')"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
+          echo "Release Tag: $RELEASE_TAG"
+
+      - name: Create Zip Archive
+        run: |
+          cd dist-release
+          zip -r ../codex-react-ui-windows-x64.zip codex-react-ui-windows-x64.exe
+          cd ..
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          body: |
+            ## Codex React UI - Preview Build (${{ env.RELEASE_TAG }})
+            
+            这是由 GitHub Actions 自动编译生成的 Windows 独立可执行程序。
+            
+            ### 🚀 使用说明
+            1. 下载 `codex-react-ui-windows-x64.exe` 或 `codex-react-ui-windows-x64.zip`
+            2. 双击运行 `codex-react-ui-windows-x64.exe`
+            3. 在浏览器中打开提示的本地地址（默认 `http://127.0.0.1:43110`）即可使用。
+          prerelease: true
+          files: |
+            dist-release/codex-react-ui-windows-x64.exe
+            codex-react-ui-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
