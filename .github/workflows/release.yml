@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-windows:
     name: Build and Upload Windows Release
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -30,22 +30,23 @@ jobs:
         run: bun run build
 
       - name: Compile Windows executable (.exe)
+        shell: powershell
         run: |
-          mkdir -p dist-release
+          New-Item -ItemType Directory -Force -Path dist-release
           bun build --compile --target=bun-windows-x64 ./apps/server/src/index.ts --outfile dist-release/codex-react-ui-windows-x64.exe
 
       - name: Generate Release Tag & Name
-        id: release_info
+        shell: powershell
         run: |
-          RELEASE_TAG="preview-$(date +'%Y%m%d')"
-          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_ENV
-          echo "Release Tag: $RELEASE_TAG"
+          $dateStr = Get-Date -Format "yyyyMMdd"
+          $envTag = "preview-$dateStr"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$envTag"
+          Write-Host "Release Tag: $envTag"
 
       - name: Create Zip Archive
+        shell: powershell
         run: |
-          cd dist-release
-          zip -r ../codex-react-ui-windows-x64.zip codex-react-ui-windows-x64.exe
-          cd ..
+          Compress-Archive -Path dist-release/codex-react-ui-windows-x64.exe -DestinationPath codex-react-ui-windows-x64.zip -Force
 
       - name: Create GitHub Release and Upload Assets
         uses: softprops/action-gh-release@v2
