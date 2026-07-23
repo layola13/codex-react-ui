@@ -80,6 +80,48 @@ test("ProviderStore persists relay channels in SQLite across store instances", a
   db.close();
 });
 
+test("ProviderStore persists image protocol configuration", async () => {
+  const dir = tempDataDir("codex-ui-provider-image-protocols-");
+  const db = new Database(join(dir, "codex-ui.sqlite3"));
+  db.exec(`
+    CREATE TABLE providers (
+      id TEXT PRIMARY KEY,
+      payload TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+
+  const store = new ProviderStore({ connection: db });
+  await store.save({
+    id: "deepkey-image",
+    kind: "responsesRelay",
+    name: "DeepKey Image",
+    baseUrl: "https://deepkey.top/v1",
+    nativeModels: ["gpt-5.5", "gemini-3.1-flash-image-preview", "nano_banana_2"],
+    modelAliases: [],
+    defaultModel: "gpt-5.5",
+    image: {
+      generations: true,
+      edits: true,
+      defaultModel: "gemini-3.1-flash-image-preview",
+      protocols: ["openaiImages", "openaiImageEdits", "geminiChatCompletions", "geminiGenerateContent", "deepkeyAsyncVideos"],
+      defaultProtocol: "geminiChatCompletions"
+    }
+  });
+
+  const providers = await store.list();
+
+  expect(providers[0]?.image).toEqual({
+    generations: true,
+    edits: true,
+    defaultModel: "gemini-3.1-flash-image-preview",
+    protocols: ["openaiImages", "openaiImageEdits", "geminiChatCompletions", "geminiGenerateContent", "deepkeyAsyncVideos"],
+    defaultProtocol: "geminiChatCompletions"
+  });
+  db.close();
+});
+
 test("ProviderStore runtimeEnv includes externally supplied provider API keys", () => {
   process.env.CODEX_UI_PROVIDER_ENV_TEST_API_KEY = "sk-runtime-env-test";
   const dir = tempDataDir("codex-ui-provider-env-");

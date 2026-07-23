@@ -49,6 +49,7 @@ import {
   type AuthSession,
   type AuthUser,
   type DangerousPermissionAuditEvent,
+  type ImageGenerationProtocol,
   type JsonValue,
   type PermissionPresetId,
   type ProviderConfig,
@@ -197,7 +198,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 type ComposerSlashCommand =
   | { type: "fast"; enabled?: boolean }
   | { type: "stats"; scope: "status" | "stats" }
-  | { type: "image"; mode: "generate" | "edit"; prompt: string }
+  | { type: "image"; mode: "generate" | "edit"; prompt: string; model?: string; protocol?: ImageGenerationProtocol }
   | { type: "webdev"; prompt: string }
   | { type: "goal"; action: "show" | "set" | "clear" | "pause" | "resume" | "complete" | "edit"; objective: string };
 
@@ -1906,7 +1907,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
 
       try {
         const threadId = await ensureActiveThread();
-        const model = provider.image?.defaultModel ?? "gpt-image-2";
+        const model = command.model ?? provider.image?.defaultModel ?? "gpt-image-2";
         const result =
           command.mode === "edit"
             ? await editProviderImage(state.token, {
@@ -1918,7 +1919,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             : await generateProviderImage(state.token, {
                 providerId: provider.id,
                 prompt,
-                model
+                model,
+                protocol: command.protocol
               });
         if (!result.data?.length) {
           throw new Error("Image API returned no images");
@@ -1929,10 +1931,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           sourceImages: imageAttachments,
           result,
           provider
-        });
-        await client.rpc("thread/inject_items", {
-          threadId,
-          items
         });
         dispatch({
           type: "threadMerged",
@@ -1947,7 +1945,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             items
           })
         });
-        await loadThread(threadId);
+        try {
+          await withTimeout(
+            client.rpc("thread/inject_items", {
+              threadId,
+              items
+            }),
+            10_000,
+            "Timed out saving generated image to thread"
+          );
+          await loadThread(threadId);
+        } catch (error) {
+          console.warn("Generated image rendered locally but could not be saved to thread", error);
+        }
         setSlashNotice({
           id: `image-${Date.now()}`,
           title: command.mode === "edit" ? "Image edit completed" : "Image generated",
@@ -4004,12 +4014,16 @@ function parseComposerSlashCommand(
   }
   switch (name) {
     case "image":
-    case "img":
-      return { type: "image", mode: hasImageAttachments ? "edit" : "generate", prompt: rest };
+    case "img": {
+      const imageCommand = parseImageCommandOptions(rest);
+      return { type: "image", mode: hasImageAttachments ? "edit" : "generate", ...imageCommand };
+    }
     case "edit-image":
     case "image-edit":
-    case "img-edit":
-      return { type: "image", mode: "edit", prompt: rest };
+    case "img-edit": {
+      const imageCommand = parseImageCommandOptions(rest);
+      return { type: "image", mode: "edit", ...imageCommand };
+    }
     case "fast":
       if (images.length > 0 || mentions.length > 0) return null;
       return { type: "fast", enabled: parseOptionalBoolean(rest) };
@@ -4044,6 +4058,61 @@ function parseComposerSlashCommand(
     }
     default:
       return null;
+  }
+}
+
+function parseImageCommandOptions(value: string): { prompt: string; model?: string; protocol?: ImageGenerationProtocol } {
+  const tokens = value.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+  let index = 0;
+  let model: string | undefined;
+  let protocol: ImageGenerationProtocol | undefined;
+  const clean = (token: string | undefined): string | undefined => {
+    if (!token) {
+      return undefined;
+    }
+    return token.replace(/^["']|["']$/g, "");
+  };
+  while (index < tokens.length) {
+    const token = tokens[index] ?? "";
+    if (token === "--model" || token === "-m") {
+      const next = clean(tokens[index + 1]);
+      if (!next) break;
+      model = next;
+      index += 2;
+      continue;
+    }
+    if (token.startsWith("--model=")) {
+      model = clean(token.slice("--model=".length));
+      index += 1;
+      continue;
+    }
+    if (token === "--protocol" || token === "-p") {
+      const next = imageProtocolValue(clean(tokens[index + 1]));
+      if (!next) break;
+      protocol = next;
+      index += 2;
+      continue;
+    }
+    if (token.startsWith("--protocol=")) {
+      protocol = imageProtocolValue(clean(token.slice("--protocol=".length)));
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return { prompt: tokens.slice(index).join(" ").trim(), model, protocol };
+}
+
+function imageProtocolValue(value: string | undefined): ImageGenerationProtocol | undefined {
+  switch (value) {
+    case "openaiImages":
+    case "openaiImageEdits":
+    case "geminiChatCompletions":
+    case "geminiGenerateContent":
+    case "deepkeyAsyncVideos":
+      return value;
+    default:
+      return undefined;
   }
 }
 
@@ -4124,18 +4193,25 @@ function buildImageThreadItems(input: {
   });
   for (const image of input.result?.data ?? []) {
     const b64 = image.b64Json ?? dataUrlToBase64(image.url);
-    if (!b64) {
+    const savedPath = !b64 && image.url ? image.url : undefined;
+    if (!b64 && !savedPath) {
       continue;
     }
-    items.push({
+    const item: Record<string, JsonValue> = {
       type: "image_generation_call",
       id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       status: "completed",
       revised_prompt: image.revisedPrompt ?? input.prompt,
-      result: b64,
       provider_name: input.provider.name,
       model: input.result?.model ?? input.provider.image?.defaultModel ?? "gpt-image-2"
-    });
+    };
+    if (b64) {
+      item.result = b64;
+    }
+    if (savedPath) {
+      item.saved_path = savedPath;
+    }
+    items.push(item);
   }
   return items;
 }

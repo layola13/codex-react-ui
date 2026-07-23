@@ -244,6 +244,13 @@ export interface ChannelGroupConfig {
 
 export type StationType = "third_party" | "rich" | "charity" | "official";
 
+export type ImageGenerationProtocol =
+  | "openaiImages"
+  | "openaiImageEdits"
+  | "geminiChatCompletions"
+  | "geminiGenerateContent"
+  | "deepkeyAsyncVideos";
+
 export interface ProviderConfig {
   id: string;
   kind: "chatgpt" | "openai" | "responsesRelay" | "ollama" | "lmstudio" | "bedrock";
@@ -257,6 +264,8 @@ export interface ProviderConfig {
     generations?: boolean;
     edits?: boolean;
     defaultModel?: string;
+    protocols?: ImageGenerationProtocol[];
+    defaultProtocol?: ImageGenerationProtocol;
   };
   nativeModels: string[];
   modelAliases: Array<{

@@ -36,7 +36,7 @@ import {
   Tooltip,
   Typography
 } from "@mui/material";
-import type { ChannelGroupConfig, DangerousPermissionAuditEvent, JsonValue, ProviderConfig, StationType, TieredContextRatio } from "@codex-ui/shared";
+import type { ChannelGroupConfig, DangerousPermissionAuditEvent, ImageGenerationProtocol, JsonValue, ProviderConfig, StationType, TieredContextRatio } from "@codex-ui/shared";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import AssessmentIcon from "@mui/icons-material/Assessment";
@@ -1067,6 +1067,36 @@ const DEFAULT_MODEL_RATE_DRAFT = {
   outputMultiplier: "1"
 };
 
+const IMAGE_PROTOCOL_OPTIONS: Array<{
+  id: ImageGenerationProtocol;
+  label: string;
+  description: string;
+  generation: boolean;
+}> = [
+  { id: "openaiImages", label: "OpenAI images/generations", description: "/v1/images/generations", generation: true },
+  { id: "openaiImageEdits", label: "OpenAI images/edits", description: "/v1/images/edits", generation: false },
+  { id: "geminiChatCompletions", label: "Gemini chat image", description: "/v1/chat/completions", generation: true },
+  { id: "geminiGenerateContent", label: "Gemini generateContent", description: "/v1beta/models/{model}:generateContent", generation: true },
+  { id: "deepkeyAsyncVideos", label: "DeepKey async image", description: "POST /v1/videos + GET /v1/videos/{task_id}", generation: true }
+];
+
+const DEEPKEY_IMAGE_MODELS = [
+  "gpt-image-2-1k",
+  "gpt-image-2-2k",
+  "gpt-image-2-4k",
+  "gpt-image-2-async",
+  "gpt-image-2-2K-async",
+  "gpt-image-2-4K-async",
+  "gemini-3-pro-image-preview",
+  "gemini-3.1-flash-image-preview",
+  "nano_banana_2",
+  "nano_banana_2-2K",
+  "nano_banana_2-4K",
+  "nano_banana_pro-1K",
+  "nano_banana_pro-2K",
+  "nano_banana_pro-4K"
+];
+
 const RELAY_PROVIDER_TEMPLATES: Array<{
   id: RelayTemplateId;
   label: string;
@@ -1089,7 +1119,7 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     nativeModels: "gpt-5.6-sol,gpt-5.5",
     modelAliases: "codex=gpt-5.6-sol",
     modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.4=2.5/0.25/2.5/15/1\ngpt-5.6-sol=5/0.5/5/30/1",
-    image: { generations: true, edits: true, defaultModel: "gpt-image-2" }
+    image: { generations: true, edits: true, defaultModel: "gpt-image-2", protocols: ["openaiImages", "openaiImageEdits"], defaultProtocol: "openaiImages" }
   },
   {
     id: "deepseek",
@@ -1109,10 +1139,16 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     kind: "responsesRelay",
     apiFormat: "responsesRelay",
     baseUrl: "https://deepkey.top/v1",
-    nativeModels: "gpt-5.6-sol,gpt-5.5",
+    nativeModels: ["gpt-5.6-sol", "gpt-5.5", ...DEEPKEY_IMAGE_MODELS].join(","),
     modelAliases: "codex=gpt-5.6-sol",
     modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.6-sol=5/0.5/5/30/1",
-    image: { generations: true, edits: true, defaultModel: "gpt-image-2-1k" }
+    image: {
+      generations: true,
+      edits: true,
+      defaultModel: "gpt-image-2-1k",
+      protocols: ["openaiImages", "openaiImageEdits", "geminiChatCompletions", "geminiGenerateContent", "deepkeyAsyncVideos"],
+      defaultProtocol: "openaiImages"
+    }
   },
   {
     id: "gemini",
@@ -1506,6 +1542,11 @@ function RelaySettingsPanel({
   const [modelRateDrafts, setModelRateDrafts] = useState<ModelRateDraft[]>(() =>
     modelRateDraftsForModels(parseCsv(template.nativeModels), parseModelRates(template.modelRates))
   );
+  const [imageGenerations, setImageGenerations] = useState(Boolean(template.image?.generations));
+  const [imageEdits, setImageEdits] = useState(Boolean(template.image?.edits));
+  const [imageDefaultModel, setImageDefaultModel] = useState(template.image?.defaultModel ?? "");
+  const [imageProtocols, setImageProtocols] = useState<ImageGenerationProtocol[]>(template.image?.protocols ?? []);
+  const [imageDefaultProtocol, setImageDefaultProtocol] = useState<ImageGenerationProtocol | "">(template.image?.defaultProtocol ?? "");
   const [remark, setRemark] = useState("");
   const [quotaUsd, setQuotaUsd] = useState<string>("");
   const [stationType, setStationType] = useState<StationType>("third_party");
@@ -1638,6 +1679,11 @@ function RelaySettingsPanel({
     setNativeModels(entry.nativeModels);
     setModelAliases(entry.modelAliases);
     setModelRateDrafts(modelRateDraftsForModels(parseCsv(entry.nativeModels), parseModelRates(entry.modelRates)));
+    setImageGenerations(Boolean(entry.image?.generations));
+    setImageEdits(Boolean(entry.image?.edits));
+    setImageDefaultModel(entry.image?.defaultModel ?? "");
+    setImageProtocols(entry.image?.protocols ?? []);
+    setImageDefaultProtocol(entry.image?.defaultProtocol ?? "");
     setRemark("");
     setQuotaUsd("");
     setStationType("third_party");
@@ -1670,6 +1716,11 @@ function RelaySettingsPanel({
     setNativeModels(provider.nativeModels.join(", "));
     setModelAliases(provider.modelAliases.map((entry) => `${entry.alias}=${entry.model}`).join(", "));
     setModelRateDrafts(modelRateDraftsForModels(provider.nativeModels, provider.modelRates ?? defaultRatesForProvider(provider)));
+    setImageGenerations(Boolean(provider.image?.generations));
+    setImageEdits(Boolean(provider.image?.edits));
+    setImageDefaultModel(provider.image?.defaultModel ?? "");
+    setImageProtocols(provider.image?.protocols ?? []);
+    setImageDefaultProtocol(provider.image?.defaultProtocol ?? "");
     setRemark(provider.remark ?? "");
     setQuotaUsd(provider.quotaUsd != null ? String(provider.quotaUsd) : "");
     setStationType(provider.stationType ?? "third_party");
@@ -1768,6 +1819,41 @@ function RelaySettingsPanel({
     setSelectedFetchedModels([]);
   };
 
+  const toggleImageProtocol = (protocol: ImageGenerationProtocol) => {
+    setImageProtocols((current) => {
+      const next = current.includes(protocol) ? current.filter((entry) => entry !== protocol) : [...current, protocol];
+      if (!next.includes(imageDefaultProtocol as ImageGenerationProtocol)) {
+        const fallback = next.find((entry) => IMAGE_PROTOCOL_OPTIONS.find((option) => option.id === entry)?.generation);
+        setImageDefaultProtocol(fallback ?? "");
+      }
+      if (protocol === "openaiImageEdits") {
+        setImageEdits(!current.includes(protocol));
+      }
+      return next;
+    });
+  };
+
+  const imageConfigFromForm = (): ProviderConfig["image"] => {
+    const protocols = [...imageProtocols];
+    if (imageEdits && !protocols.includes("openaiImageEdits")) {
+      protocols.push("openaiImageEdits");
+    }
+    const generationProtocols = protocols.filter((protocol) => IMAGE_PROTOCOL_OPTIONS.find((option) => option.id === protocol)?.generation);
+    const defaultProtocol =
+      imageDefaultProtocol && generationProtocols.includes(imageDefaultProtocol) ? imageDefaultProtocol : generationProtocols[0];
+    const defaultModel = imageDefaultModel.trim();
+    if (!imageGenerations && !imageEdits && !defaultModel && protocols.length === 0) {
+      return undefined;
+    }
+    return {
+      generations: imageGenerations,
+      edits: imageEdits,
+      defaultModel: defaultModel || undefined,
+      protocols: protocols.length > 0 ? protocols : undefined,
+      defaultProtocol
+    };
+  };
+
   const saveChannel = async () => {
     if (!canManage || saving) {
       return;
@@ -1787,7 +1873,7 @@ function RelaySettingsPanel({
           apiKeyPreview: editingProvider?.apiKeyPreview,
           apiKeyStorage: editingProvider?.apiKeyStorage,
           defaultModel: nativeModelList[0] ?? editingProvider?.defaultModel ?? selectedModel,
-          image: template.image ?? editingProvider?.image,
+          image: imageConfigFromForm(),
           nativeModels: nativeModelList,
           modelAliases: parseAliases(modelAliases),
           modelRates: modelRateDraftsToProviderRates(modelRateRows, channelMode === "advanced"),
@@ -2598,6 +2684,97 @@ function RelaySettingsPanel({
                   )}
                   <Typography variant="caption" color="text.secondary">
                     {channelMode === "advanced" ? t("settings.relay.modelRatesAdvancedHelp") : t("settings.relay.modelRatesFastHelp")}
+                  </Typography>
+                </Stack>
+              </RelayFormRow>
+              <RelayFormRow label="Image API">
+                <Stack spacing={1.25} sx={{ width: "100%" }}>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} flexWrap="wrap" useFlexGap>
+                    <FormControlLabel
+                      control={<Switch size="small" checked={imageGenerations} onChange={(event) => setImageGenerations(event.target.checked)} />}
+                      label="Enable image generation"
+                      sx={{ mr: 0 }}
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          size="small"
+                          checked={imageEdits}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setImageEdits(checked);
+                            setImageProtocols((current) => {
+                              if (checked && !current.includes("openaiImageEdits")) {
+                                return [...current, "openaiImageEdits"];
+                              }
+                              return checked ? current : current.filter((protocol) => protocol !== "openaiImageEdits");
+                            });
+                          }}
+                        />
+                      }
+                      label="Enable image edits"
+                      sx={{ mr: 0 }}
+                    />
+                  </Stack>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      label="Default image model"
+                      value={imageDefaultModel}
+                      onChange={(event) => setImageDefaultModel(event.target.value)}
+                      placeholder="gpt-image-2-1k / gemini-3.1-flash-image-preview / nano_banana_2"
+                      inputProps={{ "aria-label": "Default image model" }}
+                    />
+                    <FormControl size="small" fullWidth>
+                      <InputLabel>Default image protocol</InputLabel>
+                      <Select
+                        value={imageDefaultProtocol}
+                        label="Default image protocol"
+                        inputProps={{ "aria-label": "Default image protocol" }}
+                        onChange={(event) => setImageDefaultProtocol(event.target.value as ImageGenerationProtocol | "")}
+                      >
+                        <MenuItem value="">Auto by model</MenuItem>
+                        {IMAGE_PROTOCOL_OPTIONS.filter((option) => option.generation).map((option) => (
+                          <MenuItem key={option.id} value={option.id} disabled={imageProtocols.length > 0 && !imageProtocols.includes(option.id)}>
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" }, gap: 0.75 }}>
+                    {IMAGE_PROTOCOL_OPTIONS.map((option) => (
+                      <Box
+                        key={option.id}
+                        sx={{
+                          border: "1px solid",
+                          borderColor: imageProtocols.includes(option.id) ? "primary.main" : "divider",
+                          borderRadius: 1,
+                          px: 1,
+                          py: 0.75,
+                          bgcolor: imageProtocols.includes(option.id) ? "action.selected" : "background.paper"
+                        }}
+                      >
+                        <FormControlLabel
+                          control={<Checkbox size="small" checked={imageProtocols.includes(option.id)} onChange={() => toggleImageProtocol(option.id)} />}
+                          label={
+                            <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 800 }}>
+                                {option.label}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+                                {option.description}
+                              </Typography>
+                            </Stack>
+                          }
+                          sx={{ alignItems: "flex-start", mr: 0, width: "100%" }}
+                        />
+                      </Box>
+                    ))}
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Slash command overrides: /image --model nano_banana_2 --protocol deepkeyAsyncVideos prompt
                   </Typography>
                 </Stack>
               </RelayFormRow>

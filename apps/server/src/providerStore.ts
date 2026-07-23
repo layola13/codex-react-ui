@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Database } from "bun:sqlite";
 import { AsyncEntry } from "@napi-rs/keyring";
-import type { ProviderConfig, UiProfile, UiProfileImportResult } from "@codex-ui/shared";
+import type { ImageGenerationProtocol, ProviderConfig, UiProfile, UiProfileImportResult } from "@codex-ui/shared";
 import { codexUiDataDir, LocalDatabase } from "./localDatabase.js";
 
 type StoreShape = {
@@ -430,10 +430,45 @@ function imageProviderConfig(value: unknown): ProviderConfig["image"] {
   const generations = booleanValue(record.generations);
   const edits = booleanValue(record.edits);
   const defaultModel = stringValue(record.defaultModel);
-  if (generations == null && edits == null && !defaultModel) {
+  const protocols = imageProtocolArray(record.protocols);
+  const defaultProtocol = imageProtocolValue(record.defaultProtocol);
+  if (generations == null && edits == null && !defaultModel && protocols.length === 0 && !defaultProtocol) {
     return undefined;
   }
-  return { generations, edits, defaultModel };
+  return {
+    generations,
+    edits,
+    defaultModel,
+    protocols: protocols.length > 0 ? protocols : undefined,
+    defaultProtocol: defaultProtocol && (protocols.length === 0 || protocols.includes(defaultProtocol)) ? defaultProtocol : undefined
+  };
+}
+
+function imageProtocolArray(value: unknown): ImageGenerationProtocol[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const protocols: ImageGenerationProtocol[] = [];
+  for (const entry of value) {
+    const protocol = imageProtocolValue(entry);
+    if (protocol && !protocols.includes(protocol)) {
+      protocols.push(protocol);
+    }
+  }
+  return protocols;
+}
+
+function imageProtocolValue(value: unknown): ImageGenerationProtocol | undefined {
+  switch (value) {
+    case "openaiImages":
+    case "openaiImageEdits":
+    case "geminiChatCompletions":
+    case "geminiGenerateContent":
+    case "deepkeyAsyncVideos":
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function envKeyRefValue(value: unknown): string | undefined {

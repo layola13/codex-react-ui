@@ -7,6 +7,7 @@ import {
   type SystemAuthSettings,
   type UsageSummary,
   type EngineStatus,
+  type ImageGenerationProtocol,
   type JsonRpcFailure,
   type JsonRpcNotification,
   type JsonRpcRequest,
@@ -1054,7 +1055,7 @@ export async function stopWebDevServer(token: string, id: string): Promise<WebDe
 
 export async function generateProviderImage(
   token: string,
-  input: { providerId: string; prompt: string; model?: string; size?: string; n?: number }
+  input: { providerId: string; prompt: string; model?: string; protocol?: ImageGenerationProtocol; size?: string; n?: number }
 ): Promise<ImageApiResult> {
   const response = await fetch("/api/images/generations", {
     method: "POST",

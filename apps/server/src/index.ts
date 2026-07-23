@@ -13,6 +13,7 @@ import {
   type JsonRpcNotification,
   type JsonRpcRequest,
   type JsonValue,
+  type ImageGenerationProtocol,
   type ProviderActivation,
   type ProviderConfig,
   type ServerToClientMessage
@@ -42,6 +43,7 @@ import {
 import { fetchProviderModels, testProvider } from "./providerModels.js";
 import { probeWebDevPreviewUrl } from "./webdevProbe.js";
 import { listWebDevServers, startWebDevServer, stopWebDevServer } from "./webdevServers.js";
+import { runImageGeneration, normalizeImageApiResponse } from "./imageProtocols.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -425,26 +427,15 @@ async function handleApiRequest(
           return jsonResponse({ error: "Missing image prompt" }, 400, headers);
         }
         const model = stringValue(body.model) ?? provider.image?.defaultModel ?? "gpt-image-2";
-        const payload: Record<string, JsonValue> = {
-          model,
-          prompt
-        };
+        const options: Record<string, string | number | boolean> = {};
         for (const key of ["size", "quality", "background", "moderation", "output_format", "response_format", "n"]) {
           const value = body[key];
           if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-            payload[key] = value;
+            options[key] = value;
           }
         }
-        const response = await fetch(`${providerBaseUrl(provider)}/images/generations`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        });
-        const normalized = await normalizeImageApiResponse(response, { provider, model, prompt, endpoint: "images/generations" });
-        return jsonResponse(normalized, response.ok ? 200 : response.status, headers);
+        const result = await runImageGeneration({ provider, apiKey, prompt, model, options, protocol: imageProtocolValue(body.protocol) });
+        return jsonResponse(result.body, result.status, headers);
       } catch (error) {
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
       }
@@ -454,6 +445,9 @@ async function handleApiRequest(
         const form = await request.formData();
         const providerId = stringValue(form.get("providerId"));
         const provider = await resolveImageProvider(providerId, user, "edits");
+        if (provider.image?.protocols?.length && !provider.image.protocols.includes("openaiImageEdits")) {
+          return jsonResponse({ error: "Provider does not enable OpenAI image edits protocol" }, 400, headers);
+        }
         const apiKey = await resolveProviderApiKey(provider.id, stringValue(form.get("apiKey")) ?? "");
         if (!apiKey) {
           return jsonResponse({ error: "Missing provider API key" }, 400, headers);
@@ -1053,6 +1047,19 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function imageProtocolValue(value: unknown): ImageGenerationProtocol | undefined {
+  switch (value) {
+    case "openaiImages":
+    case "openaiImageEdits":
+    case "geminiChatCompletions":
+    case "geminiGenerateContent":
+    case "deepkeyAsyncVideos":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -1546,63 +1553,6 @@ function providerBaseUrl(provider: ProviderConfig): string {
     throw new Error("Provider is missing baseUrl");
   }
   return baseUrl.replace(/\/+$/, "");
-}
-
-async function normalizeImageApiResponse(
-  response: Response,
-  context: { provider: ProviderConfig; model: string; prompt: string; endpoint: string }
-): Promise<JsonValue> {
-  const text = await response.text();
-  let body: unknown = {};
-  try {
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    body = { error: text || `Upstream returned ${response.status}` };
-  }
-  const record = asRecord(body);
-  if (!response.ok) {
-    const error = asRecord(record.error);
-    return {
-      error: stringValue(error.message) ?? stringValue(record.error) ?? stringValue(record.message) ?? `Image API failed (${response.status})`,
-      statusCode: response.status,
-      endpoint: context.endpoint
-    };
-  }
-  const data = Array.isArray(record.data) ? record.data.map((entry) => normalizeImageData(asRecord(entry))).filter(Boolean) : [];
-  const normalized: Record<string, JsonValue> = {
-    data,
-    providerId: context.provider.id,
-    providerName: context.provider.name,
-    model: context.model,
-    prompt: context.prompt,
-    endpoint: context.endpoint,
-    raw: body as JsonValue
-  };
-  const created = numberValue(record.created);
-  if (created != null) {
-    normalized.created = created;
-  }
-  return normalized;
-}
-
-function normalizeImageData(entry: Record<string, unknown>): JsonValue | null {
-  const b64 = stringValue(entry.b64_json) ?? stringValue(entry.b64Json);
-  const url = stringValue(entry.url) ?? (b64 ? `data:image/png;base64,${b64}` : undefined);
-  if (!url && !b64) {
-    return null;
-  }
-  const normalized: Record<string, JsonValue> = {};
-  if (url) {
-    normalized.url = url;
-  }
-  if (b64) {
-    normalized.b64Json = b64;
-  }
-  const revisedPrompt = stringValue(entry.revised_prompt) ?? stringValue(entry.revisedPrompt);
-  if (revisedPrompt) {
-    normalized.revisedPrompt = revisedPrompt;
-  }
-  return normalized;
 }
 
 async function activateProvider(providerId: string, model?: string): Promise<ProviderActivation> {
