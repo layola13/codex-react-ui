@@ -1919,14 +1919,28 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (!result.data?.length) {
           throw new Error("Image API returned no images");
         }
+        const items = buildImageThreadItems({
+          prompt,
+          mode: command.mode,
+          sourceImages: imageAttachments,
+          result,
+          provider
+        });
         await client.rpc("thread/inject_items", {
           threadId,
-          items: buildImageThreadItems({
+          items
+        });
+        dispatch({
+          type: "threadMerged",
+          thread: null,
+          turns: buildLocalImageThreadTurns({
+            threadId,
             prompt,
             mode: command.mode,
             sourceImages: imageAttachments,
             result,
-            provider
+            provider,
+            items
           })
         });
         await loadThread(threadId);
@@ -3970,6 +3984,9 @@ function parseComposerSlashCommand(
     case "stats":
       if (images.length > 0 || mentions.length > 0) return null;
       return { type: "stats", scope: "stats" };
+    case "webdev":
+    case "web-dev":
+      return { type: "webdev", prompt: rest };
     case "goal": {
       if (images.length > 0 || mentions.length > 0) return null;
       const normalized = rest.toLowerCase();
@@ -4089,6 +4106,32 @@ function buildImageThreadItems(input: {
     });
   }
   return items;
+}
+
+function buildLocalImageThreadTurns(input: {
+  threadId: string;
+  prompt: string;
+  mode: "generate" | "edit";
+  sourceImages: ComposerImageAttachment[];
+  result: { data?: Array<{ url?: string; b64Json?: string; revisedPrompt?: string }>; model?: string; providerName?: string; prompt?: string } | null;
+  provider: ProviderConfig;
+  items: JsonValue[];
+}): ClientState["turns"] {
+  const turnId = `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return threadReadToTurns({
+    thread: {
+      id: input.threadId,
+      turns: [
+        {
+          id: turnId,
+          status: "completed",
+          startedAt: Math.floor(Date.now() / 1000),
+          completedAt: Math.floor(Date.now() / 1000),
+          items: input.items
+        }
+      ]
+    }
+  } as JsonValue).turns;
 }
 
 async function composerImageAttachmentToFile(image: ComposerImageAttachment): Promise<File> {

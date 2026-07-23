@@ -8,12 +8,18 @@ import { ProviderStore } from "../../apps/server/src/providerStore.ts";
 
 const tempDirs: string[] = [];
 const originalDataDir = process.env.CODEX_UI_DATA_DIR;
+const originalProviderEnv = process.env.CODEX_UI_PROVIDER_ENV_TEST_API_KEY;
 
 afterEach(() => {
   if (originalDataDir === undefined) {
     delete process.env.CODEX_UI_DATA_DIR;
   } else {
     process.env.CODEX_UI_DATA_DIR = originalDataDir;
+  }
+  if (originalProviderEnv === undefined) {
+    delete process.env.CODEX_UI_PROVIDER_ENV_TEST_API_KEY;
+  } else {
+    process.env.CODEX_UI_PROVIDER_ENV_TEST_API_KEY = originalProviderEnv;
   }
   while (tempDirs.length) {
     const dir = tempDirs.pop();
@@ -71,5 +77,15 @@ test("ProviderStore persists relay channels in SQLite across store instances", a
   expect(providers).toHaveLength(1);
   expect(providers[0]?.id).toBe("axon-relay");
   expect(providers[0]?.remark).toBe("persist me");
+  db.close();
+});
+
+test("ProviderStore runtimeEnv includes externally supplied provider API keys", () => {
+  process.env.CODEX_UI_PROVIDER_ENV_TEST_API_KEY = "sk-runtime-env-test";
+  const dir = tempDataDir("codex-ui-provider-env-");
+  const db = new Database(join(dir, "codex-ui.sqlite3"));
+  const store = new ProviderStore({ connection: db });
+
+  expect(store.runtimeEnv().CODEX_UI_PROVIDER_ENV_TEST_API_KEY).toBe("sk-runtime-env-test");
   db.close();
 });

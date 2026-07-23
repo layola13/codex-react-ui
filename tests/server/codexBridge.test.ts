@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createCodexRuntimeClient } from "../../apps/server/src/codexBridge.ts";
+import { runtimeEnvMissingInProcessEnv } from "../../apps/server/src/daemonCodexBridge.ts";
 
 const originalMode = process.env.CODEX_UI_APP_SERVER_MODE;
 const originalSocket = process.env.CODEX_APP_SERVER_SOCKET;
@@ -38,4 +39,32 @@ test("createCodexRuntimeClient rejects unknown runtime modes", () => {
   process.env.CODEX_UI_APP_SERVER_MODE = "private-history-only";
 
   expect(() => createCodexRuntimeClient()).toThrow(/Unsupported CODEX_UI_APP_SERVER_MODE/);
+});
+
+test("daemon runtime env refresh detection only considers provider API keys", () => {
+  expect(
+    runtimeEnvMissingInProcessEnv(
+      {
+        CODEX_UI_PROVIDER_DEEPKEY_WEBDEV_API_KEY: "sk-new",
+        IRRELEVANT_SECRET: "changed"
+      },
+      {
+        CODEX_UI_PROVIDER_DEEPKEY_WEBDEV_API_KEY: "sk-old",
+        IRRELEVANT_SECRET: "changed"
+      }
+    )
+  ).toBe(true);
+
+  expect(
+    runtimeEnvMissingInProcessEnv(
+      {
+        CODEX_UI_PROVIDER_DEEPKEY_WEBDEV_API_KEY: "sk-new",
+        IRRELEVANT_SECRET: "changed"
+      },
+      {
+        CODEX_UI_PROVIDER_DEEPKEY_WEBDEV_API_KEY: "sk-new",
+        IRRELEVANT_SECRET: "stale"
+      }
+    )
+  ).toBe(false);
 });

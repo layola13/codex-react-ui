@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, constants, accessSync, existsSync, statSync, rmSync } from "node:fs";
+import { mkdirSync, constants, accessSync, existsSync, statSync, rmSync, readFileSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
@@ -29,6 +29,8 @@ export interface CodexRuntimeClient extends EventEmitter {
 }
 
 const DEFAULT_CODEX_BIN = "/root/projects/codex/codex-rs/target/debug/codex";
+const DEFAULT_DAEMON_SOCKET_RELATIVE = path.join("app-server-control", "app-server-control.sock");
+const DAEMON_PID_FILE_RELATIVE = path.join("app-server-daemon", "app-server.pid");
 
 function canExecute(filePath: string): boolean {
   try {
@@ -199,18 +201,33 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
   }
 
   private async ensureDaemonRunning(codexBin: string): Promise<void> {
+    const runtimeEnv = this.runtimeEnv();
     if (this.hasUsableSocket()) {
+      if (this.daemonNeedsRuntimeEnvRestart(runtimeEnv)) {
+        await this.runDaemonLifecycle(codexBin, "restart", runtimeEnv);
+      }
       return;
     }
 
     const socketDir = path.dirname(this.socketPath);
     mkdirSync(socketDir, { recursive: true, mode: 0o700 });
-    const spawnArgs = ["app-server", "daemon", "start"];
+    await this.runDaemonLifecycle(codexBin, "start", runtimeEnv);
 
+    for (let i = 0; i < 40; i += 1) {
+      if (this.hasUsableSocket()) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    throw new Error(`Codex daemon socket did not become ready: ${this.socketPath}`);
+  }
+
+  private async runDaemonLifecycle(codexBin: string, command: "start" | "restart", runtimeEnv: NodeJS.ProcessEnv): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const daemonProc = spawn(codexBin, spawnArgs, {
+      const daemonProc = spawn(codexBin, ["app-server", "daemon", command], {
         cwd: process.cwd(),
-        env: { ...process.env, ...this.runtimeEnv() },
+        env: { ...process.env, ...runtimeEnv },
         stdio: ["ignore", "pipe", "pipe"]
       });
 
@@ -228,7 +245,7 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
           resolve();
         } else {
           const details = [errOutput.trim(), output.trim()].filter(Boolean).join("\n");
-          reject(new Error(`Failed to start daemon (code ${code}): ${redactSecrets(details)}`));
+          reject(new Error(`Failed to ${command} daemon (code ${code}): ${redactSecrets(details)}`));
         }
       });
 
@@ -236,15 +253,18 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
         reject(err);
       });
     });
+  }
 
-    for (let i = 0; i < 40; i += 1) {
-      if (this.hasUsableSocket()) {
-        return;
-      }
-      await new Promise((r) => setTimeout(r, 250));
+  private daemonNeedsRuntimeEnvRestart(runtimeEnv: NodeJS.ProcessEnv): boolean {
+    const required = providerRuntimeEnv(runtimeEnv);
+    if (Object.keys(required).length === 0) {
+      return false;
     }
-
-    throw new Error(`Codex daemon socket did not become ready: ${this.socketPath}`);
+    const daemonEnv = readPidManagedDaemonEnv(this.socketPath);
+    if (!daemonEnv) {
+      return false;
+    }
+    return runtimeEnvMissingInProcessEnv(required, daemonEnv);
   }
 
   private hasUsableSocket(): boolean {
@@ -437,5 +457,53 @@ export class DaemonCodexBridge extends EventEmitter implements CodexRuntimeClien
         }
       });
     });
+  }
+}
+
+export function runtimeEnvMissingInProcessEnv(required: NodeJS.ProcessEnv, current: NodeJS.ProcessEnv): boolean {
+  for (const [key, value] of Object.entries(providerRuntimeEnv(required))) {
+    if (current[key] !== value) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function providerRuntimeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const providerEnv: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith("CODEX_UI_PROVIDER_") && key.endsWith("_API_KEY") && typeof value === "string" && value.trim()) {
+      providerEnv[key] = value;
+    }
+  }
+  return providerEnv;
+}
+
+function readPidManagedDaemonEnv(socketPath: string): NodeJS.ProcessEnv | null {
+  if (process.platform !== "linux") {
+    return null;
+  }
+  const codexHome = resolveCodexHome();
+  const defaultSocket = path.join(codexHome, DEFAULT_DAEMON_SOCKET_RELATIVE);
+  if (socketPath !== defaultSocket) {
+    return null;
+  }
+  try {
+    const rawPid = readFileSync(path.join(codexHome, DAEMON_PID_FILE_RELATIVE), "utf8");
+    const pid = Number((JSON.parse(rawPid) as { pid?: unknown }).pid);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return null;
+    }
+    const rawEnv = readFileSync(`/proc/${pid}/environ`, "utf8");
+    const env: NodeJS.ProcessEnv = {};
+    for (const entry of rawEnv.split("\0")) {
+      const index = entry.indexOf("=");
+      if (index > 0) {
+        env[entry.slice(0, index)] = entry.slice(index + 1);
+      }
+    }
+    return env;
+  } catch {
+    return null;
   }
 }

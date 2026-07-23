@@ -1112,7 +1112,7 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     nativeModels: "gpt-5.6-sol,gpt-5.5",
     modelAliases: "codex=gpt-5.6-sol",
     modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.6-sol=5/0.5/5/30/1",
-    image: { generations: true, edits: true, defaultModel: "gpt-image-2" }
+    image: { generations: true, edits: true, defaultModel: "gpt-image-2-1k" }
   },
   {
     id: "gemini",

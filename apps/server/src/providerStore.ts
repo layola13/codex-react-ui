@@ -102,6 +102,11 @@ export class ProviderStore {
     for (const [id, secret] of this.memorySecrets.entries()) {
       env[envKeyForProvider(id)] = secret;
     }
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith("CODEX_UI_PROVIDER_") && key.endsWith("_API_KEY") && typeof value === "string" && value.trim()) {
+        env[key] = value;
+      }
+    }
     return env;
   }
 
