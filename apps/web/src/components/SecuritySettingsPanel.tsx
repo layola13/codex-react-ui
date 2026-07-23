@@ -60,6 +60,7 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
   const [confirmPassword, setConfirmPassword] = useState("");
   const [captchaId, setCaptchaId] = useState("");
   const [captchaSvg, setCaptchaSvg] = useState("");
+  const [captchaPrompt, setCaptchaPrompt] = useState("");
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [passwordBusy, setPasswordBusy] = useState(false);
 
@@ -157,11 +158,13 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
     try {
       const challenge = await fetchCaptcha();
       setCaptchaId(challenge.id);
-      setCaptchaSvg(challenge.svg);
+      setCaptchaSvg(challenge.svg.replace(/^\s*<\?xml[^?]*\?>\s*/i, "").trim());
+      setCaptchaPrompt(challenge.prompt ?? "");
       setCaptchaAnswer("");
     } catch (err) {
       setCaptchaId("");
       setCaptchaSvg("");
+      setCaptchaPrompt("");
       setCaptchaAnswer("");
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -338,6 +341,8 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
           />
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25} alignItems={{ sm: "stretch" }}>
             <Box
+              role="img"
+              aria-label={captchaPrompt ? t("settings.security.captchaAria", { prompt: captchaPrompt }) : t("settings.security.captchaLabel")}
               sx={{
                 minWidth: 220,
                 height: 72,
@@ -349,11 +354,14 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
                 cursor: "pointer",
                 display: "grid",
                 placeItems: "center",
+                position: "relative",
                 boxShadow: "0 0 0 1px rgba(56,189,248,0.15), 0 8px 24px rgba(2,6,23,0.35)",
                 "& svg": {
                   display: "block",
                   width: "100%",
-                  height: "100%"
+                  height: "100%",
+                  maxWidth: 220,
+                  maxHeight: 72
                 }
               }}
               onClick={() => void refreshPasswordCaptcha()}
@@ -361,11 +369,29 @@ export function SecuritySettingsPanel({ token, isAdmin, t, onSettingsSaved, onTo
             >
               {captchaSvg ? (
                 <Box sx={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: captchaSvg }} />
-              ) : (
+              ) : null}
+              {!captchaSvg && captchaPrompt ? (
+                <Typography
+                  variant="body2"
+                  sx={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "grid",
+                    placeItems: "center",
+                    color: "#f8fafc",
+                    fontWeight: 900,
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    letterSpacing: 1
+                  }}
+                >
+                  {captchaPrompt}
+                </Typography>
+              ) : null}
+              {!captchaSvg && !captchaPrompt ? (
                 <Typography variant="caption" color="rgba(226,232,240,0.72)" sx={{ fontWeight: 800 }}>
                   {t("settings.security.captchaRefresh")}
                 </Typography>
-              )}
+              ) : null}
             </Box>
             <Stack spacing={1} sx={{ flex: 1 }}>
               <TextField

@@ -1,6 +1,6 @@
 # Codex TUI 与 Web 实时双向同步改进计划
 
-> 状态：统一可恢复历史阶段已完成实施；实时双向同步（共享 Daemon 架构）待实施  
+> 状态：统一可恢复历史阶段已完成实施；共享 Daemon 传输与订阅主路径已落地（默认 `daemon`）；双端 live 验收与 code-launch proxy-only 生产形态仍在进行
 > 目标仓库：`/root/projects/codex-react-ui`  
 > 协同仓库：`/root/projects/code-launch`  
 > Codex 参考源码：`/root/projects/codex`  
@@ -893,19 +893,21 @@ CODEX_UI_APP_SERVER_MODE=stdio
 - [x] 遵守 `thread_owners` ACL 隔离模型：单用户/管理员可见 OS 用户全部规范会话；普通 Web 成员仅可见属于自身的会话。
 - [x] 类型检查 (`typecheck`)、Lint、Build、服务器单元测试与 Playwright E2E 测试全部通过。
 
-### 20.2 实时双向同步（待实施）
+### 20.2 实时双向同步（进行中：主路径已落地）
 
-- [ ] Web 与 TUI 连接同一 app-server daemon，而非两个仅共享磁盘的进程。
-- [ ] TUI turn 进行中，Web resume 后无缺口地显示 snapshot 和后续 delta。
-- [ ] Web 发起的 turn 在 TUI 中实时显示。
-- [ ] active turn 使用 steer，不创建第二个并发 turn。
+- [x] Web 与 TUI 连接同一 app-server daemon，而非两个仅共享磁盘的进程（默认 `CODEX_UI_APP_SERVER_MODE=daemon` / Unix socket；stdio 仅调试降级）。
+- [x] 服务端 `DaemonCodexBridge` + `ThreadSubscriptionRegistry`；浏览器通过既有鉴权 WS；引擎状态上报 `transport: daemon-unix` 与 `realtimeSync`。
+- [x] 活动 thread 订阅/释放与 server 单元测试覆盖（`threadSubscriptionRegistry` / `codexBridge`）。
+- [ ] TUI turn 进行中，Web resume 后无缺口地显示 snapshot 和后续 delta（端到端 soak）。
+- [ ] Web 发起的 turn 在 TUI 中实时显示（端到端 soak）。
+- [x] active turn 使用 `turn/steer` 追加输入路径已在 Web 侧接线（竞态与双端一致性仍需 soak）。
 - [ ] interrupt 和 terminal 状态两端一致。
 - [ ] pending approval 可在后加入端处理，resolved 会同步清理另一端。
-- [ ] 浏览器刷新、Web server 重启后可以恢复活动 thread。
-- [ ] 非管理员无法读取或操作未分配的 TUI thread。
-- [ ] code-launch 仅作为模型 proxy，不承担 thread truth。
+- [ ] 浏览器刷新、Web server 重启后可以恢复活动 thread（生产场景验收）。
+- [x] 非管理员无法读取或操作未分配的 TUI thread（`thread_owners` ACL 在历史与 RPC 门控中保留）。
+- [ ] code-launch 仅作为模型 proxy，不承担 thread truth（生产 proxy-only 形态）。
 - [ ] code-launch key 变更不要求重启共享 app-server。
-- [ ] 不修改 Codex rollout/SQLite 协议。
+- [x] 不修改 Codex rollout/SQLite 协议。
 
 ## 21. 明确采用的默认决策
 

@@ -1,5 +1,35 @@
 # Progress
 
+## 2026-07-23
+
+- Shared Web/TUI history completeness (no provider filter; admin unfiltered):
+  - Root cause of "missing" CLI session `019f8c99-3e99-7f50-bf39-a6f46ba88371` (`codex-ui-5.6`, preview `hi`): Codex `thread/list` defaults to current `model_provider` only. Session uses `code_launch`; Web config uses `anyrouter-gpt-5-6-sol`. Without `modelProviders: []`, list returns 6 Web/vscode threads and drops 6 CLI threads.
+  - Clarified Codex CLI: `codex resume --all` only sets `resume_show_all` (disable cwd filter); it does **not** mean all providers. Local TUI still defaults provider filter to current config provider.
+  - Front-end `loadAllThreads` (`apps/web/src/App.tsx`): always `modelProviders: []`, always `sourceKinds: ["cli","vscode","exec","appServer"]`, no parent/subagent/unknown drop filters.
+  - Server proxy (`apps/server/src/index.ts`): on every `thread/list` RPC, force `modelProviders: []` and full sourceKinds so old clients cannot reintroduce the default provider filter.
+  - `AuthStore.filterThreadsForUser`: admin never filters; **temporarily** members also get unfiltered list for shared-host acceptance. Per-thread resume/read/delete still gated by `ownsThread` for non-admin on claimed threads.
+  - `itemText` in `codexClient.ts`: prefer content-block text when top-level `text` is null so user turns render like TUI (not empty/token-like).
+  - `openExistingThread`: soft-fail resume when provider missing (`Model provider code_launch not found`), still `thread/read(includeTurns=true)`.
+  - Live verification (admin JWT over `ws://127.0.0.1:43110`):
+    - Old client params (no modelProviders): still **12** threads, target id **present** (server force).
+    - New params: **12** threads, target **present** (`codex-ui-5.6` / `hi` / `code_launch`).
+    - `thread/read` on target: **17** turns.
+  - E2E assert updated: `sourceKinds` includes automation kinds + `modelProviders: []`.
+  - Typecheck + web build green; acceptance server on **43110** with `CODEX_UI_APP_SERVER_MODE=daemon`.
+  - Artifact notes: `brain/.../codex_history_read_path.md`.
+
+- Incomplete `tasks.md` Now items + realtime-sync close-out:
+  - Fixed animated SVG captcha for login and password-change: removed inline-hostile `<?xml?>` prologue, raised contrast/text stroke, returned a `prompt` field, stripped prologues client-side, and added accessible text fallback when SVG is empty.
+  - Completed Settings subpanel i18n for Profile, Audit, and Skills (plus captcha/code-block keys) in `en.json` / `cn.json`, with English fallbacks mirrored into other locale packs.
+  - Confirmed Cherry-style Markdown code blocks already provide language header, hover toolbar, copy/download, line numbers, wrap toggle, collapse/expand, and diff tinting; wired toolbar labels through i18n.
+  - Updated `docs/web-tui-realtime-sync-plan.md` status: shared daemon transport + subscription registry are landed by default; remaining work is dual-client live soak and code-launch proxy-only production form.
+  - Updated `tasks.md` checkboxes for captcha, Settings i18n, code blocks, daemon history/sync baseline.
+  - Verification:
+    - `bun test tests/server/securityStoreCaptcha.test.ts`
+    - `bun test tests/server/threadSubscriptionRegistry.test.ts tests/server/codexBridge.test.ts`
+    - `bun run typecheck`
+    - `bun run build`
+
 ## 2026-07-22
 
 - Chat waterfall density, native slash forwarding, and diff expansion follow-up:

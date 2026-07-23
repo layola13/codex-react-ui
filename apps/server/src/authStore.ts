@@ -727,28 +727,14 @@ export class AuthStore {
   }
 
   public filterThreadsForUser(user: AuthUser, threads: unknown): unknown {
+    // Admin: never filter history list (shared host Codex sessions must all be visible).
     if (user.role === "admin") {
       return threads;
     }
-    const owned = new Set(this.listThreadIdsForUser(user.id));
-    if (!Array.isArray(threads)) {
-      const record = asRecord(threads);
-      const data = record.data;
-      if (Array.isArray(data)) {
-        return {
-          ...record,
-          data: data.filter((item) => {
-            const id = stringValue(asRecord(item).id);
-            return Boolean(id && owned.has(id));
-          })
-        };
-      }
-      return threads;
-    }
-    return threads.filter((item) => {
-      const id = stringValue(asRecord(item).id);
-      return Boolean(id && owned.has(id));
-    });
+    // TEMP: also skip member history filtering so Web/TUI shared sessions are fully visible.
+    // Resume/read/delete of another member's claimed thread is still gated by ownsThread.
+    // Restore member-owned-only filtering here when multi-tenant isolation is re-enabled.
+    return threads;
   }
 
 

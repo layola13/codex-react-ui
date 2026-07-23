@@ -1158,6 +1158,19 @@ async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: Cli
           }
         }
 
+        if (message.method === "thread/list") {
+          // Never apply Codex default provider filter for shared Web/TUI history.
+          // Empty modelProviders = all providers; explicit sourceKinds = interactive + automation.
+          const listParams = asRecord(params);
+          params = {
+            ...listParams,
+            modelProviders: [],
+            sourceKinds: Array.isArray(listParams.sourceKinds) && (listParams.sourceKinds as unknown[]).length > 0
+              ? listParams.sourceKinds
+              : ["cli", "vscode", "exec", "appServer"]
+          } as JsonValue;
+        }
+
         let result = await bridge.request(message.method, params);
 
         if (authStore && user) {

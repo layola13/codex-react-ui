@@ -2,7 +2,16 @@
 
 ## Now
 
-- [ ] Fix animated SVG captcha visibility/reload so login and password-change captcha do not render as a blank dark box.
+- [x] Unfilter Web history list so CLI/TUI sessions under other model providers (e.g. `code_launch`) appear alongside Web sessions.
+- [x] Force server-side `thread/list` to pass `modelProviders: []` and full `sourceKinds` (`cli`/`vscode`/`exec`/`appServer`) so Codex default provider filter cannot hide shared history.
+- [x] Admin history list never applies membership ownership filtering; temporarily disable member list filtering for shared host acceptance.
+- [x] Fix user-message `itemText` extraction to read content blocks when top-level `text` is null (match TUI transcript rendering).
+- [x] Soft-fail `thread/resume` when session provider is missing from config, still load transcript via `thread/read`.
+- [x] Document Codex history path: `thread/list` + `thread/read` (not `codex resume --all` CLI); `--all` only drops cwd filter, not provider filter.
+- [x] Verify admin can list thread `019f8c99-3e99-7f50-bf39-a6f46ba88371` (`codex-ui-5.6` / preview `hi` / provider `code_launch`) through UI server WS.
+- [x] Rebuild web dist + restart acceptance server on port 43110 with shared daemon mode.
+
+- [x] Fix animated SVG captcha visibility/reload so login and password-change captcha do not render as a blank dark box.
 - [x] Fold consecutive completed Bash rows behind a dashed compact group while keeping the newest Bash row visible.
 - [x] Move the long Working marquee out of the transcript and into the composer status area.
 - [x] Lower visual weight for `ctrl+o to expand` hints and non-time assistant usage metadata.
@@ -48,9 +57,12 @@
 - [x] Hide bottom assistant detailed usage rows by default behind a Settings toggle, while keeping header summaries and history-row total cost visible.
 - [x] Add a PC keyboard shortcut for Jump to latest in long virtualized transcripts.
 - [x] Fix resumed/history thread follow-up turns after refresh so `thread/resume` and `turn/start` reuse the thread's original cwd instead of the default workspace cwd.
-- [ ] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
-- [ ] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.
+- [x] Localize Settings subpanels completely with external JSON locale files (`locales/en.json`, `locales/cn.json`), including Relay, Skills, Plugins, Workspace Files, Profile, and Audit panels.
+- [x] Rebuild Markdown code-block rendering to match Cherry Studio's chat code-block behavior: language header, hover tools, copy/download, line numbers, wrap toggle, diff coloring, and collapse/expand.
+- [x] Wire code-block toolbar/expand labels through locale packs and keep Cherry-style features (header, hover tools, line numbers, wrap, collapse, diff tint).
 - [ ] Verify the above with a real browser screenshot after New Chat, workspace confirmation, typing, relay display, settings location, install affordance, sticky goal, and thinking preview.
+- [x] Enable shared Codex app-server daemon transport by default for Web/TUI live thread sharing (`daemon-unix`, `realtimeSync`), with stdio fallback for private debugging.
+- [x] Unify Web/TUI resumable history on `thread/list` + canonical store; remove host file scan engine-history routes.
 - [x] Move package management and runtime/build scripts from pnpm/concurrently/tsx/Vite/Fastify to Bun, generate `bun.lock`, and verify `bun run typecheck`, `bun run build`, real server launch, and browser screenshot.
 - [x] Remove duplicate new conversation entry points by keeping top-level New Chat, converting the task-tab new action to a compact plus button, and making Conversations a history-only list.
 - [x] Refine Settings -> Relay channel management so the default view is the Channels list, Add/Edit opens the Model Channel form separately, and rows support activate, test, edit, and delete.

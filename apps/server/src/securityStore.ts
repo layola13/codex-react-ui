@@ -167,7 +167,7 @@ export class SecurityStore {
     };
   }
 
-  public createCaptcha(): { id: string; svg: string; expiresAt: number } {
+  public createCaptcha(): { id: string; svg: string; prompt: string; expiresAt: number } {
     this.cleanupExpired();
     const a = randomInt(3, 15);
     const b = randomInt(2, 12);
@@ -175,8 +175,8 @@ export class SecurityStore {
     const id = randomBytes(16).toString("hex");
     const expiresAt = Date.now() + 5 * 60 * 1000;
     this.db.prepare(`INSERT INTO captcha_challenges (id, answer, expires_at, used) VALUES (?, ?, ?, 0)`).run(id, answer, expiresAt);
-    const text = `${a} + ${b} = ?`;
-    return { id, svg: renderCaptchaSvg(text), expiresAt };
+    const prompt = `${a} + ${b} = ?`;
+    return { id, svg: renderCaptchaSvg(prompt), prompt, expiresAt };
   }
 
   public consumeCaptcha(id: string | undefined, answer: string | undefined): boolean {
@@ -367,61 +367,54 @@ function base32Decode(input: string): Buffer {
 }
 
 function renderCaptchaSvg(text: string): string {
+  // Keep the SVG self-contained and high-contrast so inline embedding never
+  // collapses to a blank dark box (no XML prologue; solid fills, not only filters).
   const noise: string[] = [];
-  for (let i = 0; i < 8; i += 1) {
-    const x1 = randomInt(0, 220);
-    const y1 = randomInt(0, 72);
-    const x2 = randomInt(0, 220);
-    const y2 = randomInt(0, 72);
+  for (let i = 0; i < 6; i += 1) {
+    const x1 = randomInt(8, 212);
+    const y1 = randomInt(8, 64);
+    const x2 = randomInt(8, 212);
+    const y2 = randomInt(8, 64);
     noise.push(
-      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#94a3b8" stroke-opacity="0.28" stroke-width="1">` +
-        `<animate attributeName="x1" values="${x1};${x2};${x1}" dur="${2 + (i % 3)}s" repeatCount="indefinite"/>` +
-        `<animate attributeName="y2" values="${y2};${y1};${y2}" dur="${2.4 + (i % 2)}s" repeatCount="indefinite"/>` +
+      `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#64748b" stroke-opacity="0.35" stroke-width="1.2">` +
+        `<animate attributeName="x1" values="${x1};${x2};${x1}" dur="${2.2 + (i % 3)}s" repeatCount="indefinite"/>` +
+        `<animate attributeName="y2" values="${y2};${y1};${y2}" dur="${2.6 + (i % 2)}s" repeatCount="indefinite"/>` +
       `</line>`
     );
   }
-  for (let i = 0; i < 22; i += 1) {
-    const cx = randomInt(6, 214);
-    const cy = randomInt(6, 66);
-    const r = randomInt(1, 3);
-    const opacity = (0.15 + (i % 4) * 0.05).toFixed(2);
+  for (let i = 0; i < 14; i += 1) {
+    const cx = randomInt(8, 212);
+    const cy = randomInt(8, 64);
+    const r = randomInt(1, 2);
     noise.push(
-      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#38bdf8" fill-opacity="${opacity}">` +
-        `<animate attributeName="cy" values="${cy};${Math.max(4, cy - 10)};${cy}" dur="${1.6 + (i % 5) * 0.35}s" repeatCount="indefinite"/>` +
-        `<animate attributeName="opacity" values="0.25;0.7;0.25" dur="${1.2 + (i % 3) * 0.4}s" repeatCount="indefinite"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#38bdf8" fill-opacity="0.35">` +
+        `<animate attributeName="cy" values="${cy};${Math.max(6, cy - 8)};${cy}" dur="${1.8 + (i % 4) * 0.3}s" repeatCount="indefinite"/>` +
       `</circle>`
     );
   }
-  const rotate = randomInt(-10, 10);
+  const rotate = randomInt(-8, 8);
   const uid = randomBytes(3).toString("hex");
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="220" height="72" viewBox="0 0 220 72" role="img" aria-label="captcha">
+  // Intentionally omit the XML declaration: browsers often drop or black-box
+  // inline SVG that starts with `<?xml ...?>` inside HTML.
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="220" height="72" viewBox="0 0 220 72" role="img" aria-label="captcha ${escapeXml(text)}">
   <defs>
     <linearGradient id="bg${uid}" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0b1220">
-        <animate attributeName="stop-color" values="#0b1220;#111827;#0b1220" dur="4s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="100%" stop-color="#1e293b">
-        <animate attributeName="stop-color" values="#1e293b;#0f766e;#1e293b" dur="5s" repeatCount="indefinite"/>
-      </stop>
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
     </linearGradient>
-    <filter id="glow${uid}">
-      <feGaussianBlur stdDeviation="1.2" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
   </defs>
-  <rect width="220" height="72" rx="14" fill="url(#bg${uid})"/>
-  <rect x="2" y="2" width="216" height="68" rx="12" fill="none" stroke="#38bdf8" stroke-opacity="0.35" stroke-width="1.5">
-    <animate attributeName="stroke-opacity" values="0.25;0.8;0.25" dur="2.2s" repeatCount="indefinite"/>
+  <rect width="220" height="72" rx="12" fill="url(#bg${uid})"/>
+  <rect width="220" height="72" rx="12" fill="#0f172a" fill-opacity="0.15"/>
+  <rect x="2" y="2" width="216" height="68" rx="10" fill="none" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.35;0.85;0.35" dur="2.4s" repeatCount="indefinite"/>
   </rect>
   ${noise.join("")}
-  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="26" font-weight="900"
-    fill="#f8fafc" stroke="#020617" stroke-width="0.7" paint-order="stroke fill" filter="url(#glow${uid})" transform="rotate(${rotate} 110 36)" letter-spacing="2">
-    <animate attributeName="opacity" values="0.85;1;0.85" dur="1.5s" repeatCount="indefinite"/>
+  <text x="110" y="46" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="28" font-weight="800"
+    fill="#f8fafc" stroke="#020617" stroke-width="1.1" paint-order="stroke fill" transform="rotate(${rotate} 110 36)" letter-spacing="1.5">
     ${escapeXml(text)}
   </text>
-  <text x="110" y="44" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace" font-size="26" font-weight="900"
-    fill="#38bdf8" fill-opacity="0.22" transform="rotate(${rotate + 2} 112 38)" letter-spacing="2">${escapeXml(text)}</text>
+  <text x="112" y="48" text-anchor="middle" dominant-baseline="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="28" font-weight="800"
+    fill="#38bdf8" fill-opacity="0.18" transform="rotate(${rotate + 2} 112 38)" letter-spacing="1.5">${escapeXml(text)}</text>
 </svg>`;
 }
 

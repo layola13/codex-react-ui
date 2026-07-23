@@ -992,24 +992,24 @@ export function applyNotification(state: ClientState, notification: JsonRpcNotif
     }
     const entry: ThreadEntry = {
       id,
-      sessionId: stringValue(thread.sessionId),
-      title: stringValue(thread.name) ?? stringValue(thread.title) ?? stringValue(thread.threadName),
-      name: stringValue(thread.name) ?? stringValue(thread.threadName),
+      sessionId: stringValue(thread.sessionId) ?? stringValue(thread.session_id),
+      title: stringValue(thread.name) ?? stringValue(thread.title) ?? stringValue(thread.threadName) ?? stringValue(thread.thread_name),
+      name: stringValue(thread.name) ?? stringValue(thread.threadName) ?? stringValue(thread.thread_name),
       preview: stringValue(thread.preview),
       model: stringValue(thread.model),
-      modelProvider: stringValue(thread.modelProvider),
-      parentThreadId: stringValue(thread.parentThreadId),
-      forkedFromId: stringValue(thread.forkedFromId),
-      agentNickname: stringValue(thread.agentNickname),
-      agentRole: stringValue(thread.agentRole),
-      createdAt: numberValue(thread.createdAt),
-      updatedAt: numberValue(thread.updatedAt),
-      recencyAt: numberValue(thread.recencyAt),
+      modelProvider: stringValue(thread.modelProvider) ?? stringValue(thread.model_provider),
+      parentThreadId: stringValue(thread.parentThreadId) ?? stringValue(thread.parent_thread_id),
+      forkedFromId: stringValue(thread.forkedFromId) ?? stringValue(thread.forked_from_id),
+      agentNickname: stringValue(thread.agentNickname) ?? stringValue(thread.agent_nickname),
+      agentRole: stringValue(thread.agentRole) ?? stringValue(thread.agent_role),
+      createdAt: numberValue(thread.createdAt) ?? numberValue(thread.created_at),
+      updatedAt: numberValue(thread.updatedAt) ?? numberValue(thread.updated_at),
+      recencyAt: numberValue(thread.recencyAt) ?? numberValue(thread.recency_at),
       status: stringValue(thread.status),
       cwd: stringValue(thread.cwd),
-      source: sourceLabel(thread.source),
-      threadSource: sourceLabel(thread.threadSource),
-      path: stringValue(thread.path)
+      source: sourceLabel(thread.source ?? thread.thread_source),
+      threadSource: sourceLabel(thread.threadSource ?? thread.thread_source),
+      path: stringValue(thread.path) ?? stringValue(thread.file_path)
     };
     return {
       ...state,
@@ -1606,27 +1606,27 @@ function joinPath(parentPath: string, name: string): string {
 }
 
 function threadToEntry(thread: Record<string, unknown>): ThreadEntry {
-  const name = stringValue(thread.name) ?? stringValue(thread.threadName);
+  const name = stringValue(thread.name) ?? stringValue(thread.threadName) ?? stringValue(thread.thread_name);
   return {
     id: String(thread.id ?? ""),
-    sessionId: stringValue(thread.sessionId),
-    title: name ?? stringValue(thread.title),
+    sessionId: stringValue(thread.sessionId) ?? stringValue(thread.session_id),
+    title: name ?? stringValue(thread.title) ?? stringValue(thread.thread_name),
     name,
     preview: stringValue(thread.preview) ?? name,
     model: stringValue(thread.model),
-    modelProvider: stringValue(thread.modelProvider),
-    parentThreadId: stringValue(thread.parentThreadId),
-    forkedFromId: stringValue(thread.forkedFromId),
-    agentNickname: stringValue(thread.agentNickname),
-    agentRole: stringValue(thread.agentRole),
-    createdAt: numberValue(thread.createdAt),
-    updatedAt: numberValue(thread.updatedAt),
-    recencyAt: numberValue(thread.recencyAt),
+    modelProvider: stringValue(thread.modelProvider) ?? stringValue(thread.model_provider),
+    parentThreadId: stringValue(thread.parentThreadId) ?? stringValue(thread.parent_thread_id),
+    forkedFromId: stringValue(thread.forkedFromId) ?? stringValue(thread.forked_from_id),
+    agentNickname: stringValue(thread.agentNickname) ?? stringValue(thread.agent_nickname),
+    agentRole: stringValue(thread.agentRole) ?? stringValue(thread.agent_role),
+    createdAt: numberValue(thread.createdAt) ?? numberValue(thread.created_at),
+    updatedAt: numberValue(thread.updatedAt) ?? numberValue(thread.updated_at),
+    recencyAt: numberValue(thread.recencyAt) ?? numberValue(thread.recency_at),
     status: stringValue(thread.status),
     cwd: stringValue(thread.cwd),
-    source: sourceLabel(thread.source),
-    threadSource: sourceLabel(thread.threadSource),
-    path: stringValue(thread.path)
+    source: sourceLabel(thread.source ?? thread.thread_source),
+    threadSource: sourceLabel(thread.threadSource ?? thread.thread_source),
+    path: stringValue(thread.path) ?? stringValue(thread.file_path)
   };
 }
 
@@ -1719,6 +1719,37 @@ function itemText(item: Record<string, unknown>): string {
       return summarizeJsonValue(item.arguments);
     }
   }
+  if (Array.isArray(item.content)) {
+    const fromContent = item.content
+      .map((entry) => {
+        const block = asRecord(entry);
+        const blockType = stringValue(block.type);
+        if (
+          blockType === "text" ||
+          blockType === "input_text" ||
+          blockType === "output_text" ||
+          blockType === "inputText" ||
+          blockType === "outputText"
+        ) {
+          return stringValue(block.text) ?? "";
+        }
+        if (blockType === "localImage") {
+          return "[image]";
+        }
+        if (blockType === "image") {
+          return "[image]";
+        }
+        if (blockType === "skill" || blockType === "mention") {
+          return `@${stringValue(block.name) ?? "mention"}`;
+        }
+        return stringValue(block.text) ?? "";
+      })
+      .filter(Boolean)
+      .join("\n");
+    if (fromContent) {
+      return fromContent;
+    }
+  }
   if (typeof item.text === "string") {
     return item.text;
   }
@@ -1743,27 +1774,6 @@ function itemText(item: Record<string, unknown>): string {
   }
   if (typeof item.aggregatedOutput === "string") {
     return item.aggregatedOutput;
-  }
-  if (Array.isArray(item.content)) {
-    return item.content
-      .map((entry) => {
-        const block = asRecord(entry);
-        if (block.type === "text") {
-          return stringValue(block.text) ?? "";
-        }
-        if (block.type === "localImage") {
-          return "[image]";
-        }
-        if (block.type === "image") {
-          return "[image]";
-        }
-        if (block.type === "skill" || block.type === "mention") {
-          return `@${stringValue(block.name) ?? "mention"}`;
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n");
   }
   return "";
 }

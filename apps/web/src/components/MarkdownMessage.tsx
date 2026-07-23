@@ -7,6 +7,7 @@ import UnfoldMoreIcon from "@mui/icons-material/UnfoldMore";
 import WrapTextIcon from "@mui/icons-material/WrapText";
 import { marked } from "marked";
 import type { Token } from "marked";
+import { useI18n } from "../i18n";
 
 type Props = {
   text: string;
@@ -141,6 +142,7 @@ function renderInline(tokens: Token[], mode: "light" | "dark"): ReactNode[] {
 
 function CodeBlock({ code, language, mode }: { code: string; language: string; mode: "light" | "dark" }) {
   const theme = useTheme();
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [wrapped, setWrapped] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -227,24 +229,24 @@ function CodeBlock({ code, language, mode }: { code: string; language: string; m
             }
           }}
         >
-          <Tooltip title={copied ? "Copied" : "Copy code"}>
-            <IconButton size="small" aria-label="Copy code" onClick={() => void copyCode()}>
+          <Tooltip title={copied ? t("codeBlock.copied") : t("codeBlock.copy")}>
+            <IconButton size="small" aria-label={t("codeBlock.copy")} onClick={() => void copyCode()}>
               <ContentCopyIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Download code">
-            <IconButton size="small" aria-label="Download code" onClick={downloadCode}>
+          <Tooltip title={t("codeBlock.download")}>
+            <IconButton size="small" aria-label={t("codeBlock.download")} onClick={downloadCode}>
               <DownloadIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
-          <Tooltip title={wrapped ? "Disable wrap" : "Enable wrap"}>
-            <IconButton size="small" aria-label={wrapped ? "Disable wrap" : "Enable wrap"} color={wrapped ? "primary" : "default"} onClick={() => setWrapped((current) => !current)}>
+          <Tooltip title={wrapped ? t("codeBlock.wrapOff") : t("codeBlock.wrapOn")}>
+            <IconButton size="small" aria-label={wrapped ? t("codeBlock.wrapOff") : t("codeBlock.wrapOn")} color={wrapped ? "primary" : "default"} onClick={() => setWrapped((current) => !current)}>
               <WrapTextIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
           {collapsible && (
-            <Tooltip title={expanded ? "Collapse code" : "Expand code"}>
-              <IconButton size="small" aria-label={expanded ? "Collapse code" : "Expand code"} onClick={() => setExpanded((current) => !current)}>
+            <Tooltip title={expanded ? t("codeBlock.collapse") : t("codeBlock.expandCode")}>
+              <IconButton size="small" aria-label={expanded ? t("codeBlock.collapse") : t("codeBlock.expandCode")} onClick={() => setExpanded((current) => !current)}>
                 {expanded ? <UnfoldLessIcon sx={{ fontSize: 16 }} /> : <UnfoldMoreIcon sx={{ fontSize: 16 }} />}
               </IconButton>
             </Tooltip>
@@ -318,7 +320,7 @@ function CodeBlock({ code, language, mode }: { code: string; language: string; m
           }}
         >
           <Button size="small" variant="contained" onClick={() => setExpanded(true)} sx={{ pointerEvents: "auto", minHeight: 28 }}>
-            Expand
+            {t("codeBlock.expand")}
           </Button>
         </Box>
       )}

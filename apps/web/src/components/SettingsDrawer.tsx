@@ -907,6 +907,7 @@ export function SettingsDrawer({
                   tooling={tooling}
                   extraRoots={skillExtraRoots}
                   previews={skillPreviews}
+                  t={t}
                   onToggleSkill={onToggleSkill}
                   onSaveExtraRoots={onSaveSkillExtraRoots}
                   onReadPreview={onReadSkillPreview}
@@ -987,8 +988,8 @@ export function SettingsDrawer({
               <SettingsSection icon={<SecurityIcon fontSize="small" />} title={t("settings.section.privacy")} subtitle={t("settings.privacy.subtitle")}>
                 <Box sx={{ p: 1.5, borderBottom: "1px solid", borderColor: "divider" }}>
                   <Stack spacing={1.25}>
-                    <ProfileSettingsPanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} />
-                    <AuditSettingsPanel events={auditEvents} onReload={onReloadAuditEvents} />
+                    <ProfileSettingsPanel providerCount={providers.length} onExportProfile={onExportProfile} onImportProfile={onImportProfile} t={t} />
+                    <AuditSettingsPanel events={auditEvents} onReload={onReloadAuditEvents} t={t} />
                   </Stack>
                 </Box>
                 <SettingRow title={t("settings.privacy.providerKeyHandling")} description={t("settings.privacy.providerKeyHandlingDescription")}>
@@ -3836,11 +3837,13 @@ function SettingsSection({
 function ProfileSettingsPanel({
   providerCount,
   onExportProfile,
-  onImportProfile
+  onImportProfile,
+  t
 }: {
   providerCount: number;
   onExportProfile: () => Promise<void>;
   onImportProfile: (file: File) => Promise<number>;
+  t: TranslateFn;
 }) {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
@@ -3850,12 +3853,12 @@ function ProfileSettingsPanel({
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
         <DownloadIcon fontSize="small" />
         <Typography variant="subtitle2" sx={{ fontWeight: 800, flex: 1 }}>
-          UI profile
+          {t("settings.profile.title")}
         </Typography>
-        <Chip size="small" label={`${providerCount} providers`} />
+        <Chip size="small" label={t("settings.profile.providerCount", { count: providerCount })} />
       </Stack>
       <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-        Export and import provider metadata without API keys.
+        {t("settings.profile.subtitle")}
       </Typography>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
         <Button
@@ -3868,20 +3871,20 @@ function ProfileSettingsPanel({
             setStatus("");
             try {
               await onExportProfile();
-              setStatus("Profile exported.");
+              setStatus(t("settings.profile.exported"));
             } catch {
-              setStatus("Profile export failed.");
+              setStatus(t("settings.profile.exportFailed"));
             } finally {
               setBusy(false);
             }
           }}
         >
-          Export profile
+          {t("settings.profile.export")}
         </Button>
         <Button size="small" variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={busy}>
-          Import profile
+          {t("settings.profile.import")}
           <input
-            aria-label="Import profile file"
+            aria-label={t("settings.profile.import")}
             type="file"
             accept="application/json,.json"
             hidden
@@ -3896,9 +3899,9 @@ function ProfileSettingsPanel({
                 setStatus("");
                 try {
                   const count = await onImportProfile(file);
-                  setStatus(`Imported ${count} providers.`);
+                  setStatus(t("settings.profile.importedCount", { count }));
                 } catch {
-                  setStatus("Profile import failed.");
+                  setStatus(t("settings.profile.importFailed"));
                 } finally {
                   setBusy(false);
                 }
@@ -3918,10 +3921,12 @@ function ProfileSettingsPanel({
 
 function AuditSettingsPanel({
   events,
-  onReload
+  onReload,
+  t
 }: {
   events: DangerousPermissionAuditEvent[];
   onReload: () => Promise<void>;
+  t: TranslateFn;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -3930,7 +3935,7 @@ function AuditSettingsPanel({
       <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
         <SecurityIcon fontSize="small" color={events.length ? "warning" : "inherit"} />
         <Typography variant="subtitle2" sx={{ fontWeight: 800, flex: 1 }}>
-          Dangerous permission audit
+          {t("settings.audit.title")}
         </Typography>
         <Chip size="small" label={events.length} color={events.length ? "warning" : "default"} />
         <Button
@@ -3946,10 +3951,10 @@ function AuditSettingsPanel({
             }
           }}
         >
-          Refresh
+          {t("history.refresh")}
         </Button>
       </Stack>
-      {events.length === 0 && <Typography color="text.secondary">No dangerous permission sessions recorded.</Typography>}
+      {events.length === 0 && <Typography color="text.secondary">{t("settings.audit.empty")}</Typography>}
       <Stack spacing={1}>
         {events.slice(0, 5).map((event) => (
           <Box key={event.id} sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
@@ -3981,6 +3986,7 @@ function SkillsSettingsPanel({
   tooling,
   extraRoots,
   previews,
+  t,
   onToggleSkill,
   onSaveExtraRoots,
   onReadPreview
@@ -3988,6 +3994,7 @@ function SkillsSettingsPanel({
   tooling: ToolingState;
   extraRoots: string[];
   previews: Record<string, string>;
+  t: TranslateFn;
   onToggleSkill: (skill: SkillEntry, enabled: boolean) => void;
   onSaveExtraRoots: (roots: string[]) => void;
   onReadPreview: (skill: SkillEntry) => void;
@@ -4002,10 +4009,10 @@ function SkillsSettingsPanel({
     <Stack spacing={1.25} sx={{ p: 1.5 }}>
       <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-          Skill roots
+          {t("settings.skills.title")}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Add one extra root per line. Saving writes through `skills/extraRoots/set` and reloads the live inventory.
+          {t("settings.skills.subtitle")}
         </Typography>
         <TextField
           sx={{ mt: 1 }}
@@ -4013,21 +4020,21 @@ function SkillsSettingsPanel({
           fullWidth
           multiline
           minRows={3}
-          label="Extra roots"
+          label={t("settings.skills.extraRoots")}
           value={extraRootsText}
           onChange={(event) => setExtraRootsText(event.target.value)}
         />
         <Stack direction="row" spacing={1} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
           <Button size="small" variant="contained" startIcon={<SaveIcon />} onClick={() => onSaveExtraRoots(parseLines(extraRootsText))}>
-            Save roots
+            {t("settings.skills.saveRoots")}
           </Button>
-          <Chip size="small" label={`${extraRoots.length} saved`} />
+          <Chip size="small" label={t("settings.skills.savedCount", { count: extraRoots.length })} />
         </Stack>
       </Paper>
 
       {tooling.skillGroups.length === 0 && (
         <Typography color="text.secondary" sx={{ p: 1.5, border: "1px dashed", borderColor: "divider", borderRadius: 1 }}>
-          No skills discovered by the local Codex engine.
+          {t("settings.skills.empty")}
         </Typography>
       )}
 
@@ -4066,7 +4073,7 @@ function SkillsSettingsPanel({
                     <FormControlLabel
                       sx={{ mr: 0 }}
                       control={<Switch size="small" checked={skill.enabled} onChange={(event) => onToggleSkill(skill, event.target.checked)} />}
-                      label={skill.enabled ? "Enabled" : "Disabled"}
+                      label={skill.enabled ? t("settings.skills.enabled") : t("settings.skills.disabled")}
                     />
                   </Stack>
                 </Stack>
@@ -4076,7 +4083,7 @@ function SkillsSettingsPanel({
                       {skill.path}
                     </Typography>
                     <Button size="small" onClick={() => onReadPreview(skill)} sx={{ alignSelf: "flex-start" }}>
-                      Preview markdown
+                      {t("settings.skills.previewMarkdown")}
                     </Button>
                     {previews[skill.path] && (
                       <Typography component="pre" sx={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere", m: 0, maxHeight: 240, overflow: "auto" }}>

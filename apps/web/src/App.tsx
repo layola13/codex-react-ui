@@ -99,6 +99,7 @@ import {
   type TerminalSession
 } from "./state/codexClient";
 import { HistorySidebar, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
+import { extractThreadIdSearch, filterHistoryThreads } from "./historySearch";
 import {
   ChatPanel,
   type GoalBannerState,
@@ -726,9 +727,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         const trimmedSearch = searchTerm.trim();
         const cachedThreads = allHistoryThreadsRef.current;
         const incAuto = includeAutomationHistoryRef.current;
-        const [allThreads, searchedThreads] = await Promise.all([
+        const directThreadId = extractThreadIdSearch(trimmedSearch);
+        const [allThreads, searchedThreads, directThread] = await Promise.all([
           cachedThreads.length > 0 && trimmedSearch ? Promise.resolve(cachedThreads) : loadAllThreads(client, { includeAutomationHistory: incAuto }),
-          trimmedSearch ? loadAllThreads(client, { searchTerm: trimmedSearch, includeAutomationHistory: incAuto }) : Promise.resolve<ClientState["threads"]>([])
+          trimmedSearch ? loadAllThreads(client, { searchTerm: trimmedSearch, includeAutomationHistory: incAuto }) : Promise.resolve<ClientState["threads"]>([]),
+          directThreadId ? loadHistoryThreadById(client, directThreadId) : Promise.resolve<ClientState["threads"][number] | null>(null)
         ]);
         if (requestId !== historyLoadRequestRef.current) return;
         if (!trimmedSearch) {
@@ -736,8 +739,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           dispatch({ type: "threads", threads: allThreads });
           return;
         }
-        allHistoryThreadsRef.current = allThreads;
-        dispatch({ type: "threads", threads: mergeThreadLists(searchedThreads, filterHistoryThreads(allThreads, trimmedSearch)) });
+        const directThreads = directThread ? [directThread] : [];
+        allHistoryThreadsRef.current = mergeThreadLists(allThreads, directThreads);
+        dispatch({ type: "threads", threads: mergeThreadLists(directThreads, searchedThreads, filterHistoryThreads(allThreads, trimmedSearch)) });
       } finally {
         if (requestId === historyLoadRequestRef.current) setHistoryLoading(false);
       }
@@ -1334,7 +1338,14 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         }
         await client.rpc("thread/resume", resumeParams);
       } catch (error) {
-        dispatch({ type: "error", message: errorMessage("Resume thread", error) });
+        // Historical CLI sessions may use a provider no longer present in config (e.g. code_launch).
+        // Still load the transcript via thread/read so shared history remains readable.
+        const message = errorMessage("Resume thread", error);
+        if (!/model provider|not found/i.test(message)) {
+          dispatch({ type: "error", message });
+        } else {
+          console.warn(message);
+        }
       } finally {
         await loadThread(threadId);
       }
@@ -4300,27 +4311,27 @@ function normalizeThreads(value: unknown[]): ClientState["threads"] {
   return value
     .map((entry) => asRecord(entry))
     .map((entry) => {
-      const name = stringValue(entry.name) ?? stringValue(entry.threadName);
+      const name = stringValue(entry.name) ?? stringValue(entry.threadName) ?? stringValue(entry.thread_name);
       const title = name ?? stringValue(entry.title);
       return {
         id: String(entry.id ?? ""),
-        sessionId: stringValue(entry.sessionId),
+        sessionId: stringValue(entry.sessionId) ?? stringValue(entry.session_id),
         title,
         name,
         preview: stringValue(entry.preview),
         model: stringValue(entry.model),
-        modelProvider: stringValue(entry.modelProvider),
-        parentThreadId: stringValue(entry.parentThreadId),
-        forkedFromId: stringValue(entry.forkedFromId),
-        agentNickname: stringValue(entry.agentNickname),
-        agentRole: stringValue(entry.agentRole),
-        createdAt: numberValue(entry.createdAt),
-        updatedAt: numberValue(entry.updatedAt),
-        recencyAt: numberValue(entry.recencyAt),
+        modelProvider: stringValue(entry.modelProvider) ?? stringValue(entry.model_provider),
+        parentThreadId: stringValue(entry.parentThreadId) ?? stringValue(entry.parent_thread_id),
+        forkedFromId: stringValue(entry.forkedFromId) ?? stringValue(entry.forked_from_id),
+        agentNickname: stringValue(entry.agentNickname) ?? stringValue(entry.agent_nickname),
+        agentRole: stringValue(entry.agentRole) ?? stringValue(entry.agent_role),
+        createdAt: numberValue(entry.createdAt) ?? numberValue(entry.created_at),
+        updatedAt: numberValue(entry.updatedAt) ?? numberValue(entry.updated_at),
+        recencyAt: numberValue(entry.recencyAt) ?? numberValue(entry.recency_at),
         status: stringValue(entry.status),
         cwd: stringValue(entry.cwd),
         source: normalizeThreadSource(entry.source),
-        threadSource: normalizeThreadSource(entry.threadSource),
+        threadSource: normalizeThreadSource(entry.threadSource ?? entry.thread_source),
         path: stringValue(entry.path)
       };
     })
@@ -4661,6 +4672,7 @@ function LoginScreen({
   const [username, setUsername] = useState("");
   const [captchaId, setCaptchaId] = useState("");
   const [captchaSvg, setCaptchaSvg] = useState("");
+  const [captchaPrompt, setCaptchaPrompt] = useState("");
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [pendingToken, setPendingToken] = useState("");
@@ -4675,11 +4687,14 @@ function LoginScreen({
     try {
       const challenge = await fetchCaptcha();
       setCaptchaId(challenge.id);
-      setCaptchaSvg(challenge.svg);
+      // Strip accidental XML prologues so inline SVG never renders as a black box.
+      setCaptchaSvg(challenge.svg.replace(/^\s*<\?xml[^?]*\?>\s*/i, "").trim());
+      setCaptchaPrompt(challenge.prompt ?? "");
       setCaptchaAnswer("");
     } catch {
       setCaptchaId("");
       setCaptchaSvg("");
+      setCaptchaPrompt("");
       setCaptchaAnswer("");
     }
   }, []);
@@ -4826,6 +4841,10 @@ function LoginScreen({
                 <Stack spacing={1}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Box
+                      role="img"
+                      aria-label={captchaPrompt ? t("auth.captchaAria", { prompt: captchaPrompt }) : t("auth.captcha")}
+                      onClick={() => void refreshCaptcha()}
+                      title={t("auth.refreshCaptcha")}
                       sx={{
                         flex: 1,
                         height: 72,
@@ -4835,22 +4854,44 @@ function LoginScreen({
                         border: "1px solid",
                         borderColor: "divider",
                         bgcolor: "#0f172a",
+                        cursor: "pointer",
                         display: "grid",
                         placeItems: "center",
+                        position: "relative",
                         "& svg": {
                           display: "block",
                           width: "100%",
-                          height: "100%"
+                          height: "100%",
+                          maxWidth: 220,
+                          maxHeight: 72
                         }
                       }}
                     >
                       {captchaSvg ? (
                         <Box sx={{ width: "100%", height: "100%" }} dangerouslySetInnerHTML={{ __html: captchaSvg }} />
-                      ) : (
+                      ) : null}
+                      {!captchaSvg && captchaPrompt ? (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            position: "absolute",
+                            inset: 0,
+                            display: "grid",
+                            placeItems: "center",
+                            color: "#f8fafc",
+                            fontWeight: 900,
+                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                            letterSpacing: 1
+                          }}
+                        >
+                          {captchaPrompt}
+                        </Typography>
+                      ) : null}
+                      {!captchaSvg && !captchaPrompt ? (
                         <Typography variant="caption" color="rgba(226,232,240,0.72)" sx={{ fontWeight: 800 }}>
                           {t("auth.refreshCaptcha")}
                         </Typography>
-                      )}
+                      ) : null}
                     </Box>
                     <Button size="small" variant="outlined" onClick={() => void refreshCaptcha()} sx={{ borderRadius: 999, minWidth: 72 }}>
                       {t("auth.refreshCaptcha")}
@@ -4915,15 +4956,30 @@ function encodeBase64Text(value: string): string {
   return window.btoa(binary);
 }
 
+async function loadHistoryThreadById(client: CodexSocketClient, threadId: string): Promise<ClientState["threads"][number] | null> {
+  try {
+    const response = await client.rpc("thread/read", { threadId, includeTurns: false });
+    const record = asRecord(response);
+    const thread = asRecord(record.thread ?? record.data ?? record);
+    const normalized = normalizeThreads([{ ...thread, id: stringValue(thread.id) ?? threadId }]);
+    return normalized[0] ?? null;
+  } catch (error) {
+    console.warn("[history] direct thread id search failed", threadId, error);
+    return null;
+  }
+}
+
 async function loadAllThreads(
   client: CodexSocketClient,
   options: { searchTerm?: string; includeAutomationHistory?: boolean } = {}
 ): Promise<ClientState["threads"]> {
   const threads: ClientState["threads"] = [];
   const searchTerm = options.searchTerm?.trim();
-  const sourceKinds: ("cli" | "vscode" | "exec" | "appServer")[] = options.includeAutomationHistory
-    ? ["cli", "vscode", "exec", "appServer"]
-    : ["cli", "vscode"];
+  // Always list every interactive + automation source. Codex treats omitted/empty
+  // sourceKinds as interactive-only, so name them explicitly. includeAutomationHistory
+  // is kept for UI compatibility but no longer reduces sources.
+  const sourceKinds: ("cli" | "vscode" | "exec" | "appServer")[] = ["cli", "vscode", "exec", "appServer"];
+  void options.includeAutomationHistory;
   for (const archived of [false, true]) {
     let cursor: string | null = null;
     for (let guard = 0; guard < 32; guard += 1) {
@@ -4932,6 +4988,9 @@ async function loadAllThreads(
         limit: 200,
         archived,
         sourceKinds,
+        // Empty modelProviders means ALL providers. Codex defaults to current
+        // model_provider only, which would hide CLI/TUI sessions (e.g. code_launch).
+        modelProviders: [],
         useStateDbOnly: false,
         sortKey: "recency_at",
         sortDirection: "desc"
@@ -4947,10 +5006,7 @@ async function loadAllThreads(
           ? normalizeThreads(record.threads)
           : [];
       for (const thread of batch) {
-        const src = (thread.source || thread.threadSource || "").toLowerCase();
-        if (thread.parentThreadId || src.includes("subagent") || src === "unknown") {
-          continue;
-        }
+        // No source/parent filtering: show every thread returned by app-server.
         if (!threads.some((entry) => entry.id === thread.id)) {
           threads.push(thread);
         }
@@ -4963,27 +5019,6 @@ async function loadAllThreads(
     }
   }
   return threads.sort((a, b) => (b.recencyAt ?? b.updatedAt ?? b.createdAt ?? 0) - (a.recencyAt ?? a.updatedAt ?? a.createdAt ?? 0));
-}
-
-function filterHistoryThreads(threads: ClientState["threads"], searchTerm: string): ClientState["threads"] {
-  const needle = searchTerm.trim().toLowerCase();
-  if (!needle) {
-    return threads;
-  }
-  return threads.filter((thread) =>
-    [
-      displayThreadTitle(thread),
-      thread.preview,
-      thread.cwd,
-      thread.modelProvider,
-      thread.source,
-      thread.threadSource,
-      thread.model,
-      thread.id
-    ]
-      .filter((value): value is string => typeof value === "string" && value.length > 0)
-      .some((value) => value.toLowerCase().includes(needle))
-  );
 }
 
 function mergeThreadLists(...lists: ClientState["threads"][]): ClientState["threads"] {

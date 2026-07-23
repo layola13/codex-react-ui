@@ -1695,7 +1695,8 @@ test("uses thread/list for unified history and never requests /api/engine-histor
 
   expect(engineHistoryRequests).toBe(0);
   expect(threadListCalls.length).toBeGreaterThan(0);
-  expect(threadListCalls[0]?.params?.sourceKinds).toEqual(["cli", "vscode"]);
+  expect(threadListCalls[0]?.params?.sourceKinds).toEqual(["cli", "vscode", "exec", "appServer"]);
+  expect((threadListCalls[0]?.params as { modelProviders?: string[] } | undefined)?.modelProviders).toEqual([]);
 });
 
 test("searches Codex history by app-server metadata and resumes selected rows", async ({ page }) => {
@@ -1712,6 +1713,18 @@ test("searches Codex history by app-server metadata and resumes selected rows", 
   });
   await expect(page.getByRole("button", { name: "Open history Session Index Title" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Open history Mock thread" })).toHaveCount(0);
+
+  await page
+    .getByLabel("Search history")
+    .first()
+    .fill("Session renamed to codex-ui-5.6. To resume this session run codex resume, then select codex-ui-5.6 (019c2d47-4935-7423-a190-05691f566092)");
+  await page.waitForFunction(() => {
+    const messages = (window as unknown as { __codexUiOutbound?: Array<{ method?: string; params?: { threadId?: string } }> }).__codexUiOutbound ?? [];
+    return messages.some(
+      (message) => message.method === "thread/read" && message.params?.threadId === "019c2d47-4935-7423-a190-05691f566092"
+    );
+  });
+  await expect(page.getByRole("button", { name: "Open history Session Index Title" }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Open history Session Index Title" }).first().click();
   await page.waitForFunction(() => {

@@ -114,6 +114,8 @@ export interface PublicAuthConfig {
 export interface CaptchaChallenge {
   id: string;
   svg: string;
+  /** Human-readable challenge text (e.g. "7 + 3 = ?") for accessibility fallbacks. */
+  prompt?: string;
   expiresAt: number;
 }
 
