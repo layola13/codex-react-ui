@@ -1906,6 +1906,34 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
           }
         });
       }
+      if (index === 276) {
+        emit({
+          type: "codex.notification",
+          message: {
+            method: "item/completed",
+            params: {
+              threadId: "thread-1",
+              turnId,
+              item: {
+                type: "mcpToolCall",
+                id: "long-edit-tool-276",
+                tool: "Edit",
+                status: "completed",
+                arguments: {
+                  path: "apps/web/tool-edit-276.ts",
+                  old_string: "old tool edit line",
+                  new_string: "tool edit diff marker 276"
+                },
+                result: {
+                  structuredContent: {
+                    status: "completed"
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
       if (index % 25 === 0) {
         const commandText =
           index === 300
@@ -1959,7 +1987,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   });
 
   const waterfall = page.getByTestId("conversation-waterfall");
-  await expect(waterfall).toHaveAttribute("data-row-count", "656");
+  await expect(waterfall).toHaveAttribute("data-row-count", "657");
   await page.waitForTimeout(120);
   const mountedRows = await waterfall.locator('[data-testid^="conversation-item-"]').count();
   expect(mountedRows).toBeGreaterThan(0);
@@ -1976,11 +2004,11 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
 
   await openTranscriptSearch(page);
   await page.getByLabel("Search transcript").fill("Long assistant answer 319");
-  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
   await expect(page.getByTestId("conversation-item-long-agent-319").getByText("Long assistant answer 319")).toBeVisible();
   await setTranscriptSearchScope(page, "Commands");
   await page.getByLabel("Search transcript").fill("stdout line 300");
-  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
   const longCommandRow = page.getByTestId("conversation-item-long-command-300");
   await expect(longCommandRow.getByText("Bash")).toBeVisible();
   await expect(longCommandRow.getByText("(bun test)")).toBeVisible();
@@ -1992,7 +2020,7 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await expect(longCommandRow.getByTestId("command-output")).toHaveCount(0);
   await longCommandRow.getByRole("button", { name: "ctrl+o to expand" }).click();
   await page.getByLabel("Search transcript").fill("folded bash output 1");
-  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
   const commandGroupRow = page.locator('[data-testid^="conversation-item-command-group-"]').first();
   await expect(commandGroupRow.getByText(/old Bash command/)).toBeVisible();
   await expect(commandGroupRow).not.toContainText("folded bash output 1");
@@ -2013,20 +2041,29 @@ test("virtualizes long main chat transcripts and keeps jump-to-latest usable", a
   await openTranscriptSearch(page);
   await setTranscriptSearchScope(page, "Commands");
   await page.getByLabel("Search transcript").fill("stdout line 300");
-  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
   await expect(longCommandRow.getByTestId("command-output")).toContainText("long command tail marker 300");
   await setTranscriptSearchScope(page, "Tools");
   await page.getByLabel("Search transcript").fill("tool audit secret 275");
-  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
   const toolRow = page.getByTestId("conversation-item-long-tool-275");
   await expect(toolRow.getByText("Read")).toBeVisible();
   await expect(toolRow.getByText("(/tmp/tool-audit-275.txt)")).toBeVisible();
   await expect(toolRow).not.toContainText("tool audit secret 275");
   await toolRow.getByRole("button", { name: "Expand tool details" }).click();
   await expect(toolRow.getByTestId("tool-audit-details")).toContainText("tool audit secret 275");
+  await page.getByLabel("Search transcript").fill("tool edit diff marker 276");
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
+  const editToolRow = page.getByTestId("conversation-item-long-edit-tool-276");
+  await expect(editToolRow.getByText("Edit")).toBeVisible();
+  await expect(editToolRow.getByText("(apps/web/tool-edit-276.ts (+1 -1))").first()).toBeVisible();
+  await expect(editToolRow).not.toContainText("tool edit diff marker 276");
+  await editToolRow.getByRole("button", { name: "Expand tool details" }).click();
+  await expect(editToolRow.getByTestId("tool-file-diff-details")).toContainText("tool edit diff marker 276");
+  await expect(editToolRow.getByTestId("file-diff-view")).toBeVisible();
   await setTranscriptSearchScope(page, "Files");
   await page.getByLabel("Search transcript").fill("file audit diff marker 260");
-  await expect(page.getByText("1/1 results in 656 rows")).toBeVisible();
+  await expect(page.getByText("1/1 results in 657 rows")).toBeVisible();
   const fileRow = page.getByTestId("conversation-item-long-file-260");
   await expect(fileRow.getByText("Edited")).toBeVisible();
   await expect(fileRow.getByText("(apps/web/file-audit-260.ts (+1 -1))").first()).toBeVisible();

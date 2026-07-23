@@ -1,16 +1,14 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
-import { generateDiffFile } from "@git-diff-view/file";
-import { DiffModeEnum, DiffView } from "@git-diff-view/react";
-import "@git-diff-view/react/styles/diff-view.css";
 import { Alert, Box, Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { alpha } from "@mui/material/styles";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import PersonIcon from "@mui/icons-material/Person";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import type { TranslateFn } from "../../i18n";
 import { MarkdownMessage } from "../MarkdownMessage";
+import { GitFileDiffView, UnifiedDiffBlock, diffLineStats, diffTextStats, fileChangeStatsLabel } from "./ChatDiffView";
 import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./types";
 
 type Props = {
@@ -471,7 +469,8 @@ function CommandOutputBlock({ text }: { text: string }) {
 }
 
 function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRow; expanded: boolean; onToggleExpanded: () => void }) {
-  const hasDetails = Boolean(row.text.trim()) || Boolean(isRecord(row.item.payload));
+  const fileDetails = toolFileDetails(row);
+  const hasDetails = Boolean(row.text.trim()) || Boolean(isRecord(row.item.payload)) || fileDetails.length > 0;
   const summary = activitySummary(row);
   return (
     <ActivityRow
@@ -489,7 +488,7 @@ function ToolCallRow({ row, expanded, onToggleExpanded }: { row: ChatWaterfallRo
         ) : null
       }
     >
-      {hasDetails && expanded && <Box data-testid="tool-audit-details">{renderToolPayload(row)}</Box>}
+      {hasDetails && expanded && <Box data-testid="tool-audit-details">{renderToolPayload(row, fileDetails)}</Box>}
     </ActivityRow>
   );
 }
@@ -598,79 +597,6 @@ function FileChangeDetailBlock({ detail }: { detail: FileChangeDetail }) {
         </Box>
       )}
     </Paper>
-  );
-}
-
-function GitFileDiffView({ beforeText, afterText, filePath }: { beforeText: string; afterText: string; filePath?: string }) {
-  const theme = useTheme();
-  const lang = guessLangFromPath(filePath);
-  const diffFile = useMemo(() => {
-    if (!beforeText && !afterText) {
-      return null;
-    }
-    try {
-      const instance = generateDiffFile(filePath ?? "old", beforeText, filePath ?? "new", afterText, lang, lang);
-      instance.init();
-      instance.buildUnifiedDiffLines();
-      return instance;
-    } catch {
-      return null;
-    }
-  }, [afterText, beforeText, filePath, lang]);
-
-  if (!diffFile) {
-    return <UnifiedDiffBlock text={fallbackUnifiedDiff(beforeText, afterText)} />;
-  }
-
-  return (
-    <Box
-      data-testid="file-diff-view"
-      sx={{
-        maxHeight: "min(54vh, 620px)",
-        overflow: "auto",
-        bgcolor: (muiTheme) => alpha(muiTheme.palette.background.paper, muiTheme.palette.mode === "dark" ? 0.3 : 0.82),
-        "& .diff-view": {
-          minWidth: 640
-        }
-      }}
-    >
-      <DiffView
-        diffFile={diffFile}
-        diffViewMode={DiffModeEnum.Unified}
-        diffViewTheme={theme.palette.mode === "dark" ? "dark" : "light"}
-        diffViewHighlight
-        diffViewAddWidget={false}
-        diffViewWrap={false}
-        diffViewFontSize={12}
-      />
-    </Box>
-  );
-}
-
-function UnifiedDiffBlock({ text }: { text: string }) {
-  return (
-    <Box
-      data-testid="file-unified-diff"
-      component="pre"
-      sx={{
-        m: 0,
-        p: 1,
-        maxHeight: "min(54vh, 620px)",
-        overflow: "auto",
-        whiteSpace: "pre-wrap",
-        overflowWrap: "anywhere",
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-        fontSize: 12,
-        lineHeight: 1.5,
-        color: "text.primary",
-        bgcolor: (theme) => alpha(theme.palette.common.black, theme.palette.mode === "dark" ? 0.2 : 0.035),
-        "& .diff-add": { color: (theme) => theme.palette.success.main },
-        "& .diff-del": { color: (theme) => theme.palette.error.main },
-        "& .diff-meta": { color: "text.secondary" }
-      }}
-    >
-      {text}
-    </Box>
   );
 }
 
@@ -924,6 +850,8 @@ type FileChangeDetail = {
   text?: string;
 };
 
+type FileMutationAction = "edit" | "write" | "create" | "delete";
+
 function fileChangeSummary(row: ChatWaterfallRow): FileChangeSummary {
   const payload = isRecord(row.item.payload) ? row.item.payload : {};
   const changes = Array.isArray(payload.changes)
@@ -1039,19 +967,23 @@ function extractFileChangeDetails(
   return mergeFileDetails(details, primaryPath);
 }
 
-function detailFromRecord(record: Record<string, unknown>, fallbackPath?: string): FileChangeDetail | null {
+function detailFromRecord(record: Record<string, unknown>, fallbackPath?: string, action?: FileMutationAction): FileChangeDetail | null {
   const path = firstStringValue(record, ["path", "filePath", "file_path", "name", "filename", "file"])
     ?? firstStringValue(isRecord(record.file) ? record.file : {}, ["path", "name"])
     ?? fallbackPath;
   const status = firstStringValue(record, ["status", "kind", "type", "operation"]);
   const beforeText = firstStringValue(record, ["beforeText", "oldText", "oldContent", "previousText", "originalText", "old_string", "oldString", "before", "original"]);
-  const afterText = firstStringValue(record, ["afterText", "newText", "newContent", "updatedText", "content", "new_string", "newString", "after", "replacement"]);
+  const afterText =
+    action === "delete"
+      ? undefined
+      : firstStringValue(record, ["afterText", "newText", "newContent", "updatedText", "content", "new_source", "newString", "new_string", "after", "replacement"]);
+  const deleteBeforeText = action === "delete" ? beforeText ?? firstStringValue(record, ["content", "source", "fileContent"]) : undefined;
   const rawDiff = firstStringValue(record, ["diff", "patch", "unifiedDiff", "gitDiff"]);
   const rawText = firstStringValue(record, ["text", "body", "message"]);
   const diffBody = rawDiff ? normalizeDiffText(rawDiff) : null;
   const textBody = rawText ? bodyFromText(rawText) : null;
-  const stats = beforeText != null || afterText != null
-    ? diffTextStats(beforeText ?? "", afterText ?? "", path)
+  const stats = deleteBeforeText != null || beforeText != null || afterText != null
+    ? diffTextStats(deleteBeforeText ?? beforeText ?? "", action === "delete" ? "" : afterText ?? "", path)
     : diffBody
       ? diffLineStats(diffBody)
       : textBody?.unifiedDiff
@@ -1064,7 +996,10 @@ function detailFromRecord(record: Record<string, unknown>, fallbackPath?: string
     additions: numberValue(record.additions) ?? numberValue(record.added) ?? numberValue(record.addedLines) ?? stats?.additions,
     deletions: numberValue(record.deletions) ?? numberValue(record.deleted) ?? numberValue(record.removedLines) ?? stats?.deletions
   };
-  if (beforeText != null || afterText != null) {
+  if (deleteBeforeText != null) {
+    detail.beforeText = deleteBeforeText;
+    detail.afterText = "";
+  } else if (beforeText != null || afterText != null) {
     detail.beforeText = beforeText ?? "";
     detail.afterText = afterText ?? "";
   } else if (diffBody) {
@@ -1130,66 +1065,130 @@ function sameDetailBody(left: FileChangeDetail, right: FileChangeDetail): boolea
   return left.unifiedDiff === right.unifiedDiff && left.text === right.text && left.beforeText === right.beforeText && left.afterText === right.afterText;
 }
 
-function diffTextStats(beforeText: string, afterText: string, filePath?: string): { additions: number; deletions: number } | undefined {
-  try {
-    const lang = guessLangFromPath(filePath);
-    const diff = generateDiffFile(filePath ?? "old", beforeText, filePath ?? "new", afterText, lang, lang);
-    diff.initRaw();
-    return { additions: diff.additionLength, deletions: diff.deletionLength };
-  } catch {
+function toolFileDetails(row: ChatWaterfallRow): FileChangeDetail[] {
+  const payload = isRecord(row.item.payload) ? row.item.payload : {};
+  const action = fileMutationAction(row, payload);
+  if (!action) {
+    return [];
+  }
+
+  const args = isRecord(payload.arguments) ? payload.arguments : null;
+  const result = isRecord(payload.result) ? payload.result : null;
+  const structuredContent = result && isRecord(result.structuredContent) ? result.structuredContent : null;
+  const fallbackPath =
+    toolFilePath(args) ??
+    toolFilePath(structuredContent) ??
+    toolFilePath(result) ??
+    toolFilePath(payload);
+  const details: FileChangeDetail[] = [];
+
+  function addRecord(record: Record<string, unknown> | null) {
+    if (!record) {
+      return;
+    }
+    const detail = detailFromRecord(record, fallbackPath, action ?? undefined);
+    if (!detail) {
+      return;
+    }
+    const normalized = normalizeToolDetailPath(detail, fallbackPath, row, payload);
+    if (details.some((existing) => existing.path === normalized.path && sameDetailBody(existing, normalized))) {
+      return;
+    }
+    details.push(normalized);
+  }
+
+  addRecord(args);
+  addRecord(structuredContent);
+  addRecord(result);
+
+  for (const source of [args, structuredContent, result]) {
+    if (!source) {
+      continue;
+    }
+    for (const key of ["changes", "fileChanges", "files", "edits", "patches"]) {
+      const entries = source[key];
+      if (!Array.isArray(entries)) {
+        continue;
+      }
+      for (const entry of entries) {
+        if (isRecord(entry)) {
+          addRecord(entry);
+        }
+      }
+    }
+  }
+
+  return mergeFileDetails(details, fallbackPath);
+}
+
+function normalizeToolDetailPath(
+  detail: FileChangeDetail,
+  fallbackPath: string | undefined,
+  row: ChatWaterfallRow,
+  payload: Record<string, unknown>
+): FileChangeDetail {
+  const toolName = toolNameParts(row, payload).map(normalizeToolToken);
+  const pathLooksLikeToolName = detail.path ? toolName.includes(normalizeToolToken(detail.path)) : false;
+  return pathLooksLikeToolName && fallbackPath ? { ...detail, path: fallbackPath } : detail;
+}
+
+function toolFilePath(record: Record<string, unknown> | null): string | undefined {
+  if (!record) {
     return undefined;
   }
+  return firstStringValue(record, ["path", "filePath", "file_path", "filename", "notebook_path"])
+    ?? firstStringValue(isRecord(record.file) ? record.file : {}, ["path", "name"]);
 }
 
-function fallbackUnifiedDiff(beforeText: string, afterText: string): string {
-  const beforeLines = beforeText.split(/\r?\n/).filter((line) => line.length > 0).map((line) => `-${line}`);
-  const afterLines = afterText.split(/\r?\n/).filter((line) => line.length > 0).map((line) => `+${line}`);
-  return [...beforeLines, ...afterLines].join("\n");
+function fileMutationSummary(row: ChatWaterfallRow, payload: Record<string, unknown>): { path?: string; additions: number; deletions: number } | null {
+  if (!fileMutationAction(row, payload)) {
+    return null;
+  }
+  const details = toolFileDetails(row);
+  const path = details.find((detail) => detail.path)?.path ?? toolFilePath(isRecord(payload.arguments) ? payload.arguments : null) ?? toolFilePath(payload);
+  const additions = sumNumbers(details.map((detail) => detail.additions)) ?? 0;
+  const deletions = sumNumbers(details.map((detail) => detail.deletions)) ?? 0;
+  return path || additions > 0 || deletions > 0 ? { path, additions, deletions } : null;
 }
 
-function guessLangFromPath(filePath?: string): string {
-  if (!filePath) return "txt";
-  const ext = filePath.split(".").pop()?.toLowerCase();
-  const map: Record<string, string> = {
-    ts: "typescript",
-    tsx: "typescript",
-    js: "javascript",
-    jsx: "javascript",
-    py: "python",
-    rs: "rust",
-    go: "go",
-    java: "java",
-    kt: "kotlin",
-    rb: "ruby",
-    swift: "swift",
-    c: "c",
-    cpp: "cpp",
-    h: "c",
-    hpp: "cpp",
-    cs: "csharp",
-    css: "css",
-    scss: "scss",
-    html: "html",
-    vue: "vue",
-    json: "json",
-    yaml: "yaml",
-    yml: "yaml",
-    toml: "toml",
-    xml: "xml",
-    md: "markdown",
-    sql: "sql",
-    sh: "bash",
-    zsh: "bash",
-    bash: "bash",
-    dockerfile: "dockerfile",
-    lua: "lua",
-    php: "php",
-    dart: "dart"
-  };
-  return (ext && map[ext]) || "txt";
+function fileMutationAction(row: ChatWaterfallRow, payload: Record<string, unknown>): FileMutationAction | null {
+  const names = toolNameParts(row, payload).map(normalizeToolToken).filter(Boolean);
+  if (names.length === 0) {
+    return null;
+  }
+  if (names.some((name) => /(^|_)(delete|remove|unlink|erase|rm)($|_)/.test(name))) {
+    return "delete";
+  }
+  if (names.some((name) => /(^|_)(edit|patch|modify|replace|apply_patch|notebookedit)($|_)/.test(name))) {
+    return "edit";
+  }
+  if (names.some((name) => /(^|_)(create|new|add)($|_)/.test(name))) {
+    return "create";
+  }
+  if (names.some((name) => /(^|_)(write|save|append)($|_)/.test(name))) {
+    return "write";
+  }
+  return null;
 }
 
-function renderToolPayload(row: ChatWaterfallRow) {
+function toolNameParts(row: ChatWaterfallRow, payload: Record<string, unknown>): string[] {
+  const parts = [
+    firstStringValue(payload, ["tool", "name", "method", "namespace"]),
+    firstStringValue(isRecord(payload.function) ? payload.function : {}, ["name"]),
+    row.title
+  ];
+  return parts.filter((part): part is string => Boolean(part));
+}
+
+function normalizeToolToken(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+}
+
+function renderToolPayload(row: ChatWaterfallRow, fileDetails: FileChangeDetail[] = []) {
   const payload = isRecord(row.item.payload) ? row.item.payload : null;
   if (!payload) {
     return row.text ? <MarkdownMessage text={row.text} /> : null;
@@ -1200,6 +1199,15 @@ function renderToolPayload(row: ChatWaterfallRow) {
 
   return (
     <Box sx={{ mt: 1, pt: 1, borderTop: "1px solid", borderColor: "divider" }}>
+      {fileDetails.length > 0 && (
+        <Box data-testid="tool-file-diff-details" sx={{ mb: 1 }}>
+          <Stack spacing={1}>
+            {fileDetails.map((detail, index) => (
+              <FileChangeDetailBlock key={`${detail.path ?? "tool-file"}-${index}`} detail={detail} />
+            ))}
+          </Stack>
+        </Box>
+      )}
       {row.text && <MarkdownMessage text={row.text} />}
       {args != null && (
         <Box sx={{ mb: 1 }}>
@@ -1284,6 +1292,13 @@ function activitySummary(row: ChatWaterfallRow): { label: string; detail?: strin
     return { label, detail: path ? `${path}${stats ? ` ${stats}` : ""}` : stats };
   }
   const label = toolActivityLabel(row, payload);
+  if (row.kind === "toolCall") {
+    const summary = fileMutationSummary(row, payload);
+    if (summary) {
+      const stats = fileChangeStatsLabel(summary.additions, summary.deletions);
+      return { label, detail: summary.path ? `${summary.path}${stats ? ` ${stats}` : ""}` : stats };
+    }
+  }
   return { label, detail: toolActivityDetail(payload, row) };
 }
 
@@ -1319,6 +1334,8 @@ function toolActivityLabel(row: ChatWaterfallRow, payload: Record<string, unknow
   if (normalized.includes("read")) return "Read";
   if (normalized.includes("write")) return "Write";
   if (normalized.includes("edit") || normalized.includes("patch")) return "Edit";
+  if (normalized.includes("delete") || normalized.includes("remove")) return "Delete";
+  if (normalized.includes("new") || normalized.includes("create")) return "New";
   if (normalized.includes("task") || normalized.includes("agent")) return "ManageTask";
   return toPascalLabel(raw || "Tool");
 }
@@ -1387,29 +1404,6 @@ function numberValue(value: unknown): number | undefined {
 function sumNumbers(values: Array<number | undefined>): number | undefined {
   const present = values.filter((value): value is number => value != null);
   return present.length > 0 ? present.reduce((total, value) => total + value, 0) : undefined;
-}
-
-function diffLineStats(text: string): { additions: number; deletions: number } {
-  let additions = 0;
-  let deletions = 0;
-  for (const line of text.split(/\r?\n/)) {
-    if (line.startsWith("+++") || line.startsWith("---")) {
-      continue;
-    }
-    if (line.startsWith("+")) {
-      additions += 1;
-    } else if (line.startsWith("-")) {
-      deletions += 1;
-    }
-  }
-  return { additions, deletions };
-}
-
-function fileChangeStatsLabel(additions: number, deletions: number): string {
-  if (additions === 0 && deletions === 0) {
-    return "";
-  }
-  return `(+${additions} -${deletions})`;
 }
 
 function prettyJson(value: unknown): string {
