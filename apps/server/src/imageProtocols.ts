@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { ImageGenerationProtocol, JsonValue, ProviderConfig } from "@codex-ui/shared";
 
 export type ImageGenerationOptions = Record<string, string | number | boolean>;
@@ -100,7 +101,7 @@ async function runOpenAiImageGeneration(input: {
     prompt: input.prompt,
     endpoint: "images/generations"
   });
-  return { body, status: response.ok ? 200 : response.status };
+  return { body: await hydrateNormalizedImageResult(body), status: response.ok ? 200 : response.status };
 }
 
 async function runGeminiChatCompletions(input: {
@@ -134,7 +135,7 @@ async function runGeminiChatCompletions(input: {
     prompt: input.prompt,
     endpoint: "chat/completions"
   });
-  return { body, status: response.ok ? 200 : response.status };
+  return { body: await hydrateNormalizedImageResult(body), status: response.ok ? 200 : response.status };
 }
 
 async function runGeminiGenerateContent(input: {
@@ -165,7 +166,7 @@ async function runGeminiGenerateContent(input: {
     prompt: input.prompt,
     endpoint: "generateContent"
   });
-  return { body, status: response.ok ? 200 : response.status };
+  return { body: await hydrateNormalizedImageResult(body), status: response.ok ? 200 : response.status };
 }
 
 async function runAsyncVideoImageGeneration(input: {
@@ -215,13 +216,13 @@ async function runAsyncVideoImageGeneration(input: {
     apiKey: input.apiKey,
     taskId
   });
-  const body = normalizeAsyncImageTask(completed, {
+  const body = await hydrateNormalizedImageResult(normalizeAsyncImageTask(completed, {
     provider: input.provider,
     model: input.model,
     prompt: input.prompt,
     endpoint: "videos",
     submitted
-  });
+  }));
   return { body, status: 200 };
 }
 
@@ -433,6 +434,50 @@ function uniqueImageData(data: JsonValue[]): JsonValue[] {
     seen.add(key);
     return true;
   });
+}
+
+async function hydrateNormalizedImageResult(body: JsonValue): Promise<JsonValue> {
+  const record = asRecord(body);
+  if (!Array.isArray(record.data)) {
+    return body;
+  }
+  const data: JsonValue[] = [];
+  for (const entry of record.data) {
+    const item = asRecord(entry);
+    const url = stringValue(item.url);
+    const hasB64 = Boolean(stringValue(item.b64Json) ?? stringValue(item.b64_json));
+    if (!hasB64 && url && /^https?:\/\//i.test(url)) {
+      const downloaded = await downloadImageAsBase64(url);
+      data.push(downloaded ? ({ ...item, b64Json: downloaded } as JsonValue) : entry as JsonValue);
+    } else {
+      data.push(entry as JsonValue);
+    }
+  }
+  return { ...record, data } as JsonValue;
+}
+
+async function downloadImageAsBase64(url: string): Promise<string | undefined> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      return undefined;
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !/^image\//i.test(contentType)) {
+      return undefined;
+    }
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > 25 * 1024 * 1024) {
+      return undefined;
+    }
+    return Buffer.from(bytes).toString("base64");
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function imageErrorResponse(body: unknown, status: number, endpoint: string): JsonValue {
