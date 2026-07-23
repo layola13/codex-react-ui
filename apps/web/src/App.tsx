@@ -72,6 +72,7 @@ import {
   login,
   fetchPublicAuthConfig,
   fetchCaptcha,
+  probeWebDevPreview,
   loginWith2fa,
   registerAccount,
   LoginRequiredError,
@@ -2982,6 +2983,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onWriteTerminalInput={(processId, input) => void writeTerminalInput(processId, input)}
         onTerminateTerminal={(processId) => void terminateTerminal(processId)}
         onResizeTerminal={(processId, size) => void resizeTerminal(processId, size)}
+        onProbeWebDevPreview={(url) => {
+          const token = state.token;
+          if (!token) {
+            return Promise.resolve({ ok: false, url, elapsedMs: 0, error: "Missing session token" });
+          }
+          return probeWebDevPreview(token, url);
+        }}
       />
     );
   }

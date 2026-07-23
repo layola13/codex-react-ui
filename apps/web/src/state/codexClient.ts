@@ -963,6 +963,37 @@ export type ImageApiResult = {
   raw?: JsonValue;
 };
 
+export type WebDevPreviewProbeResult = {
+  ok: boolean;
+  url: string;
+  status?: number;
+  contentType?: string;
+  title?: string;
+  elapsedMs: number;
+  error?: string;
+};
+
+export async function probeWebDevPreview(token: string, url: string): Promise<WebDevPreviewProbeResult> {
+  const response = await fetch("/api/webdev/probe", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify({ url })
+  });
+  const body = (await response.json().catch(() => ({}))) as WebDevPreviewProbeResult & { error?: string };
+  if (!response.ok) {
+    return {
+      ok: false,
+      url,
+      elapsedMs: typeof body.elapsedMs === "number" ? body.elapsedMs : 0,
+      error: body.error ?? `Preview probe failed (${response.status})`
+    };
+  }
+  return body;
+}
+
 export async function generateProviderImage(
   token: string,
   input: { providerId: string; prompt: string; model?: string; size?: string; n?: number }

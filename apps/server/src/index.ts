@@ -40,6 +40,7 @@ import {
   type LaunchEnvValues
 } from "./launchInstall.js";
 import { fetchProviderModels, testProvider } from "./providerModels.js";
+import { probeWebDevPreviewUrl } from "./webdevProbe.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -371,6 +372,16 @@ async function handleApiRequest(
         return jsonResponse(saved, 201, headers);
       } catch (error) {
         return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/webdev/probe": {
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const previewUrl = stringValue(body.url) ?? "";
+        const result = await probeWebDevPreviewUrl(previewUrl);
+        return jsonResponse(result, result.ok ? 200 : 400, headers);
+      } catch (error) {
+        return jsonResponse({ ok: false, error: errorToMessage(error) }, 400, headers);
       }
     }
     case "POST /api/images/generations": {

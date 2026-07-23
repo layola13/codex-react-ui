@@ -300,6 +300,7 @@ export function Composer({
         )}
         <Box sx={{ position: "relative" }}>
           <TextField
+            slotProps={{ htmlInput: { "data-testid": "composer-input" } }}
             multiline
             minRows={3}
             maxRows={8}
@@ -332,6 +333,7 @@ export function Composer({
           <Tooltip title={t("composer.attachTooltip")}>
             <span>
               <IconButton
+                data-testid="composer-add-menu-button"
                 size="small"
                 aria-label={t("composer.attachTooltip")}
                 disabled={disabled}
@@ -543,6 +545,7 @@ export function Composer({
             {t("composer.menu.add")}
           </Typography>
           <MenuItem
+            data-testid="composer-menu-upload"
             disabled={disabled}
             onClick={() => {
               setMenuAnchorEl(null);
@@ -559,6 +562,7 @@ export function Composer({
             </Box>
           </MenuItem>
           <MenuItem
+            data-testid="composer-menu-generate-image"
             disabled={disabled}
             onClick={() => {
               setMenuAnchorEl(null);
@@ -575,6 +579,7 @@ export function Composer({
             </Box>
           </MenuItem>
           <MenuItem
+            data-testid="composer-menu-edit-image"
             disabled={disabled || images.length === 0}
             onClick={() => {
               setMenuAnchorEl(null);
@@ -591,6 +596,7 @@ export function Composer({
             </Box>
           </MenuItem>
           <MenuItem
+            data-testid="composer-menu-create-video"
             disabled
             sx={{ borderRadius: 2, minHeight: 42 }}
           >
@@ -603,6 +609,7 @@ export function Composer({
             </Box>
           </MenuItem>
           <MenuItem
+            data-testid="composer-menu-webdev"
             disabled={disabled}
             onClick={() => {
               setMenuAnchorEl(null);
