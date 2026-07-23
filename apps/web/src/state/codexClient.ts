@@ -188,6 +188,21 @@ export type TerminalSession = {
   cols: number;
 };
 
+export type WebDevServerStatus = "running" | "completed" | "failed" | "terminated";
+
+export type WebDevServerSession = {
+  id: string;
+  command: string;
+  cwd: string;
+  status: WebDevServerStatus;
+  output: string;
+  url?: string;
+  pid?: number;
+  exitCode?: number;
+  startedAt: number;
+  updatedAt: number;
+};
+
 export type ComposerMention = {
   name: string;
   path: string;
@@ -992,6 +1007,49 @@ export async function probeWebDevPreview(token: string, url: string): Promise<We
     };
   }
   return body;
+}
+
+export async function listWebDevServers(token: string): Promise<WebDevServerSession[]> {
+  const response = await fetch("/api/webdev/servers", {
+    headers: { "x-codex-ui-token": token }
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: WebDevServerSession[]; error?: string };
+  if (!response.ok) {
+    throw new Error(body.error ?? `Failed to list WebDev servers (${response.status})`);
+  }
+  return body.data ?? [];
+}
+
+export async function startWebDevServer(token: string, input: { command: string; cwd: string; id?: string }): Promise<WebDevServerSession> {
+  const response = await fetch("/api/webdev/servers/start", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify(input)
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: WebDevServerSession; error?: string };
+  if (!response.ok || !body.data) {
+    throw new Error(body.error ?? `Failed to start WebDev server (${response.status})`);
+  }
+  return body.data;
+}
+
+export async function stopWebDevServer(token: string, id: string): Promise<WebDevServerSession> {
+  const response = await fetch("/api/webdev/servers/stop", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-codex-ui-token": token
+    },
+    body: JSON.stringify({ id })
+  });
+  const body = (await response.json().catch(() => ({}))) as { data?: WebDevServerSession; error?: string };
+  if (!response.ok || !body.data) {
+    throw new Error(body.error ?? `Failed to stop WebDev server (${response.status})`);
+  }
+  return body.data;
 }
 
 export async function generateProviderImage(

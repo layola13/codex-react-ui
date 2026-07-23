@@ -41,6 +41,7 @@ import {
 } from "./launchInstall.js";
 import { fetchProviderModels, testProvider } from "./providerModels.js";
 import { probeWebDevPreviewUrl } from "./webdevProbe.js";
+import { listWebDevServers, startWebDevServer, stopWebDevServer } from "./webdevServers.js";
 
 type SocketData = {
   user: AuthUser | null;
@@ -382,6 +383,32 @@ async function handleApiRequest(
         return jsonResponse(result, result.ok ? 200 : 400, headers);
       } catch (error) {
         return jsonResponse({ ok: false, error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "GET /api/webdev/servers":
+      return jsonResponse({ data: listWebDevServers() }, 200, headers);
+    case "POST /api/webdev/servers/start": {
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const cwd = stringValue(body.cwd) ?? "";
+        assertWebDevServerCwdAllowed(cwd, user);
+        const session = startWebDevServer({
+          id: stringValue(body.id),
+          command: stringValue(body.command) ?? "",
+          cwd
+        });
+        return jsonResponse({ data: session }, 201, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
+      }
+    }
+    case "POST /api/webdev/servers/stop": {
+      try {
+        const body = asRecord(await request.json().catch(() => ({})));
+        const session = stopWebDevServer(stringValue(body.id) ?? "");
+        return jsonResponse({ data: session }, 200, headers);
+      } catch (error) {
+        return jsonResponse({ error: errorToMessage(error) }, 400, headers);
       }
     }
     case "POST /api/images/generations": {
@@ -1028,6 +1055,17 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function assertWebDevServerCwdAllowed(cwd: string, user: AuthUser | null): void {
+  if (!authStore || !user || user.role === "admin") {
+    return;
+  }
+  const root = resolve(user.workspaceRoot);
+  const target = resolve(cwd);
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new Error("WebDev server cwd is outside the member workspace root");
+  }
 }
 
 function parseLaunchEnv(value: unknown): LaunchEnvValues | undefined {

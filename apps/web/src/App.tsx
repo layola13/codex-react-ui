@@ -73,6 +73,9 @@ import {
   fetchPublicAuthConfig,
   fetchCaptcha,
   probeWebDevPreview,
+  listWebDevServers,
+  startWebDevServer,
+  stopWebDevServer,
   loginWith2fa,
   registerAccount,
   LoginRequiredError,
@@ -2989,6 +2992,27 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             return Promise.resolve({ ok: false, url, elapsedMs: 0, error: "Missing session token" });
           }
           return probeWebDevPreview(token, url);
+        }}
+        onListWebDevServers={() => {
+          const token = state.token;
+          if (!token) {
+            return Promise.resolve([]);
+          }
+          return listWebDevServers(token);
+        }}
+        onStartWebDevServer={(input) => {
+          const token = state.token;
+          if (!token) {
+            return Promise.reject(new Error("Missing session token"));
+          }
+          return startWebDevServer(token, input);
+        }}
+        onStopWebDevServer={(id) => {
+          const token = state.token;
+          if (!token) {
+            return Promise.reject(new Error("Missing session token"));
+          }
+          return stopWebDevServer(token, id);
         }}
       />
     );

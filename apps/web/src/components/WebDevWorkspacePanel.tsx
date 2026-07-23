@@ -7,7 +7,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { WorkspaceFilesSettingsPanel, type OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
-import type { FsDirectoryEntry, TerminalSession, WebDevPreviewProbeResult } from "../state/codexClient";
+import type { FsDirectoryEntry, TerminalSession, WebDevPreviewProbeResult, WebDevServerSession } from "../state/codexClient";
 import type { TranslateFn } from "../i18n";
 
 type Props = {
@@ -27,6 +27,9 @@ type Props = {
   onTerminateTerminal: (processId: string) => void;
   onResizeTerminal: (processId: string, size: { rows: number; cols: number }) => void;
   onProbePreviewUrl: (url: string) => Promise<WebDevPreviewProbeResult>;
+  onListWebDevServers: () => Promise<WebDevServerSession[]>;
+  onStartWebDevServer: (input: { command: string; cwd: string; id?: string }) => Promise<WebDevServerSession>;
+  onStopWebDevServer: (id: string) => Promise<WebDevServerSession>;
 };
 
 export function WebDevWorkspacePanel({
@@ -45,7 +48,10 @@ export function WebDevWorkspacePanel({
   onWriteTerminalInput,
   onTerminateTerminal,
   onResizeTerminal,
-  onProbePreviewUrl
+  onProbePreviewUrl,
+  onListWebDevServers,
+  onStartWebDevServer,
+  onStopWebDevServer
 }: Props) {
   const [previewDraft, setPreviewDraft] = useState("http://localhost:5173");
   const [previewUrl, setPreviewUrl] = useState("http://localhost:5173");
@@ -56,9 +62,13 @@ export function WebDevWorkspacePanel({
   const [probeState, setProbeState] = useState<"idle" | "checking" | "ready" | "failed">("idle");
   const [probeResult, setProbeResult] = useState<WebDevPreviewProbeResult | null>(null);
   const [previewRevision, setPreviewRevision] = useState(0);
+  const [managedServers, setManagedServers] = useState<WebDevServerSession[]>([]);
+  const [managedBusy, setManagedBusy] = useState(false);
+  const [managedError, setManagedError] = useState("");
   const probeSequence = useRef(0);
   const activeTerminal = terminalSessions.find((session) => session.status === "running") ?? null;
-  const detectedPreviewUrl = useMemo(() => detectPreviewUrl(terminalSessions), [terminalSessions]);
+  const activeManagedServer = managedServers.find((session) => session.status === "running") ?? null;
+  const detectedPreviewUrl = useMemo(() => detectPreviewUrl(terminalSessions, managedServers), [terminalSessions, managedServers]);
 
   const applyPreviewUrl = useCallback((value: string) => {
     const next = normalizePreviewUrl(value);
@@ -80,9 +90,61 @@ export function WebDevWorkspacePanel({
     setProbeState(result.ok ? "ready" : "failed");
   }, [onProbePreviewUrl]);
 
+  const refreshManagedServers = useCallback(async () => {
+    try {
+      setManagedServers(await onListWebDevServers());
+      setManagedError("");
+    } catch (error) {
+      setManagedError(formatError(error));
+    }
+  }, [onListWebDevServers]);
+
+  const startManagedServer = useCallback(async () => {
+    setManagedBusy(true);
+    setManagedError("");
+    try {
+      const session = await onStartWebDevServer({
+        command: serverCommand,
+        cwd: serverCwd
+      });
+      setManagedServers((current) => upsertManagedServer(current, session));
+      const detected = session.url ?? detectPreviewUrlFromText(`${session.command}\n${session.output}`);
+      if (detected) {
+        applyPreviewUrl(detected);
+      }
+      await refreshManagedServers();
+    } catch (error) {
+      setManagedError(formatError(error));
+    } finally {
+      setManagedBusy(false);
+    }
+  }, [applyPreviewUrl, onStartWebDevServer, refreshManagedServers, serverCommand, serverCwd]);
+
+  const stopManagedServer = useCallback(async (id: string) => {
+    setManagedBusy(true);
+    setManagedError("");
+    try {
+      const session = await onStopWebDevServer(id);
+      setManagedServers((current) => upsertManagedServer(current, session));
+      await refreshManagedServers();
+    } catch (error) {
+      setManagedError(formatError(error));
+    } finally {
+      setManagedBusy(false);
+    }
+  }, [onStopWebDevServer, refreshManagedServers]);
+
   useEffect(() => {
     setServerCwd(cwd);
   }, [cwd]);
+
+  useEffect(() => {
+    void refreshManagedServers();
+    const timer = window.setInterval(() => {
+      void refreshManagedServers();
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [refreshManagedServers]);
 
   useEffect(() => {
     if (!detectedPreviewUrl) {
@@ -216,7 +278,8 @@ export function WebDevWorkspacePanel({
                     {serverCwd}
                   </Typography>
                 </Box>
-                <Chip size="small" label={`${terminalSessions.length} sessions`} />
+                <Chip size="small" label={`${managedServers.length} managed`} />
+                <Chip size="small" label={`${terminalSessions.length} terminal`} />
               </Stack>
 
               <Stack spacing={1} sx={{ mt: 1 }}>
@@ -261,12 +324,25 @@ export function WebDevWorkspacePanel({
                     size="small"
                     variant="contained"
                     startIcon={<PlayArrowIcon />}
-                    onClick={() => onRunTerminalCommand(serverCommand, serverCwd, terminalSize)}
+                    disabled={managedBusy}
+                    onClick={() => void startManagedServer()}
                   >
-                    Run
+                    Start
+                  </Button>
+                  <Button size="small" disabled={managedBusy} onClick={() => onRunTerminalCommand(serverCommand, serverCwd, terminalSize)}>
+                    Run terminal
                   </Button>
                   <Button size="small" startIcon={<RefreshIcon />} onClick={() => void probePreview(previewUrl)}>
                     Probe
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    disabled={managedBusy || !activeManagedServer}
+                    startIcon={<DeleteIcon />}
+                    onClick={() => activeManagedServer && void stopManagedServer(activeManagedServer.id)}
+                  >
+                    Stop server
                   </Button>
                   <Button size="small" disabled={!activeTerminal} onClick={() => activeTerminal && onResizeTerminal(activeTerminal.processId, terminalSize)}>
                     Resize
@@ -290,6 +366,46 @@ export function WebDevWorkspacePanel({
                   >
                     Send stdin
                   </Button>
+                </Stack>
+                {managedError && (
+                  <Alert severity="error" variant="outlined" onClose={() => setManagedError("")}>
+                    {managedError}
+                  </Alert>
+                )}
+                <Stack spacing={1}>
+                  {managedServers.length === 0 && <Typography color="text.secondary">No managed preview servers yet.</Typography>}
+                  {managedServers.map((session) => (
+                    <Box key={session.id} data-testid="webdev-managed-server-session" sx={{ borderTop: "1px solid", borderColor: "divider", pt: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="caption" sx={{ flex: 1, overflowWrap: "anywhere" }}>
+                          {session.command}
+                        </Typography>
+                        <Chip size="small" label={managedStatusLabel(session)} color={managedStatusColor(session.status)} />
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                        {session.cwd} {session.pid ? `/ pid ${session.pid}` : ""} {session.url ? `/ ${session.url}` : ""}
+                      </Typography>
+                      <Box
+                        component="pre"
+                        sx={{
+                          m: 0,
+                          mt: 0.75,
+                          p: 1,
+                          bgcolor: "#101418",
+                          color: "#e7edf2",
+                          borderRadius: 1,
+                          minHeight: 86,
+                          maxHeight: 200,
+                          overflow: "auto",
+                          fontSize: 12,
+                          whiteSpace: "pre-wrap",
+                          overflowWrap: "anywhere"
+                        }}
+                      >
+                        {session.output || "Waiting for output..."}
+                      </Box>
+                    </Box>
+                  ))}
                 </Stack>
                 <Stack spacing={1}>
                   {terminalSessions.length === 0 && <Typography color="text.secondary">No terminal sessions yet.</Typography>}
@@ -349,20 +465,38 @@ const WEBDEV_COMMANDS = [
   { label: "new react", value: "bun create vite . --template react" }
 ];
 
-function detectPreviewUrl(sessions: TerminalSession[]): string | null {
-  for (let index = sessions.length - 1; index >= 0; index -= 1) {
-    const session = sessions[index];
-    const blob = [session?.command, session?.output].filter(Boolean).join("\n");
-    const explicit = [...blob.matchAll(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?(?:\/[^\s'"<>)\]]*)?/gi)].at(-1)?.[0];
-    if (explicit) {
-      return explicit;
+function detectPreviewUrl(terminalSessions: TerminalSession[], managedServers: WebDevServerSession[]): string | null {
+  for (let index = managedServers.length - 1; index >= 0; index -= 1) {
+    const session = managedServers[index];
+    const detected = session?.url ?? detectPreviewUrlFromText([session?.command, session?.output].filter(Boolean).join("\n"));
+    if (detected) {
+      return detected;
     }
-    const shorthand = [...blob.matchAll(/\b(?:localhost|127\.0\.0\.1)(?::\d{1,5})(?:\/[^\s'"<>)\]]*)?/gi)].at(-1)?.[0];
-    if (shorthand) {
-      return shorthand;
+  }
+  for (let index = terminalSessions.length - 1; index >= 0; index -= 1) {
+    const session = terminalSessions[index];
+    const detected = detectPreviewUrlFromText([session?.command, session?.output].filter(Boolean).join("\n"));
+    if (detected) {
+      return detected;
     }
   }
   return null;
+}
+
+function detectPreviewUrlFromText(value: string): string | null {
+  const explicit = [...value.matchAll(/https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d{1,5})?(?:\/[^\s'"<>)\]]*)?/gi)].at(-1)?.[0];
+  if (explicit) {
+    return explicit;
+  }
+  return [...value.matchAll(/\b(?:localhost|127\.0\.0\.1)(?::\d{1,5})(?:\/[^\s'"<>)\]]*)?/gi)].at(-1)?.[0] ?? null;
+}
+
+function upsertManagedServer(current: WebDevServerSession[], session: WebDevServerSession): WebDevServerSession[] {
+  return [session, ...current.filter((entry) => entry.id !== session.id)].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function previewStatusLabel(state: "idle" | "checking" | "ready" | "failed", result: WebDevPreviewProbeResult | null): string {
@@ -424,6 +558,36 @@ function terminalStatusLabel(session: TerminalSession): string {
 }
 
 function terminalStatusColor(status: TerminalSession["status"]): "default" | "primary" | "success" | "error" | "warning" {
+  switch (status) {
+    case "running":
+      return "primary";
+    case "completed":
+      return "success";
+    case "failed":
+      return "error";
+    case "terminated":
+      return "default";
+    default:
+      return "default";
+  }
+}
+
+function managedStatusLabel(session: WebDevServerSession): string {
+  switch (session.status) {
+    case "running":
+      return "Running";
+    case "completed":
+      return "Done";
+    case "failed":
+      return "Failed";
+    case "terminated":
+      return "Stopped";
+    default:
+      return session.status;
+  }
+}
+
+function managedStatusColor(status: WebDevServerSession["status"]): "default" | "primary" | "success" | "error" | "warning" {
   switch (status) {
     case "running":
       return "primary";

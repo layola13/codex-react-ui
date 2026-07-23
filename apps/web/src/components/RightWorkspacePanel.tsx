@@ -8,7 +8,7 @@ import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import TerminalIcon from "@mui/icons-material/Terminal";
-import type { FsDirectoryEntry, TerminalSession, WebDevPreviewProbeResult } from "../state/codexClient";
+import type { FsDirectoryEntry, TerminalSession, WebDevPreviewProbeResult, WebDevServerSession } from "../state/codexClient";
 import type { OpenWorkspaceFile } from "./WorkspaceFilesSettingsPanel";
 import type { TranslateFn } from "../i18n";
 import { WebDevWorkspacePanel } from "./WebDevWorkspacePanel";
@@ -36,6 +36,9 @@ type Props = {
   onTerminateTerminal: (processId: string) => void;
   onResizeTerminal: (processId: string, size: { rows: number; cols: number }) => void;
   onProbeWebDevPreview: (url: string) => Promise<WebDevPreviewProbeResult>;
+  onListWebDevServers: () => Promise<WebDevServerSession[]>;
+  onStartWebDevServer: (input: { command: string; cwd: string; id?: string }) => Promise<WebDevServerSession>;
+  onStopWebDevServer: (id: string) => Promise<WebDevServerSession>;
 };
 
 export function RightWorkspacePanel({
@@ -58,7 +61,10 @@ export function RightWorkspacePanel({
   onWriteTerminalInput,
   onTerminateTerminal,
   onResizeTerminal,
-  onProbeWebDevPreview
+  onProbeWebDevPreview,
+  onListWebDevServers,
+  onStartWebDevServer,
+  onStopWebDevServer
 }: Props) {
   return (
     <Box
@@ -137,6 +143,9 @@ export function RightWorkspacePanel({
             onTerminateTerminal={onTerminateTerminal}
             onResizeTerminal={onResizeTerminal}
             onProbePreviewUrl={onProbeWebDevPreview}
+            onListWebDevServers={onListWebDevServers}
+            onStartWebDevServer={onStartWebDevServer}
+            onStopWebDevServer={onStopWebDevServer}
           />
         )}
       </Box>
