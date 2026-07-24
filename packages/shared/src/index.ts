@@ -63,6 +63,46 @@ export interface EngineStatus {
   startedAt?: number;
 }
 
+export interface SystemCpuMetrics {
+  usagePercent: number;
+  cores: number;
+  model: string;
+  loadAvg: [number, number, number];
+}
+
+export interface SystemMemoryMetrics {
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+  usagePercent: number;
+  swapTotalBytes?: number;
+  swapUsedBytes?: number;
+  swapUsagePercent?: number;
+}
+
+export interface SystemDiskMetrics {
+  totalBytes: number;
+  freeBytes: number;
+  usedBytes: number;
+  usagePercent: number;
+  mountPoint: string;
+}
+
+export interface SystemHostMetrics {
+  hostname: string;
+  platform: string;
+  arch: string;
+  uptimeSec: number;
+}
+
+export interface SystemMetrics {
+  timestamp: number;
+  cpu: SystemCpuMetrics;
+  memory: SystemMemoryMetrics;
+  disk: SystemDiskMetrics;
+  host: SystemHostMetrics;
+}
+
 export type AuthUserRole = "admin" | "user";
 export type AuthUserStatus = "active" | "disabled";
 
@@ -266,6 +306,7 @@ export interface ProviderConfig {
     defaultModel?: string;
     protocols?: ImageGenerationProtocol[];
     defaultProtocol?: ImageGenerationProtocol;
+    apiKey?: string;
   };
   nativeModels: string[];
   modelAliases: Array<{
@@ -373,6 +414,17 @@ export interface ChatTurn {
 
 export type ClientToServerMessage =
   | {
+      type: "heartbeat.ping";
+      id: string;
+      sentAt: number;
+    }
+  | {
+      type: "heartbeat.pong";
+      id: string;
+      sentAt: number;
+      receivedAt?: number;
+    }
+  | {
       type: "rpc";
       id: string;
       method: string;
@@ -411,6 +463,8 @@ export type ClientToServerMessage =
     };
 
 export type ServerToClientMessage =
+  | { type: "heartbeat.ping"; id: string; sentAt: number }
+  | { type: "heartbeat.pong"; id: string; sentAt: number; receivedAt: number }
   | { type: "engine.status"; status: EngineStatus }
   | { type: "rpc.result"; id: string; result: JsonValue }
   | { type: "rpc.error"; id: string; error: JsonRpcFailure["error"] }

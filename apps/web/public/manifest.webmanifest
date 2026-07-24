@@ -6,8 +6,10 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0b1220",
   "theme_color": "#111827",
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/icon.svg",
@@ -19,7 +21,7 @@
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
       "src": "/icons/icon-512.png",

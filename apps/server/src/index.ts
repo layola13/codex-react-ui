@@ -1,7 +1,8 @@
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statfsSync, statSync } from "node:fs";
+import { arch, cpus, freemem, hostname, loadavg, platform, totalmem, uptime } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -16,7 +17,8 @@ import {
   type ImageGenerationProtocol,
   type ProviderActivation,
   type ProviderConfig,
-  type ServerToClientMessage
+  type ServerToClientMessage,
+  type SystemMetrics
 } from "@codex-ui/shared";
 import { createCodexRuntimeClient, type CodexRuntimeClient } from "./codexBridge.js";
 import { ThreadSubscriptionRegistry } from "./threadSubscriptionRegistry.js";
@@ -44,10 +46,12 @@ import { fetchProviderModels, testProvider } from "./providerModels.js";
 import { probeWebDevPreviewUrl } from "./webdevProbe.js";
 import { listWebDevServers, startWebDevServer, stopWebDevServer } from "./webdevServers.js";
 import { runImageGeneration, normalizeImageApiResponse } from "./imageProtocols.js";
+import { ensureCodexConfigHealthy, type CodexConfigHealthResult } from "./codexConfigHealth.js";
 
 type SocketData = {
   user: AuthUser | null;
   token: string | null;
+  lastHeartbeatAt: number;
 };
 
 /** In-flight turns per user for concurrency enforcement. */
@@ -93,9 +97,16 @@ function extractTurnKey(result: JsonValue, params: Record<string, unknown>): str
   return null;
 }
 
+function readPositiveNumberEnv(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 
 const PORT = Number(process.env.CODEX_UI_PORT ?? 43110);
-const HOST = process.env.CODEX_UI_HOST ?? "127.0.0.1";
+const HOST = process.env.CODEX_UI_HOST ?? "0.0.0.0";
+const WEBSOCKET_HEARTBEAT_INTERVAL_MS = readPositiveNumberEnv("CODEX_UI_WS_HEARTBEAT_INTERVAL_MS", 1000);
+const WEBSOCKET_HEARTBEAT_TIMEOUT_MS = readPositiveNumberEnv("CODEX_UI_WS_HEARTBEAT_TIMEOUT_MS", 5000);
 const sessionToken = process.env.CODEX_UI_TOKEN ?? randomBytes(24).toString("base64url");
 const localDatabase = new LocalDatabase();
 const providerStore = new ProviderStore(localDatabase);
@@ -107,10 +118,12 @@ const subscriptionRegistry = new ThreadSubscriptionRegistry(() => bridge);
 subscriptionRegistry.registerClient(bridge);
 const clients = new Set<ServerWebSocket<SocketData>>();
 const execFileAsync = promisify(execFile);
+let heartbeatSequence = 0;
 
 await providerStore.initialize();
 await authStore?.initialize();
 securityStore.initialize();
+logCodexConfigHealth(ensureCodexConfigHealthy(), "startup");
 
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "../../web/dist");
 const hasWebBuild = existsSync(join(webDist, "index.html"));
@@ -144,6 +157,7 @@ const server = Bun.serve<SocketData>({
   fetch: handleHttpRequest,
   websocket: {
     open(ws) {
+      ws.data.lastHeartbeatAt = Date.now();
       clients.add(ws);
       send(ws, { type: "engine.status", status: bridge.getStatus() });
     },
@@ -159,21 +173,39 @@ const server = Bun.serve<SocketData>({
       }
     },
     close(ws) {
-      clients.delete(ws);
-      const clientId = String(ws.data.token || ws.remoteAddress || ws);
-      subscriptionRegistry.unwatchAllForClient(clientId);
-      if (ws.data.user?.id) {
-        releaseAllTurnsForUser(ws.data.user.id);
-      }
+      removeClient(ws);
     }
   }
 });
+
+setInterval(() => {
+  const now = Date.now();
+  for (const client of clients) {
+    if (now - client.data.lastHeartbeatAt > WEBSOCKET_HEARTBEAT_TIMEOUT_MS) {
+      removeClient(client);
+      try {
+        client.close(4000, "Heartbeat timeout");
+      } catch {
+        // The socket may already be gone.
+      }
+      continue;
+    }
+    send(client, {
+      type: "heartbeat.ping",
+      id: `server-${now}-${heartbeatSequence++}`,
+      sentAt: now
+    });
+  }
+}, WEBSOCKET_HEARTBEAT_INTERVAL_MS);
 
 console.info(
   authStore
     ? `Codex React UI listening at http://${HOST}:${PORT}/ with membership login enabled`
     : `Codex React UI listening at http://${HOST}:${PORT}/?token=${sessionToken}`
 );
+
+// Keep the event loop active permanently so background server never exits
+setInterval(() => {}, 60_000);
 
 async function handleHttpRequest(request: Request, server: Server<SocketData>): Promise<Response | undefined> {
   const url = new URL(request.url);
@@ -189,7 +221,8 @@ async function handleHttpRequest(request: Request, server: Server<SocketData>): 
         server.upgrade(request, {
           data: {
             user: auth.user,
-            token: auth.token
+            token: auth.token,
+            lastHeartbeatAt: Date.now()
           }
         })
       ) {
@@ -208,6 +241,11 @@ async function handleHttpRequest(request: Request, server: Server<SocketData>): 
         return jsonResponse({ authenticated: true, token, user }, 200, headers);
       }
       return jsonResponse({ authenticated: true, token: sessionToken, user: null }, 200, headers);
+    }
+
+    if (url.pathname === "/api/system/metrics" && request.method === "GET") {
+      const metrics = getSystemMetrics();
+      return jsonResponse(metrics, 200, headers);
     }
 
     // Public auth config (registration / captcha / totp flags) — no auth required
@@ -349,6 +387,7 @@ async function handleApiRequest(
     case "GET /api/engine/status":
       return jsonResponse(bridge.getStatus(), 200, headers);
     case "POST /api/engine/start":
+      logCodexConfigHealth(ensureCodexConfigHealthy(), "engine start");
       return jsonResponse(await bridge.start(), 200, headers);
     case "POST /api/ssh/list-directory": {
       if (user && user.role !== "admin") {
@@ -996,6 +1035,8 @@ function serveStatic(request: Request, url: URL, headers: Headers): Response {
     responseHeaders.set("Content-Type", "text/css; charset=utf-8");
   } else if (normalized.endsWith(".html")) {
     responseHeaders.set("Content-Type", "text/html; charset=utf-8");
+  } else if (normalized.endsWith(".webmanifest")) {
+    responseHeaders.set("Content-Type", "application/manifest+json; charset=utf-8");
   }
 
   const isIndexHtml = normalized.endsWith(`${sep}index.html`) || !existsSync(normalized);
@@ -1252,6 +1293,20 @@ function securityHeaders(): Headers {
 
 async function handleClientMessage(ws: ServerWebSocket<SocketData>, message: ClientToServerMessage): Promise<void> {
   switch (message.type) {
+    case "heartbeat.ping": {
+      ws.data.lastHeartbeatAt = Date.now();
+      send(ws, {
+        type: "heartbeat.pong",
+        id: message.id,
+        sentAt: message.sentAt,
+        receivedAt: ws.data.lastHeartbeatAt
+      });
+      return;
+    }
+    case "heartbeat.pong": {
+      ws.data.lastHeartbeatAt = Date.now();
+      return;
+    }
     case "rpc": {
       try {
         const user = ws.data.user;
@@ -1561,6 +1616,7 @@ async function activateProvider(providerId: string, model?: string): Promise<Pro
     throw new Error(`Provider not found: ${providerId}`);
   }
 
+  logCodexConfigHealth(ensureCodexConfigHealthy(), "provider activation");
   await bridge.start();
 
   const modelProvider = provider.kind === "chatgpt" ? "openai" : provider.id;
@@ -1633,13 +1689,47 @@ function send(ws: ServerWebSocket<SocketData>, message: ServerToClientMessage): 
   try {
     ws.send(JSON.stringify(message));
   } catch {
-    clients.delete(ws);
+    removeClient(ws);
   }
 }
 
 function broadcast(message: ServerToClientMessage): void {
   for (const client of clients) {
     send(client, message);
+  }
+}
+
+function logCodexConfigHealth(result: CodexConfigHealthResult, phase: string): void {
+  if (!result.exists) {
+    console.info(`[codex-config] ${phase}: ${result.path} not found; skipping config.toml health check`);
+    return;
+  }
+  if (result.changed) {
+    console.warn(
+      `[codex-config] ${phase}: repaired duplicate config.toml entries at ${result.path}; backup: ${result.backupPath}`
+    );
+    if (result.removedDuplicateSections.length > 0) {
+      console.warn(`[codex-config] removed duplicate tables: ${result.removedDuplicateSections.join(", ")}`);
+    }
+    if (result.removedDuplicateKeys.length > 0) {
+      console.warn(`[codex-config] removed duplicate keys: ${result.removedDuplicateKeys.join(", ")}`);
+    }
+  }
+  if (result.unresolvedDuplicates.length > 0) {
+    console.warn(
+      `[codex-config] ${phase}: found duplicate config.toml entries that were not auto-fixed: ${result.unresolvedDuplicates.join("; ")}`
+    );
+  }
+}
+
+function removeClient(ws: ServerWebSocket<SocketData>): void {
+  if (!clients.delete(ws)) {
+    return;
+  }
+  const clientId = String(ws.data.token || ws.remoteAddress || ws);
+  subscriptionRegistry.unwatchAllForClient(clientId);
+  if (ws.data.user?.id) {
+    releaseAllTurnsForUser(ws.data.user.id);
   }
 }
 
@@ -1665,4 +1755,137 @@ function errorToMessage(error: unknown): string {
     }
   }
   return String(error);
+}
+
+let lastCpuSnapshot: { idle: number; total: number } | null = null;
+let lastCpuUsagePercent = 0;
+
+function getCpuUsagePercent(): number {
+  try {
+    if (existsSync("/proc/stat")) {
+      const line = readFileSync("/proc/stat", "utf-8").split("\n")[0];
+      if (line) {
+        const parts = line.trim().split(/\s+/).slice(1).map(Number);
+        const idle = (parts[3] || 0) + (parts[4] || 0);
+        const total = parts.reduce((a, b) => a + b, 0);
+        if (lastCpuSnapshot) {
+          const idleDelta = idle - lastCpuSnapshot.idle;
+          const totalDelta = total - lastCpuSnapshot.total;
+          if (totalDelta > 0) {
+            lastCpuUsagePercent = Math.max(0, Math.min(100, Math.round((1 - idleDelta / totalDelta) * 100)));
+          }
+        }
+        lastCpuSnapshot = { idle, total };
+        return lastCpuUsagePercent;
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+  const cpusList = cpus();
+  if (cpusList.length === 0) return 0;
+  let idleSum = 0;
+  let totalSum = 0;
+  for (const cpu of cpusList) {
+    const t = cpu.times;
+    idleSum += t.idle;
+    totalSum += t.user + t.nice + t.sys + t.idle + t.irq;
+  }
+  if (lastCpuSnapshot) {
+    const idleDelta = idleSum - lastCpuSnapshot.idle;
+    const totalDelta = totalSum - lastCpuSnapshot.total;
+    if (totalDelta > 0) {
+      lastCpuUsagePercent = Math.max(0, Math.min(100, Math.round((1 - idleDelta / totalDelta) * 100)));
+    }
+  }
+  lastCpuSnapshot = { idle: idleSum, total: totalSum };
+  return lastCpuUsagePercent;
+}
+
+function getSystemMetrics(): SystemMetrics {
+  const cpuPercent = getCpuUsagePercent();
+  const cpusList = cpus();
+  const totalMem = totalmem();
+  const freeMem = freemem();
+  const usedMem = Math.max(0, totalMem - freeMem);
+  const memPercent = totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0;
+  const loadAvgArray = loadavg() as [number, number, number];
+
+  let diskTotal = 0;
+  let diskFree = 0;
+  let diskUsed = 0;
+  let diskPercent = 0;
+  let mountPoint = "/";
+  try {
+    if (typeof statfsSync === "function") {
+      const stat = statfsSync("/");
+      diskTotal = Number(stat.bsize) * Number(stat.blocks);
+      diskFree = Number(stat.bsize) * Number(stat.bavail);
+      diskUsed = Math.max(0, diskTotal - diskFree);
+      diskPercent = diskTotal > 0 ? Math.round((diskUsed / diskTotal) * 100) : 0;
+    }
+  } catch {
+    /* fallback */
+  }
+
+  let swapTotal = 0;
+  let swapUsed = 0;
+  let swapPercent = 0;
+  try {
+    if (existsSync("/proc/meminfo")) {
+      const content = readFileSync("/proc/meminfo", "utf-8");
+      let totalKib = 0;
+      let freeKib = 0;
+      for (const line of content.split("\n")) {
+        if (line.startsWith("SwapTotal:")) {
+          totalKib = parseInt(line.split(/\s+/)[1] || "0", 10);
+        } else if (line.startsWith("SwapFree:")) {
+          freeKib = parseInt(line.split(/\s+/)[1] || "0", 10);
+        }
+      }
+      if (totalKib > 0) {
+        swapTotal = totalKib * 1024;
+        swapUsed = Math.max(0, (totalKib - freeKib) * 1024);
+        swapPercent = Math.round((swapUsed / swapTotal) * 100);
+      }
+    }
+  } catch {
+    /* fallback */
+  }
+
+  return {
+    timestamp: Date.now(),
+    cpu: {
+      usagePercent: cpuPercent,
+      cores: cpusList.length || 1,
+      model: cpusList[0]?.model?.trim() || "CPU",
+      loadAvg: [
+        Number((loadAvgArray[0] || 0).toFixed(2)),
+        Number((loadAvgArray[1] || 0).toFixed(2)),
+        Number((loadAvgArray[2] || 0).toFixed(2))
+      ]
+    },
+    memory: {
+      totalBytes: totalMem,
+      freeBytes: freeMem,
+      usedBytes: usedMem,
+      usagePercent: memPercent,
+      swapTotalBytes: swapTotal,
+      swapUsedBytes: swapUsed,
+      swapUsagePercent: swapPercent
+    },
+    disk: {
+      totalBytes: diskTotal,
+      freeBytes: diskFree,
+      usedBytes: diskUsed,
+      usagePercent: diskPercent,
+      mountPoint
+    },
+    host: {
+      hostname: hostname(),
+      platform: platform(),
+      arch: arch(),
+      uptimeSec: Math.floor(uptime())
+    }
+  };
 }

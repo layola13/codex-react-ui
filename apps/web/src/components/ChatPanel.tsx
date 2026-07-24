@@ -827,7 +827,7 @@ function DefaultWorkbenchEmpty({
   const richDecorations = activeThemePlugin?.layout?.decorationIntensity === "rich";
   const themeTuning = themeVisualTuning(activeThemePlugin);
   return (
-    <Box data-testid="default-workbench-empty" sx={{ minHeight: { xs: 440, md: 560 }, display: "grid", alignItems: "center" }}>
+    <Box data-testid="default-workbench-empty" sx={{ display: "grid", alignItems: "center" }}>
       <Box
         sx={{
           position: "relative",
@@ -837,8 +837,8 @@ function DefaultWorkbenchEmpty({
           borderRadius: 2,
           bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.workspaceSurfaceOpacity),
           boxShadow: (theme) => theme.customShadows?.card,
-          px: { xs: 2, sm: 3, md: 4 },
-          py: { xs: 3, md: 4 },
+          px: { xs: 1.25, sm: 2, md: 2.5 },
+          py: { xs: 1.25, sm: 1.5 },
           backgroundImage: heroImage
             ? (theme) =>
                 [
@@ -869,18 +869,18 @@ function DefaultWorkbenchEmpty({
             }}
           />
         )}
-        <Stack spacing={2.75} sx={{ position: "relative", zIndex: 1 }}>
-          <Stack spacing={1.25} sx={{ maxWidth: 620 }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <AutoAwesomeIcon color="primary" />
-              <Typography variant="subtitle2" color="primary" sx={{ fontWeight: 800 }}>
+        <Stack spacing={{ xs: 1, sm: 1.2 }} sx={{ position: "relative", zIndex: 1 }}>
+          <Stack spacing={0.35} sx={{ maxWidth: 620 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center">
+              <AutoAwesomeIcon color="primary" fontSize="small" />
+              <Typography variant="caption" color="primary" sx={{ fontWeight: 800 }}>
                 {t("chat.emptyBrand")}
               </Typography>
             </Stack>
-            <Typography component="h2" sx={{ fontSize: { xs: 34, md: 48 }, lineHeight: 1.08, fontWeight: 850 }}>
+            <Typography component="h2" sx={{ fontSize: { xs: 19, md: 22 }, lineHeight: 1.12, fontWeight: 850 }}>
               {t("chat.emptyTitle")}
             </Typography>
-            <Typography color="text.secondary" sx={{ maxWidth: 540, fontSize: 16 }}>
+            <Typography color="text.secondary" sx={{ maxWidth: 540, fontSize: 12.5, lineHeight: 1.35 }}>
               {t("chat.emptySubtitle")}
             </Typography>
           </Stack>
@@ -888,8 +888,8 @@ function DefaultWorkbenchEmpty({
           <Box
             sx={{
               display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(4, minmax(0, 1fr))" },
-              gap: 1.25
+              gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(3, minmax(0, 1fr))", md: "repeat(6, minmax(0, 1fr))" },
+              gap: 0.75
             }}
           >
             {emptyPromptCards(t).map((card) => (
@@ -900,11 +900,11 @@ function DefaultWorkbenchEmpty({
                 color="inherit"
                 onClick={() => onPromptSelect?.(card.prompt)}
                 sx={{
-                  minHeight: 112,
+                  minHeight: 0,
                   justifyContent: "flex-start",
                   alignItems: "stretch",
                   textAlign: "left",
-                  p: 1.5,
+                  p: 0.85,
                   borderRadius: 1,
                   bgcolor: (theme) => alpha(theme.palette.background.paper, themeTuning.panelSurfaceOpacity),
                   borderColor: "divider",
@@ -914,10 +914,10 @@ function DefaultWorkbenchEmpty({
                   }
                 }}
               >
-                <Stack spacing={1.25} sx={{ minWidth: 0 }}>
-                  <Box sx={{ color: "primary.main" }}>{card.icon}</Box>
-                  <Typography sx={{ fontWeight: 800, lineHeight: 1.28 }}>{card.label}</Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+                <Stack spacing={0.35} sx={{ minWidth: 0 }}>
+                  <Box sx={{ color: "primary.main", display: "flex" }}>{card.icon}</Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: 12, lineHeight: 1.15 }}>{card.label}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10.5, lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {card.detail}
                   </Typography>
                 </Stack>
@@ -1009,25 +1009,25 @@ function OnboardingGuide({
       variant="outlined"
       data-testid="codex-onboarding-guide"
       sx={{
-        p: { xs: 1.5, md: 2 },
-        borderRadius: 2,
+        p: { xs: 0.85, md: 1 },
+        borderRadius: 1.5,
         bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.13 : 0.08),
         borderColor: (theme) => alpha(theme.palette.primary.main, 0.32)
       }}
     >
-      <Stack spacing={1.5}>
+      <Stack spacing={0.75}>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="space-between" alignItems={{ sm: "center" }}>
           <Box sx={{ minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ fontWeight: 900 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 900, lineHeight: 1.15, fontSize: 13 }}>
               {t("onboarding.codex.title")}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.15, fontSize: 11 }}>
               {t("onboarding.codex.subtitle")}
             </Typography>
           </Box>
-          <Chip size="small" color="primary" label={t("onboarding.codex.priority")} sx={{ fontWeight: 800, alignSelf: { xs: "flex-start", sm: "center" } }} />
+          <Chip size="small" color="primary" label={t("onboarding.codex.priority")} sx={{ fontWeight: 800, height: 20, fontSize: 11, alignSelf: { xs: "flex-start", sm: "center" } }} />
         </Stack>
-        <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" } }}>
+        <Box sx={{ display: "grid", gap: 0.75, gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(4, minmax(0, 1fr))" } }}>
           {steps.map((item) => (
             <Button
               key={item.id}
@@ -1047,26 +1047,26 @@ function OnboardingGuide({
                 }
               }}
               sx={{
-                minHeight: 138,
+                minHeight: 0,
                 justifyContent: "flex-start",
                 textAlign: "left",
-                p: 1.25,
-                borderRadius: 1.5,
+                p: 0.7,
+                borderRadius: 1,
                 bgcolor: (theme) => alpha(theme.palette.background.paper, theme.palette.mode === "dark" ? 0.58 : 0.84),
                 borderColor: "divider",
                 "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" }
               }}
             >
-              <Stack spacing={1} sx={{ minWidth: 0, alignItems: "flex-start" }}>
+              <Stack spacing={0.35} sx={{ minWidth: 0, alignItems: "flex-start" }}>
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Avatar sx={{ width: 24, height: 24, fontSize: 12, fontWeight: 900, bgcolor: "primary.main" }}>{item.step}</Avatar>
+                  <Avatar sx={{ width: 22, height: 22, fontSize: 11, fontWeight: 900, bgcolor: "primary.main" }}>{item.step}</Avatar>
                   <Box sx={{ color: "primary.main", display: "flex" }}>{item.icon}</Box>
                 </Stack>
-                <Typography sx={{ fontWeight: 850, lineHeight: 1.25 }}>{item.title}</Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.35 }}>
+                <Typography sx={{ fontWeight: 850, fontSize: 11.5, lineHeight: 1.15 }}>{item.title}</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10.5, lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                   {item.detail}
                 </Typography>
-                <Chip size="small" label={item.action} variant="outlined" sx={{ mt: "auto" }} />
+                <Chip size="small" label={item.action} variant="outlined" sx={{ mt: "auto", height: 18, fontSize: 10, maxWidth: "100%" }} />
               </Stack>
             </Button>
           ))}
@@ -1541,12 +1541,12 @@ function agentFallbackName(id: string, index: number): string {
 }
 
 function mainConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null, turnTokenUsage: Record<string, TokenUsageBreakdown>): ChatWaterfallRow[] {
-  const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
+  const visibleTurns = activeThreadId ? sortWorkbenchTurns(turns.filter((turn) => turn.threadId === activeThreadId)) : [];
   return buildChatRows(visibleTurns, (item) => !item.agentId && !item.agentThreadId, turnTokenUsage);
 }
 
 function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | null, agent: AgentSession, turnTokenUsage: Record<string, TokenUsageBreakdown>): ChatWaterfallRow[] {
-  const visibleTurns = turns.map((turn) => {
+  const visibleTurns = sortWorkbenchTurns(turns.map((turn) => {
     if (agent.threadId && turn.threadId === agent.threadId) {
       return turn;
     }
@@ -1554,13 +1554,34 @@ function agentConversationRows(turns: WorkbenchTurn[], activeThreadId: string | 
       return { ...turn, items: [] };
     }
     return { ...turn, items: turn.items.filter((item) => itemBelongsToAgent(item, agent)) };
-  });
+  }));
   return buildChatRows(visibleTurns, undefined, turnTokenUsage);
 }
 
 function hasThreadActivity(turns: WorkbenchTurn[], activeThreadId: string | null): boolean {
   const visibleTurns = activeThreadId ? turns.filter((turn) => turn.threadId === activeThreadId) : [];
   return visibleTurns.some((turn) => turn.items.length > 0);
+}
+
+function sortWorkbenchTurns(turns: WorkbenchTurn[]): WorkbenchTurn[] {
+  return turns
+    .map((turn, index) => ({ turn, index }))
+    .sort((a, b) => {
+      const aTime = turnTimelineTime(a.turn);
+      const bTime = turnTimelineTime(b.turn);
+      if (aTime == null || bTime == null) {
+        return a.index - b.index;
+      }
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+      return a.index - b.index;
+    })
+    .map((entry) => entry.turn);
+}
+
+function turnTimelineTime(turn: WorkbenchTurn): number | null {
+  return turn.startedAt ?? turn.completedAt ?? null;
 }
 
 function itemBelongsToAgent(item: WorkbenchItem, agent: AgentSession): boolean {

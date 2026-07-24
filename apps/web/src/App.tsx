@@ -42,6 +42,7 @@ import TuneIcon from "@mui/icons-material/Tune";
 import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import { SystemMetricsTopBarBadge } from "./components/SystemMetricsTopBarBadge";
 import { Group as PanelGroup, Panel } from "react-resizable-panels";
 import {
   permissionPresets,
@@ -399,10 +400,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const providerRefreshCacheRef = useRef<{ token: string; refreshedAt: number; providers: ProviderConfig[] } | null>(null);
   const activeThreadIdRef = useRef(state.activeThreadId);
   const authSessionRef = useRef(authSession);
+  const providersRef = useRef(state.providers);
+  const cwdForThreadRef = useRef<(threadId?: string | null) => string>(() => DEFAULT_NEW_CHAT_CWD);
   const clientRef = useRef<CodexSocketClient | null>(null);
   historySearchTermRef.current = historySearchTerm;
   activeThreadIdRef.current = state.activeThreadId;
   authSessionRef.current = authSession;
+  providersRef.current = state.providers;
   const desktopLayout = useMediaQuery("(min-width:900px)");
   const { locale, setLocale, t } = useI18n();
 
@@ -572,6 +576,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     },
     [cwd, sshCwd, threadCwdById, workspaceMode]
   );
+  cwdForThreadRef.current = cwdForThread;
 
   useEffect(() => {
     localStorage.setItem(UI_STORAGE_KEYS.installedThemes, JSON.stringify(installedThemePluginIds));
@@ -588,7 +593,6 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       setInstallPromptEvent(win.__deferredPwaInstallPrompt);
     }
     const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
       win.__deferredPwaInstallPrompt = event as BeforeInstallPromptEvent;
       setInstallPromptEvent(event as BeforeInstallPromptEvent);
     };
@@ -804,6 +808,17 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return tracked;
   }, []);
 
+  const applyLoadedCodexConfig = useCallback((view: CodexUserConfigView, providers: ProviderConfig[]) => {
+    setCodexConfig(view);
+    const configuredProviderId = resolveConfiguredProviderId(providers, view.modelProvider);
+    if (configuredProviderId) {
+      setActiveProviderId(configuredProviderId);
+    }
+    if (view.model) {
+      setSelectedModel((current) => current || view.model || current);
+    }
+  }, []);
+
   useEffect(() => {
     if (!state.connected || !state.token) {
       return;
@@ -849,17 +864,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     try {
       const result = await client.rpc("config/read", { includeLayers: false });
       const view = parseConfigReadResponse(result);
-      setCodexConfig(view);
-      // Session toolbar effort/model stay independent; only fill empty model picker from engine default.
-      if (view.model) {
-        setSelectedModel((current) => current || view.model || current);
-      }
+      applyLoadedCodexConfig(view, state.providers);
     } catch (error) {
       setCodexConfigError(errorMessage("Codex config read", error));
     } finally {
       setCodexConfigLoading(false);
     }
-  }, [client]);
+  }, [applyLoadedCodexConfig, client, state.providers]);
 
   const writeCodexConfigField = useCallback(
     async (field: CodexConfigFieldKey, value: string) => {
@@ -1162,7 +1173,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     void (async () => {
       try {
         const storedToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-        const session = await fetchSessionToken(storedToken);
+        const session = await withTimeout(fetchSessionToken(storedToken), 8_000, "Session check timeout");
         if (!mounted) return;
         if (session.authenticated === false || session.loginRequired || !session.token) {
           window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
@@ -1173,13 +1184,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         setAuthSession(session);
         setAuthStatus("authenticated");
         dispatch({ type: "token", token: session.token });
-        await client.connect(session.token);
+        await withTimeout(client.connect(session.token), 8_000, "WebSocket connect timeout");
         let providers = readCachedProviders(session) ?? [];
         if (providers.length > 0) {
           dispatch({ type: "providers", providers });
         }
         try {
-          providers = await refreshProviders(session.token, session);
+          providers = await withTimeout(refreshProviders(session.token, session), 8_000, "Provider refresh timeout");
           if (!mounted) return;
         } catch (error) {
           if (error instanceof LoginRequiredError) {
@@ -1188,17 +1199,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           console.warn("[auth] provider fetch failed; preserving current relay list", error);
         }
         try {
-          const configResult = await client.rpc("config/read", { includeLayers: false });
+          const configResult = await withTimeout(client.rpc("config/read", { includeLayers: false }), 8_000, "Config read timeout");
           if (!mounted) return;
           const view = parseConfigReadResponse(configResult);
-          setCodexConfig(view);
-          const providerFromConfig = view.modelProvider ? providers.find((provider) => provider.id === view.modelProvider) : undefined;
-          if (providerFromConfig) {
-            setActiveProviderId(providerFromConfig.id);
-          }
-          if (view.model) {
-            setSelectedModel((current) => current || view.model || current);
-          }
+          applyLoadedCodexConfig(view, providers);
         } catch {
           /* The workbench can still load with engine defaults if config/read is unavailable. */
         }
@@ -1210,10 +1214,17 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           setAuthStatus("loginRequired");
           return;
         }
+        // Verify if session token is still valid on server
+        const currentToken = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+        if (currentToken) {
+          const recheck = await withTimeout(fetchSessionToken(currentToken), 8_000, "Session recheck timeout").catch(() => null);
+          if (recheck && recheck.authenticated === false) {
+            window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+            setAuthStatus("loginRequired");
+            return;
+          }
+        }
         dispatch({ type: "error", message: formatErrorText(error) });
-        // A transport/app-server hiccup during bootstrap is transient. Keep the
-        // authenticated workbench visible while CodexSocketClient retries;
-        // only an explicit LoginRequiredError should return to the login form.
         if (window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)) {
           setAuthStatus("authenticated");
         } else {
@@ -1224,7 +1235,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return () => {
       mounted = false;
     };
-  }, [client, loadBasics, refreshProviders]);
+  }, [applyLoadedCodexConfig, client, loadBasics, refreshProviders]);
 
   useEffect(() => {
     if (state.connected) {
@@ -1329,7 +1340,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     async (threadId: string) => {
       try {
         const resumeCwd = cwdForThread(threadId);
-        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const effectiveProviderId = resolveProviderSelectionId(state.providers, activeProviderId, codexConfig?.modelProvider);
+        const effectiveModel = resolveSelectedModel(state.providers, effectiveProviderId, selectedModel);
+        const effectiveModelProvider = resolveSelectedModelProvider(state.providers, effectiveProviderId, codexConfig?.modelProvider);
         const permissionOverrides = permissionToTurnOverrides(permission, resumeCwd);
         const resumeParams: Record<string, JsonValue> = {
           threadId,
@@ -1340,11 +1353,21 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (effectiveModel) {
           resumeParams.model = effectiveModel;
         }
+        if (effectiveModelProvider) {
+          resumeParams.modelProvider = effectiveModelProvider;
+        }
+        debugLog("thread/resume", resumeParams);
         await client.rpc("thread/resume", resumeParams);
       } catch (error) {
         // Historical CLI sessions may use a provider no longer present in config (e.g. code_launch).
         // Still load the transcript via thread/read so shared history remains readable.
         const message = errorMessage("Resume thread", error);
+        setSlashNotice({
+          id: `resume-failed-${Date.now()}`,
+          title: "Thread transcript loaded",
+          message: `${message}\nThe history is visible, but Codex did not attach this browser session for continuing turns.`,
+          severity: "warning"
+        });
         if (!/model provider|not found/i.test(message)) {
           dispatch({ type: "error", message });
         } else {
@@ -1354,7 +1377,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         await loadThread(threadId);
       }
     },
-    [activeProviderId, client, cwdForThread, loadThread, permission, selectedModel, state.providers]
+    [activeProviderId, client, codexConfig?.modelProvider, cwdForThread, loadThread, permission, selectedModel, state.providers]
   );
 
   useEffect(() => {
@@ -1365,14 +1388,34 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     let cancelled = false;
     void (async () => {
       try {
-        await refreshProviders(token, authSessionRef.current);
+        let refreshedProviders = providersRef.current;
+        try {
+          refreshedProviders = await refreshProviders(token, authSessionRef.current);
+        } catch (error) {
+          console.warn("[thread reconnect] provider refresh failed; continuing with cached providers", error);
+        }
         if (cancelled) return;
         await loadBasics();
         if (cancelled) return;
         const activeThreadId = activeThreadIdRef.current;
         if (activeThreadId) {
           try {
-            await client.rpc("thread/resume", { threadId: activeThreadId });
+            const reconnectCwd = cwdForThreadRef.current(activeThreadId);
+            const reconnectParams: Record<string, JsonValue> = { threadId: activeThreadId };
+            const effectiveProviderId = resolveProviderSelectionId(refreshedProviders, activeProviderId, codexConfig?.modelProvider);
+            const effectiveModel = resolveSelectedModel(refreshedProviders, effectiveProviderId, selectedModel);
+            const effectiveModelProvider = resolveSelectedModelProvider(refreshedProviders, effectiveProviderId, codexConfig?.modelProvider);
+            if (reconnectCwd) {
+              reconnectParams.cwd = reconnectCwd;
+            }
+            if (effectiveModel) {
+              reconnectParams.model = effectiveModel;
+            }
+            if (effectiveModelProvider) {
+              reconnectParams.modelProvider = effectiveModelProvider;
+            }
+            debugLog("thread/reconnect resume", reconnectParams);
+            await client.rpc("thread/resume", reconnectParams);
           } catch (error) {
             dispatch({ type: "error", message: errorMessage("Reconnect thread subscription", error) });
           }
@@ -1387,7 +1430,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     return () => {
       cancelled = true;
     };
-  }, [client, loadBasics, loadThreadIntoCache, refreshProviders, state.connected, state.token]);
+  }, [activeProviderId, client, codexConfig?.modelProvider, loadBasics, loadThreadIntoCache, refreshProviders, selectedModel, state.connected, state.token]);
 
   const selectTaskTab = useCallback(
     (threadId: string | null) => {
@@ -1523,7 +1566,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     if (workspaceSelectionPending) {
       throw new Error(t("workspace.required"));
     }
-    const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+    const effectiveProviderId = resolveProviderSelectionId(state.providers, activeProviderId, codexConfig?.modelProvider);
+    const effectiveModel = resolveSelectedModel(state.providers, effectiveProviderId, selectedModel);
+    const effectiveModelProvider = resolveSelectedModelProvider(state.providers, effectiveProviderId, codexConfig?.modelProvider);
     const startCwd = cwdForThread(null);
     const permissionOverrides = permissionToTurnOverrides(permission, startCwd);
     const startParams: Record<string, JsonValue> = {
@@ -1536,6 +1581,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     if (effectiveModel) {
       startParams.model = effectiveModel;
     }
+    if (effectiveModelProvider) {
+      startParams.modelProvider = effectiveModelProvider;
+    }
     const threadResult = await client.rpc("thread/start", startParams);
     const thread = asRecord(asRecord(threadResult).thread);
     const threadId = stringValue(thread.id);
@@ -1544,7 +1592,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     }
     dispatch({ type: "activeThread", threadId });
     return threadId;
-  }, [activeProviderId, client, cwdForThread, permission, selectedModel, sshCommand, state.activeThreadId, state.providers, t, workspaceMode, workspaceSelectionPending]);
+  }, [activeProviderId, client, codexConfig?.modelProvider, cwdForThread, permission, selectedModel, sshCommand, state.activeThreadId, state.providers, t, workspaceMode, workspaceSelectionPending]);
 
   const startCodexTurn = useCallback(
     async (text: string, images: ComposerImageAttachment[], mentions: ComposerMention[], options: { preserveText?: boolean; forceEffort?: string } = {}) => {
@@ -1560,7 +1608,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         const threadId = await ensureActiveThread();
         const turnCwd = cwdForThread(threadId);
-        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const effectiveProviderId = resolveProviderSelectionId(state.providers, activeProviderId, codexConfig?.modelProvider);
+        const effectiveModel = resolveSelectedModel(state.providers, effectiveProviderId, selectedModel);
         const permissionOverrides = permissionToTurnOverrides(permission, turnCwd);
         const turnParams: Record<string, JsonValue> = {
           threadId,
@@ -1574,26 +1623,64 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (effectiveModel) {
           turnParams.model = effectiveModel;
         }
-        const activeTurn = state.turns.slice().reverse().find((t) => t.threadId === threadId && (t.status === "pending" || t.status === "inProgress"));
+        const activeTurn = latestActionableRunningTurn(state.turns, threadId);
+        const staleRunningTurns = staleRunningTurnsForThread(state.turns, threadId);
         if (activeTurn?.id) {
-          await client.rpc("turn/steer", {
+          const steerParams: Record<string, JsonValue> = {
             threadId,
             expectedTurnId: activeTurn.id,
             input
-          });
+          };
+          debugLog("turn/steer", steerParams);
+          try {
+            await client.rpc("turn/steer", steerParams);
+          } catch (error) {
+            const actualTurnId = extractActualActiveTurnId(error);
+            if (!actualTurnId || actualTurnId === activeTurn.id) {
+              throw error;
+            }
+            const retryParams: Record<string, JsonValue> = {
+              threadId,
+              expectedTurnId: actualTurnId,
+              input
+            };
+            console.warn("[turn/steer] active turn changed; retrying with server turn id", {
+              expectedTurnId: activeTurn.id,
+              actualTurnId,
+              threadId
+            });
+            debugLog("turn/steer retry", retryParams);
+            await client.rpc("turn/steer", retryParams);
+          }
         } else {
+          for (const staleTurn of staleRunningTurns) {
+            console.warn("[turn/start] interrupting stale running turn before continuing thread", {
+              threadId,
+              turnId: staleTurn.id,
+              status: staleTurn.status
+            });
+            await client.rpc("turn/interrupt", { threadId, turnId: staleTurn.id });
+          }
+          debugLog("turn/start", turnParams);
           await client.rpc("turn/start", turnParams);
         }
         if (permission === "dangerBypass") {
           await loadAuditEvents();
         }
       } catch (error) {
+        console.warn("[turn/send] failed", {
+          activeThreadId: state.activeThreadId,
+          runningTurns: runningTurnsForThread(state.turns, state.activeThreadId)
+            .map((turn) => ({ id: turn.id, status: turn.status, items: turn.items.length })),
+          error
+        });
         dispatch({ type: "error", message: formatErrorText(error) });
       }
     },
     [
       activeProviderId,
       client,
+      codexConfig?.modelProvider,
       cwdForThread,
       dangerBypassConfirmed,
       ensureActiveThread,
@@ -1604,7 +1691,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       reasoningOptions,
       selectedModel,
       sshCommand,
+      state.activeThreadId,
       state.providers,
+      state.turns,
       workspaceMode
     ]
   );
@@ -1844,7 +1933,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
       try {
         const resumeCwd = cwdForThread(targetThreadId);
-        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const effectiveProviderId = resolveProviderSelectionId(state.providers, activeProviderId, codexConfig?.modelProvider);
+        const effectiveModel = resolveSelectedModel(state.providers, effectiveProviderId, selectedModel);
+        const effectiveModelProvider = resolveSelectedModelProvider(state.providers, effectiveProviderId, codexConfig?.modelProvider);
         const permissionOverrides = permissionToTurnOverrides(permission, resumeCwd);
         const resumeParams: Record<string, JsonValue> = {
           threadId: targetThreadId,
@@ -1855,6 +1946,10 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         if (effectiveModel) {
           resumeParams.model = effectiveModel;
         }
+        if (effectiveModelProvider) {
+          resumeParams.modelProvider = effectiveModelProvider;
+        }
+        debugLog("slash thread/resume", resumeParams);
         await client.rpc("thread/resume", resumeParams);
         await loadThread(targetThreadId);
         setSlashNotice({
@@ -1867,7 +1962,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         dispatch({ type: "error", message: errorMessage("Resume thread", error) });
       }
     },
-    [activeProviderId, client, cwdForThread, loadHistory, loadThread, permission, selectedModel, state.providers]
+    [activeProviderId, client, codexConfig?.modelProvider, cwdForThread, loadHistory, loadThread, permission, selectedModel, state.providers]
   );
 
   function openWebDevWorkspace() {
@@ -2121,7 +2216,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       try {
         let threadId = tab.threadId;
         let turnCwd = cwdForThread(threadId);
-        const effectiveModel = resolveSelectedModel(state.providers, activeProviderId, selectedModel);
+        const effectiveProviderId = resolveProviderSelectionId(state.providers, activeProviderId, codexConfig?.modelProvider);
+        const effectiveModel = resolveSelectedModel(state.providers, effectiveProviderId, selectedModel);
+        const effectiveModelProvider = resolveSelectedModelProvider(state.providers, effectiveProviderId, codexConfig?.modelProvider);
         let permissionOverrides = permissionToTurnOverrides(permission, turnCwd);
         if (!threadId) {
           const startParams: Record<string, JsonValue> = {
@@ -2133,6 +2230,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           addWorkspaceRpcMetadata(startParams, workspaceMode, sshCommand, turnCwd);
           if (effectiveModel) {
             startParams.model = effectiveModel;
+          }
+          if (effectiveModelProvider) {
+            startParams.modelProvider = effectiveModelProvider;
           }
           const threadResult = await client.rpc("thread/start", startParams);
           const thread = asRecord(asRecord(threadResult).thread);
@@ -2179,6 +2279,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
     [
       activeProviderId,
       client,
+      codexConfig?.modelProvider,
       cwdForThread,
       dangerBypassConfirmed,
       loadAuditEvents,
@@ -2721,7 +2822,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   const petImage = safeThemeAssetUrl(activeThemePlugin?.assets?.petImage);
   const showThemePet = Boolean(petImage && activeThemePlugin?.layout?.petEnabled !== false);
   const activeRunningTurn = state.activeThreadId
-    ? [...state.turns].reverse().find((turn) => turn.threadId === state.activeThreadId && isRunningTurnStatus(turn.status)) ?? null
+    ? latestActionableRunningTurn(state.turns, state.activeThreadId)
     : null;
   const composerWorkingStatus: ComposerWorkingStatus | null = activeRunningTurn
     ? {
@@ -2753,9 +2854,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         sx={{
           minWidth: 0,
           minHeight: 0,
-          height: { md: "100%" },
+          height: "100%",
           display: "grid",
-          gridTemplateRows: { xs: "auto auto minmax(360px, 1fr) auto", md: "auto minmax(0, 1fr) auto" },
+          gridTemplateRows: "auto minmax(0, 1fr) auto",
           borderInline: { xs: 0, md: "1px solid" },
           borderColor: "divider",
           bgcolor: (theme) => alpha(theme.palette.background.default, themeTuning.workspaceSurfaceOpacity),
@@ -2764,98 +2865,100 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           position: "relative"
         }}
       >
-        {state.engine.phase === "starting" && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
-            <CircularProgress size={18} />
-            <Typography variant="body2">{t("app.engineStarting")}</Typography>
-          </Box>
-        )}
-        {workspaceSelectionPending && !state.activeThreadId && (
-          <Box
-            data-testid="workspace-selection-panel"
-            sx={{
-              m: { xs: 1, sm: 1.5 },
-              p: { xs: 1.5, sm: 2 },
-              border: "1px solid",
-              borderColor: "primary.main",
-              borderRadius: 2,
-              bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.14 : 0.08)
-            }}
-          >
-            <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
-                <FolderOpenIcon color="primary" />
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
-                    {t("workspace.title")}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {t("workspace.description")}
-                  </Typography>
-                </Box>
-              </Stack>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={workspaceMode}
-                onChange={(_event, value) => {
-                  if (value !== "local" && value !== "ssh") {
-                    return;
-                  }
-                  setWorkspaceMode(value);
-                  setWorkspacePickerPath(value === "ssh" ? normalizeSshWorkspaceCwd(sshCwd) || DEFAULT_SSH_WORKSPACE_CWD : normalizeWorkspaceCwd(cwd) || "/root");
-                }}
-                aria-label={t("workspace.mode")}
-              >
-                <ToggleButton value="local" aria-label={t("workspace.local")}>
-                  {t("workspace.local")}
-                </ToggleButton>
-                <ToggleButton value="ssh" aria-label={t("workspace.ssh")}>
-                  SSH
-                </ToggleButton>
-              </ToggleButtonGroup>
-              {workspaceMode === "ssh" && (
+        <Box sx={{ minHeight: 0 }}>
+          {state.engine.phase === "starting" && (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, p: 2 }}>
+              <CircularProgress size={18} />
+              <Typography variant="body2">{t("app.engineStarting")}</Typography>
+            </Box>
+          )}
+          {workspaceSelectionPending && !state.activeThreadId && (
+            <Box
+              data-testid="workspace-selection-panel"
+              sx={{
+                m: { xs: 1, sm: 1.5 },
+                p: { xs: 1.5, sm: 2 },
+                border: "1px solid",
+                borderColor: "primary.main",
+                borderRadius: 2,
+                bgcolor: (theme) => alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.14 : 0.08)
+              }}
+            >
+              <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems={{ xs: "stretch", md: "center" }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flex: 1 }}>
+                  <FolderOpenIcon color="primary" />
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 850 }}>
+                      {t("workspace.title")}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {t("workspace.description")}
+                    </Typography>
+                  </Box>
+                </Stack>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={workspaceMode}
+                  onChange={(_event, value) => {
+                    if (value !== "local" && value !== "ssh") {
+                      return;
+                    }
+                    setWorkspaceMode(value);
+                    setWorkspacePickerPath(value === "ssh" ? normalizeSshWorkspaceCwd(sshCwd) || DEFAULT_SSH_WORKSPACE_CWD : normalizeWorkspaceCwd(cwd) || "/root");
+                  }}
+                  aria-label={t("workspace.mode")}
+                >
+                  <ToggleButton value="local" aria-label={t("workspace.local")}>
+                    {t("workspace.local")}
+                  </ToggleButton>
+                  <ToggleButton value="ssh" aria-label={t("workspace.ssh")}>
+                    SSH
+                  </ToggleButton>
+                </ToggleButtonGroup>
+                {workspaceMode === "ssh" && (
+                  <TextField
+                    size="small"
+                    label={t("workspace.sshCommand")}
+                    value={sshCommand}
+                    onChange={(event) => setSshCommand(event.target.value)}
+                    sx={{ minWidth: { xs: "100%", md: 320 } }}
+                    inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
+                  />
+                )}
                 <TextField
                   size="small"
-                  label={t("workspace.sshCommand")}
-                  value={sshCommand}
-                  onChange={(event) => setSshCommand(event.target.value)}
+                  label={workspaceMode === "ssh" ? t("workspace.remoteFolder") : t("workspace.label")}
+                  value={workspaceMode === "ssh" ? sshCwd : cwd}
+                  onChange={(event) => (workspaceMode === "ssh" ? setSshCwd(event.target.value) : setCwd(event.target.value))}
                   sx={{ minWidth: { xs: "100%", md: 320 } }}
-                  inputProps={{ sx: { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 13 } }}
                 />
+                <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={openWorkspacePicker}>
+                  {t("workspace.browse")}
+                </Button>
+                <Button variant="contained" onClick={confirmWorkspaceSelection}>
+                  {t("workspace.use")}
+                </Button>
+              </Stack>
+              {workspaceMode === "ssh" && (
+                <Alert severity="info" sx={{ mt: 1.25 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 750 }}>
+                    {t("workspace.sshHelpTitle")}
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: "block", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", mt: 0.35 }}>
+                    ssh-keygen -t ed25519 -C "codex-ui"
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: "block", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                    ssh-copy-id user@192.168.11.1
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.35 }}>
+                    {t("workspace.sshHelp")}
+                  </Typography>
+                </Alert>
               )}
-              <TextField
-                size="small"
-                label={workspaceMode === "ssh" ? t("workspace.remoteFolder") : t("workspace.label")}
-                value={workspaceMode === "ssh" ? sshCwd : cwd}
-                onChange={(event) => (workspaceMode === "ssh" ? setSshCwd(event.target.value) : setCwd(event.target.value))}
-                sx={{ minWidth: { xs: "100%", md: 320 } }}
-              />
-              <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={openWorkspacePicker}>
-                {t("workspace.browse")}
-              </Button>
-              <Button variant="contained" onClick={confirmWorkspaceSelection}>
-                {t("workspace.use")}
-              </Button>
-            </Stack>
-            {workspaceMode === "ssh" && (
-              <Alert severity="info" sx={{ mt: 1.25 }}>
-                <Typography variant="body2" sx={{ fontWeight: 750 }}>
-                  {t("workspace.sshHelpTitle")}
-                </Typography>
-                <Typography variant="caption" sx={{ display: "block", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", mt: 0.35 }}>
-                  ssh-keygen -t ed25519 -C "codex-ui"
-                </Typography>
-                <Typography variant="caption" sx={{ display: "block", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
-                  ssh-copy-id user@192.168.11.1
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.35 }}>
-                  {t("workspace.sshHelp")}
-                </Typography>
-              </Alert>
-            )}
-          </Box>
-        )}
+            </Box>
+          )}
+        </Box>
         <ChatPanel
           turns={allTurns}
           turnTokenUsage={turnTokenUsage}
@@ -3036,9 +3139,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       // Mark authenticated immediately so UI enters the workbench even if
       // the WebSocket or subsequent RPCs are slow/failing.
       setAuthStatus("authenticated");
-      const cachedProviders = readCachedProviders(session);
-      if (cachedProviders?.length) {
-        dispatch({ type: "providers", providers: cachedProviders });
+      let providers = readCachedProviders(session) ?? state.providers;
+      if (providers.length) {
+        dispatch({ type: "providers", providers });
       }
       // Best-effort post-login setup: never block the workbench.
       void (async () => {
@@ -3048,22 +3151,20 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           console.warn("[auth] WebSocket connect failed, workbench remains usable", error);
         }
         try {
+          providers = await withTimeout(refreshProviders(session.token, session), 8000, "Provider refresh timeout");
+        } catch (error) {
+          console.warn("[auth] provider fetch failed; preserving current relay list", error);
+        }
+        try {
           const configResult = await withTimeout(client.rpc("config/read", { includeLayers: false }), 8000, "Config read timeout");
           const view = parseConfigReadResponse(configResult);
-          setCodexConfig(view);
-          const providerFromConfig = view.modelProvider ? state.providers.find((provider) => provider.id === view.modelProvider) : undefined;
-          if (providerFromConfig) {
-            setActiveProviderId(providerFromConfig.id);
-          }
-          if (view.model) {
-            setSelectedModel((current) => current || view.model || current);
-          }
+          applyLoadedCodexConfig(view, providers);
         } catch {
           /* optional */
         }
       })();
     },
-    [client, state.providers]
+    [applyLoadedCodexConfig, client, refreshProviders, state.providers]
   );
 
   const handleLogin = useCallback(
@@ -3300,6 +3401,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             activeProviderId={activeProviderId}
             onActivateProvider={activateProvider}
             onOpenOfficialLogin={() => setOfficialLoginOpen(true)}
+            onOpenCreateRelay={() => openSettings("relay")}
           />
           {fastModeEnabled && (
             <Tooltip title={t("app.fastTooltip", { effort: reasoningLabel(fastReasoningEffort(reasoningOptions, reasoningEffort)) })}>
@@ -3328,6 +3430,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           <Box sx={{ display: { xs: "none", lg: "block" }, flex: "0 0 auto" }}>
             <NewChatButton currentPermission={permission} t={t} onNew={requestNewSession} />
           </Box>
+          <SystemMetricsTopBarBadge token={state.token ?? undefined} />
           <Box sx={{ flex: 1, minWidth: 0 }} />
           <Box sx={{ display: { xs: "none", md: "contents" } }}>
             <Tooltip title={leftPanelVisible ? t("app.hideHistory") : t("app.showHistory")}>
@@ -4722,11 +4825,75 @@ function upsertThread(threads: ClientState["threads"], thread: ClientState["thre
 
 function mergeTurns(current: ClientState["turns"], loaded: ClientState["turns"]): ClientState["turns"] {
   const loadedIds = new Set(loaded.map((turn) => turn.id));
-  return [...current.filter((turn) => !loadedIds.has(turn.id)), ...loaded];
+  return sortTurnsByTimeline([...current.filter((turn) => !loadedIds.has(turn.id)), ...loaded]);
 }
 
 function isRunningTurnStatus(status?: string): boolean {
   return status === "inProgress" || status === "pending" || status === "pendingInit" || status === "started";
+}
+
+function sortTurnsByTimeline(turns: ClientState["turns"]): ClientState["turns"] {
+  return turns
+    .map((turn, index) => ({ turn, index }))
+    .sort((a, b) => {
+      if (a.turn.threadId !== b.turn.threadId) {
+        return a.index - b.index;
+      }
+      const aTime = turnTimelineTime(a.turn);
+      const bTime = turnTimelineTime(b.turn);
+      if (aTime == null || bTime == null) {
+        return a.index - b.index;
+      }
+      if (aTime !== bTime) {
+        return aTime - bTime;
+      }
+      return a.index - b.index;
+    })
+    .map((entry) => entry.turn);
+}
+
+function turnTimelineTime(turn: ClientState["turns"][number]): number | null {
+  return turn.startedAt ?? turn.completedAt ?? null;
+}
+
+function runningTurnsForThread(turns: ClientState["turns"], threadId: string | null | undefined): ClientState["turns"] {
+  if (!threadId) {
+    return [];
+  }
+  return turns.filter((turn) => turn.threadId === threadId && isRunningTurnStatus(turn.status));
+}
+
+function latestActionableRunningTurn(turns: ClientState["turns"], threadId: string | null | undefined): ClientState["turns"][number] | null {
+  const runningTurns = runningTurnsForThread(turns, threadId);
+  if (runningTurns.length === 0) {
+    return null;
+  }
+  const latestCompletedStartedAt = latestCompletedTurnStartedAt(turns, threadId);
+  return [...runningTurns]
+    .reverse()
+    .find((turn) => latestCompletedStartedAt == null || (turn.startedAt ?? 0) >= latestCompletedStartedAt) ?? null;
+}
+
+function staleRunningTurnsForThread(turns: ClientState["turns"], threadId: string | null | undefined): ClientState["turns"] {
+  const latestCompletedStartedAt = latestCompletedTurnStartedAt(turns, threadId);
+  if (latestCompletedStartedAt == null) {
+    return [];
+  }
+  return runningTurnsForThread(turns, threadId).filter((turn) => (turn.startedAt ?? 0) < latestCompletedStartedAt);
+}
+
+function latestCompletedTurnStartedAt(turns: ClientState["turns"], threadId: string | null | undefined): number | null {
+  if (!threadId) {
+    return null;
+  }
+  let latest: number | null = null;
+  for (const turn of turns) {
+    if (turn.threadId !== threadId || turn.status !== "completed" || !turn.startedAt) {
+      continue;
+    }
+    latest = latest == null ? turn.startedAt : Math.max(latest, turn.startedAt);
+  }
+  return latest;
 }
 
 function normalizeTimestampMilliseconds(value?: number): number | null {
@@ -4878,6 +5045,69 @@ function resolveSelectedModel(providers: ProviderConfig[], activeProviderId: str
     model = next;
   }
   return model;
+}
+
+function resolveProviderSelectionId(
+  providers: ProviderConfig[],
+  activeProviderId: string | null,
+  configuredModelProvider: string | null | undefined
+): string | null {
+  if (activeProviderId && providers.some((entry) => entry.id === activeProviderId)) {
+    return activeProviderId;
+  }
+  const configuredProviderId = resolveConfiguredProviderId(providers, configuredModelProvider);
+  if (configuredProviderId) {
+    return configuredProviderId;
+  }
+  return activeProviderId;
+}
+
+function resolveConfiguredProviderId(providers: ProviderConfig[], configuredModelProvider: string | null | undefined): string | null {
+  const normalized = configuredModelProvider?.trim();
+  if (!normalized) {
+    return null;
+  }
+  const direct = providers.find((entry) => entry.id === normalized);
+  if (direct) {
+    return direct.id;
+  }
+  if (normalized === "openai") {
+    return providers.find((entry) => entry.kind === "chatgpt")?.id ?? null;
+  }
+  return null;
+}
+
+function resolveSelectedModelProvider(
+  providers: ProviderConfig[],
+  activeProviderId: string | null,
+  configuredModelProvider?: string | null
+): string | undefined {
+  const provider = providers.find((entry) => entry.id === activeProviderId);
+  if (provider) {
+    return provider.kind === "chatgpt" ? "openai" : provider.id;
+  }
+  return configuredModelProvider?.trim() || activeProviderId || undefined;
+}
+
+function extractActualActiveTurnId(error: unknown): string | null {
+  const message = formatErrorText(error);
+  const foundMatch = message.match(/but found [`'"]([0-9a-f-]{20,})[`'"]/i);
+  if (foundMatch?.[1]) {
+    return foundMatch[1];
+  }
+  const activeMatch = message.match(/active turn id [`'"]([0-9a-f-]{20,})[`'"]/i);
+  return activeMatch?.[1] ?? null;
+}
+
+function debugLog(label: string, payload: unknown): void {
+  try {
+    if (window.localStorage.getItem("codex-react-ui.debug") !== "1") {
+      return;
+    }
+  } catch {
+    return;
+  }
+  console.debug(`[codex-ui] ${label}`, payload);
 }
 
 function normalizeWorkspaceCwd(value: string): string {
@@ -5128,7 +5358,8 @@ function LoginScreen({
               }
             } catch (err) {
               setLocalError(err instanceof Error ? err.message : String(err));
-              await refreshCaptcha();
+              setCaptchaAnswer("");
+              void refreshCaptcha().catch(() => {});
             }
           })();
         }}

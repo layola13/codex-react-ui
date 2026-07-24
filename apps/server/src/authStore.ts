@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Database } from "bun:sqlite";
 import type {
   AuthUser,
@@ -910,12 +910,37 @@ export function permissionAllowedForUser(user: AuthUser, permission: PermissionP
 }
 
 function configFromEnv(env: NodeJS.ProcessEnv = process.env): AuthConfig {
-  const jwtSecret = env.CODEX_UI_JWT_SECRET ?? env.JWT_SECRET ?? randomBytes(32).toString("base64url");
-  if (!env.CODEX_UI_JWT_SECRET && !env.JWT_SECRET) {
-    console.warn("[auth] CODEX_UI_JWT_SECRET is not set; sessions will be invalidated on restart.");
+  let jwtSecret = env.CODEX_UI_JWT_SECRET ?? env.JWT_SECRET;
+  if (!jwtSecret) {
+    const configEnvPath = join(homedir(), ".config", "codex-react-ui", ".env");
+    const fallbackSecretPath = join(homedir(), ".codex-react-ui", "jwt.secret");
+    try {
+      if (existsSync(configEnvPath)) {
+        const content = readFileSync(configEnvPath, "utf-8");
+        const match = content.match(/CODEX_UI_JWT_SECRET=(.+)/);
+        if (match && match[1]?.trim()) {
+          jwtSecret = match[1].trim();
+        }
+      }
+    } catch {
+      /* ignore env read error */
+    }
+    if (!jwtSecret) {
+      try {
+        if (existsSync(fallbackSecretPath)) {
+          jwtSecret = readFileSync(fallbackSecretPath, "utf-8").trim();
+        } else {
+          mkdirSync(dirname(fallbackSecretPath), { recursive: true });
+          jwtSecret = randomBytes(32).toString("base64url");
+          writeFileSync(fallbackSecretPath, jwtSecret, "utf-8");
+        }
+      } catch {
+        jwtSecret = randomBytes(32).toString("base64url");
+      }
+    }
   }
   return {
-    jwtSecret,
+    jwtSecret: jwtSecret || randomBytes(32).toString("base64url"),
     adminEmail: env.CODEX_UI_ADMIN_EMAIL ?? env.ADMIN_EMAIL ?? "admin@example.com",
     adminPassword: env.CODEX_UI_ADMIN_PASSWORD ?? env.ADMIN_PASSWORD ?? "ChangeMe123!",
     tokenExpireHours: positiveNumber(env.CODEX_UI_JWT_EXPIRE_HOURS ?? env.JWT_EXPIRE_HOURS, 24),

@@ -358,6 +358,9 @@ export class CodexSocketClient extends EventTarget {
   private socket: WebSocket | null = null;
   private token: string | null = null;
   private reconnectTimer: number | null = null;
+  private heartbeatTimer: number | null = null;
+  private heartbeatSequence = 0;
+  private lastServerPongAt = 0;
   private reconnectAttempt = 0;
   private connectPromise: Promise<void> | null = null;
   private closedByClient = false;
@@ -386,6 +389,7 @@ export class CodexSocketClient extends EventTarget {
   public disconnect(): void {
     this.closedByClient = true;
     this.clearReconnectTimer();
+    this.stopHeartbeat();
     this.rejectPending("WebSocket disconnected");
     this.socket?.close();
     this.socket = null;
@@ -437,6 +441,7 @@ export class CodexSocketClient extends EventTarget {
         this.connectPromise = null;
         this.reconnectAttempt = 0;
         this.clearReconnectTimer();
+        this.startHeartbeat(socket);
         this.dispatch("connected", true);
         resolve();
       });
@@ -446,6 +451,7 @@ export class CodexSocketClient extends EventTarget {
       socket.addEventListener("close", () => {
         if (this.socket !== socket) return;
         window.clearTimeout(handshakeTimer);
+        this.stopHeartbeat(socket);
         this.socket = null;
         this.connectPromise = null;
         if (!opened) rejectOnce("WebSocket closed before connecting");
@@ -548,6 +554,14 @@ export class CodexSocketClient extends EventTarget {
 
   private handleMessage(raw: string): void {
     const message = JSON.parse(raw) as ServerToClientMessage;
+    if (message.type === "heartbeat.ping") {
+      this.sendHeartbeatPong(message.id, message.sentAt);
+      return;
+    }
+    if (message.type === "heartbeat.pong") {
+      this.lastServerPongAt = Date.now();
+      return;
+    }
     this.dispatch("server-message", message);
     if (message.type === "rpc.result") {
       this.pending.get(message.id)?.resolve(message.result);
@@ -590,6 +604,59 @@ export class CodexSocketClient extends EventTarget {
     this.reconnectTimer = null;
   }
 
+  private startHeartbeat(socket: WebSocket): void {
+    this.stopHeartbeat();
+    this.lastServerPongAt = Date.now();
+    this.heartbeatTimer = window.setInterval(() => {
+      if (this.socket !== socket || socket.readyState !== WebSocket.OPEN) {
+        this.stopHeartbeat(socket);
+        return;
+      }
+      const now = Date.now();
+      if (now - this.lastServerPongAt > 5_000) {
+        socket.close(4000, "Heartbeat timeout");
+        return;
+      }
+      try {
+        socket.send(JSON.stringify({
+          type: "heartbeat.ping",
+          id: `client-${now}-${this.heartbeatSequence++}`,
+          sentAt: now
+        }));
+      } catch {
+        socket.close(4000, "Heartbeat send failed");
+      }
+    }, 1_000);
+  }
+
+  private stopHeartbeat(socket?: WebSocket): void {
+    if (socket && this.socket !== socket) {
+      return;
+    }
+    if (this.heartbeatTimer === null) {
+      return;
+    }
+    window.clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
+  }
+
+  private sendHeartbeatPong(id: string, sentAt: number): void {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    try {
+      socket.send(JSON.stringify({
+        type: "heartbeat.pong",
+        id,
+        sentAt,
+        receivedAt: Date.now()
+      }));
+    } catch {
+      socket.close(4000, "Heartbeat pong failed");
+    }
+  }
+
   private rejectPending(message: string): void {
     if (this.pending.size === 0) {
       return;
@@ -603,7 +670,23 @@ export class CodexSocketClient extends EventTarget {
 }
 
 export async function fetchSessionToken(token?: string | null): Promise<AuthSession> {
-  const response = await fetch("/api/session", token ? { headers: { "x-codex-ui-token": token } } : undefined);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  let response: Response;
+  try {
+    response = await fetch("/api/session", {
+      ...(token ? { headers: { "x-codex-ui-token": token } } : {}),
+      cache: "no-store",
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Timed out checking UI session");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { loginRequired?: boolean };
     if (response.status === 401 && body.loginRequired) {
@@ -644,19 +727,33 @@ export async function login(
   password: string,
   captcha?: { captchaId?: string; captchaAnswer?: string }
 ): Promise<LoginResponse> {
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email,
-      password,
-      captchaId: captcha?.captchaId,
-      captchaAnswer: captcha?.captchaAnswer
-    })
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        captchaId: captcha?.captchaId,
+        captchaAnswer: captcha?.captchaAnswer
+      })
+    });
+  } catch (error) {
+    throw new Error(`登录网络连接失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
-    throw new Error(typeof body.error === "string" ? body.error : response.status === 401 ? "Invalid email or password" : `Login failed: ${response.status}`);
+    if (typeof body.error === "string" && body.error) {
+      throw new Error(body.error);
+    }
+    if (response.status === 401) {
+      throw new Error("邮箱、密码或验证码错误");
+    }
+    if (response.status === 504 || response.status === 502 || response.status === 503) {
+      throw new Error(`登录服务网关超时/不可用 (${response.status})，请检查网络或后端代理设置`);
+    }
+    throw new Error(`登录失败 (${response.status})`);
   }
   return body as LoginResponse;
 }
@@ -866,9 +963,23 @@ export async function allocateMemberBalance(
 }
 
 export async function fetchProviders(token: string): Promise<ProviderConfig[]> {
-  const response = await fetch("/api/providers", {
-    headers: { "x-codex-ui-token": token }
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 8_000);
+  let response: Response;
+  try {
+    response = await fetch("/api/providers", {
+      headers: { "x-codex-ui-token": token },
+      cache: "no-store",
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Timed out loading relay channels");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string; loginRequired?: boolean };
     if (response.status === 401 && body.loginRequired) {

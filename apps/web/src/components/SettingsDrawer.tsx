@@ -1119,7 +1119,7 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     nativeModels: "gpt-5.6-sol,gpt-5.5",
     modelAliases: "codex=gpt-5.6-sol",
     modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.4=2.5/0.25/2.5/15/1\ngpt-5.6-sol=5/0.5/5/30/1",
-    image: { generations: true, edits: true, defaultModel: "gpt-image-2", protocols: ["openaiImages", "openaiImageEdits"], defaultProtocol: "openaiImages" }
+    image: { generations: false, edits: false, defaultModel: "gpt-image-2", protocols: ["openaiImages", "openaiImageEdits"], defaultProtocol: "openaiImages" }
   },
   {
     id: "deepseek",
@@ -1143,8 +1143,8 @@ const RELAY_PROVIDER_TEMPLATES: Array<{
     modelAliases: "codex=gpt-5.6-sol",
     modelRates: "gpt-5.5=5/0.5/5/30/1\ngpt-5.6-sol=5/0.5/5/30/1",
     image: {
-      generations: true,
-      edits: true,
+      generations: false,
+      edits: false,
       defaultModel: "gpt-image-2-1k",
       protocols: ["openaiImages", "openaiImageEdits", "geminiChatCompletions", "geminiGenerateContent", "deepkeyAsyncVideos"],
       defaultProtocol: "openaiImages"
@@ -1547,6 +1547,13 @@ function RelaySettingsPanel({
   const [imageDefaultModel, setImageDefaultModel] = useState(template.image?.defaultModel ?? "");
   const [imageProtocols, setImageProtocols] = useState<ImageGenerationProtocol[]>(template.image?.protocols ?? []);
   const [imageDefaultProtocol, setImageDefaultProtocol] = useState<ImageGenerationProtocol | "">(template.image?.defaultProtocol ?? "");
+  const [imageApiKey, setImageApiKey] = useState(template.image?.apiKey ?? "");
+  const [channelCategory, setChannelCategory] = useState<"text" | "image" | "hybrid">(() => {
+    if (template.image?.generations || template.image?.edits) {
+      return template.nativeModels ? "hybrid" : "image";
+    }
+    return "text";
+  });
   const [remark, setRemark] = useState("");
   const [quotaUsd, setQuotaUsd] = useState<string>("");
   const [stationType, setStationType] = useState<StationType>("third_party");
@@ -1594,7 +1601,31 @@ function RelaySettingsPanel({
     }
   }, [canManage, relayView]);
 
-  const activeModelList = useMemo(() => parseCsv(nativeModels), [nativeModels]);
+  const activeModelList = useMemo(() => {
+    const list = parseCsv(nativeModels);
+    if (channelCategory === "text" || (!imageGenerations && !imageEdits)) {
+      return list;
+    }
+    const imageModels: string[] = [];
+    const defaultModel = imageDefaultModel.trim();
+    if (defaultModel) {
+      imageModels.push(defaultModel);
+    }
+    if (imageGenerations) {
+      if (!imageModels.includes("dall-e-3")) imageModels.push("dall-e-3");
+      if (!imageModels.includes("gpt-image-2-1k")) imageModels.push("gpt-image-2-1k");
+      if (!imageModels.includes("gpt-image-2")) imageModels.push("gpt-image-2");
+    }
+    if (imageEdits) {
+      if (!imageModels.includes("dall-e-2")) imageModels.push("dall-e-2");
+    }
+    for (const model of imageModels) {
+      if (model && !list.includes(model)) {
+        list.push(model);
+      }
+    }
+    return list;
+  }, [nativeModels, channelCategory, imageGenerations, imageEdits, imageDefaultModel]);
   const modelRateRows = useMemo(
     () => modelRateDraftRowsForModels(activeModelList, modelRateDrafts),
     [activeModelList, modelRateDrafts]
@@ -1842,7 +1873,7 @@ function RelaySettingsPanel({
     const defaultProtocol =
       imageDefaultProtocol && generationProtocols.includes(imageDefaultProtocol) ? imageDefaultProtocol : generationProtocols[0];
     const defaultModel = imageDefaultModel.trim();
-    if (!imageGenerations && !imageEdits && !defaultModel && protocols.length === 0) {
+    if (!imageGenerations && !imageEdits && !defaultModel && protocols.length === 0 && !imageApiKey.trim()) {
       return undefined;
     }
     return {
@@ -1850,7 +1881,8 @@ function RelaySettingsPanel({
       edits: imageEdits,
       defaultModel: defaultModel || undefined,
       protocols: protocols.length > 0 ? protocols : undefined,
-      defaultProtocol
+      defaultProtocol,
+      apiKey: imageApiKey.trim() || undefined
     };
   };
 
@@ -1858,7 +1890,7 @@ function RelaySettingsPanel({
     if (!canManage || saving) {
       return;
     }
-    const nativeModelList = parseCsv(nativeModels);
+    const nativeModelList = Array.from(new Set([...parseCsv(nativeModels), ...activeModelList]));
     const editingProvider = providers.find((provider) => provider.id === editingProviderId);
     const now = Date.now();
     setSaving(true);
@@ -2116,6 +2148,52 @@ function RelaySettingsPanel({
                     ))}
                   </Stack>
                   {apiFormat !== "responsesRelay" ? <CodeLaunchRelayBanner t={t} /> : null}
+                </Stack>
+              </RelayFormRow>
+              <RelayFormRow label="中转业务类型">
+                <Stack spacing={1.25} sx={{ width: "100%" }}>
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={channelCategory}
+                    onChange={(_, v) => {
+                      if (!v) return;
+                      setChannelCategory(v as "text" | "image" | "hybrid");
+                      if (v === "text") {
+                        setImageGenerations(false);
+                        setImageEdits(false);
+                      } else if (v === "image") {
+                        setImageGenerations(true);
+                        setImageEdits(true);
+                        if (!imageDefaultModel) setImageDefaultModel("gpt-image-2-1k");
+                        if (imageProtocols.length === 0) setImageProtocols(["openaiImages", "openaiImageEdits"]);
+                        if (!imageDefaultProtocol) setImageDefaultProtocol("openaiImages");
+                      } else if (v === "hybrid") {
+                        setImageGenerations(true);
+                        if (!imageDefaultModel) setImageDefaultModel("gpt-image-2-1k");
+                      }
+                    }}
+                    sx={{
+                      "& .MuiToggleButton-root": {
+                        px: 2,
+                        py: 0.75,
+                        fontWeight: 800,
+                        textTransform: "none",
+                        borderRadius: "999px !important"
+                      }
+                    }}
+                  >
+                    <ToggleButton value="text">🔤 文本模型 (Text/Chat)</ToggleButton>
+                    <ToggleButton value="image">🎨 生图模型 (Image/Edits)</ToggleButton>
+                    <ToggleButton value="hybrid">🔀 综合中转 (Text + Image)</ToggleButton>
+                  </ToggleButtonGroup>
+                  <Alert severity={channelCategory === "text" ? "info" : channelCategory === "image" ? "success" : "warning"} variant="outlined" sx={{ borderRadius: 2 }}>
+                    {channelCategory === "text"
+                      ? "【文本模型中转】只添加对话与补全模型，生图模型倍率默认隐藏，独立清晰。"
+                      : channelCategory === "image"
+                      ? "【生图模型中转】专用于图像生成与编辑，支持独立生图 API Key、生图协议与生图倍率配置。"
+                      : "【综合中转】同时配置文本与图像生成模型，共用或使用独立生图 Key。"}
+                  </Alert>
                 </Stack>
               </RelayFormRow>
               <RelayFormRow label={t("settings.relay.channelMode")}>
@@ -2716,6 +2794,16 @@ function RelaySettingsPanel({
                       sx={{ mr: 0 }}
                     />
                   </Stack>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    label="生图独立 API Key (可选)"
+                    type="password"
+                    value={imageApiKey}
+                    onChange={(event) => setImageApiKey(event.target.value)}
+                    placeholder="sk-image-xxx (若生图模型与文本模型使用不同 Key 时填写，默认留空复用主 API Key)"
+                    helperText="当生图/多媒体中转需要使用独立的 API 密钥时单独填写"
+                  />
                   <Stack direction={{ xs: "column", md: "row" }} spacing={1.25}>
                     <TextField
                       size="small"

@@ -28,13 +28,15 @@ export interface TopBarRelayTreeSelectorProps {
   activeProviderId: string | null;
   onActivateProvider: (providerId: string) => Promise<void>;
   onOpenOfficialLogin: () => void;
+  onOpenCreateRelay?: () => void;
 }
 
 export function TopBarRelayTreeSelector({
   providers,
   activeProviderId,
   onActivateProvider,
-  onOpenOfficialLogin
+  onOpenOfficialLogin,
+  onOpenCreateRelay
 }: TopBarRelayTreeSelectorProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [search, setSearch] = useState("");
@@ -42,10 +44,15 @@ export function TopBarRelayTreeSelector({
 
   const activeProvider = providers.find((p) => p.id === activeProviderId);
   const officialProvider = providers.find((p) => p.stationType === "official" || p.id === "official-openai");
+  const hasConfiguredRelays = providers.length > 0;
 
   const open = Boolean(anchorEl);
 
   const handleOpen = (e: MouseEvent<HTMLElement>) => {
+    if (!hasConfiguredRelays && onOpenCreateRelay) {
+      onOpenCreateRelay();
+      return;
+    }
     setAnchorEl(e.currentTarget);
   };
 
@@ -72,7 +79,7 @@ export function TopBarRelayTreeSelector({
     });
   }, [providers, search]);
 
-  const activeLabel = activeProvider ? activeProvider.name : "默认中转站";
+  const activeLabel = activeProvider ? activeProvider.name : hasConfiguredRelays ? "默认中转站" : "设置中转站";
 
   return (
     <>
@@ -191,9 +198,26 @@ export function TopBarRelayTreeSelector({
             </Typography>
 
             {filteredProviders.filter((p) => p.stationType !== "official" && p.id !== "official-openai").length === 0 ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 1, py: 1 }}>
-                未找到匹配的中转站。
-              </Typography>
+              <Box sx={{ px: 1, py: 1 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
+                  未找到匹配的中转站。
+                </Typography>
+                {onOpenCreateRelay && (
+                  <Button
+                    size="small"
+                    fullWidth
+                    variant="contained"
+                    color="primary"
+                    onClick={() => {
+                      handleClose();
+                      onOpenCreateRelay();
+                    }}
+                    sx={{ borderRadius: 1.5, textTransform: "none", py: 0.75 }}
+                  >
+                    设置 / 创建中转站
+                  </Button>
+                )}
+              </Box>
             ) : (
               <List dense disablePadding sx={{ width: "100%" }}>
                 {filteredProviders

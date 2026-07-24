@@ -6,6 +6,7 @@ Local React + MUI workbench for Codex CLI, backed by `codex app-server`.
 
 - React + MUI three-column workbench: history, chat, composer, config/tools/files inspector.
 - Local Bun HTTP/WebSocket bridge on `127.0.0.1` only; the browser never talks to `codex app-server` directly.
+- Browser-to-Bun WebSocket heartbeat: application-level `ping/pong` runs every second, closes stale sockets after missed replies, and lets the existing reconnect loop recover from half-open connections after OS stalls or long installs.
 - Codex app-server over stdio, including `initialize`, `thread/start`, `turn/start`, `model/list`, `thread/list`, and account read.
 - New conversation permission presets, including the explicit `Dangerously bypass approvals and sandbox` option gated by typing `BYPASS`.
 - Third-party relay channel metadata: API format, base URL, fetched/active models, model aliases, model rates, API key preview, remarks, save, test, and activate.
@@ -78,6 +79,22 @@ http://127.0.0.1:43110/?token=<session-token>
 ```
 
 `/api/session` is intentionally the only unauthenticated API in local-token mode. Other API and websocket calls require the token.
+
+## WebSocket Heartbeat
+
+The browser connects only to the local Bun bridge at `/ws`; the bridge then talks to Codex. To avoid a frozen-looking UI after a laptop sleep, network blip, or long software install leaves a half-open WebSocket, both peers use lightweight JSON heartbeats:
+
+- Every 1 second the browser sends `heartbeat.ping`; the server replies with `heartbeat.pong`.
+- Every 1 second the server sends `heartbeat.ping`; the browser replies with `heartbeat.pong`.
+- If either side misses replies for about 5 seconds, it closes the stale socket. The browser then uses the existing exponential reconnect loop and resubscribes through the normal app state flow.
+- A true system freeze pauses JavaScript and server timers too, so heartbeat cannot run during the freeze itself. The benefit is faster detection and reconnection immediately after the machine or browser event loop resumes.
+
+Optional server tuning:
+
+```bash
+CODEX_UI_WS_HEARTBEAT_INTERVAL_MS=1000
+CODEX_UI_WS_HEARTBEAT_TIMEOUT_MS=5000
+```
 
 ## Docker Compose Install
 

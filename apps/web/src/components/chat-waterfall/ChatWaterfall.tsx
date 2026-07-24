@@ -6,7 +6,6 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/rea
 import type { TranslateFn } from "../../i18n";
 import { ChatRow } from "./ChatRow";
 import { ChatFloorRail, type ChatFloorEntry } from "./ChatFloorRail";
-import { ChatPromptMap } from "./ChatPromptMap";
 import { ChatSearchOverlay, buildChatSearchResults, type ChatSearchScope } from "./ChatSearchOverlay";
 import { estimateChatRowSize } from "./chatRowEstimates";
 import type { AssistantUsageDisplayMode, ChatWaterfallRow } from "./types";
@@ -26,12 +25,10 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
   const [newRowsCount, setNewRowsCount] = useState(0);
   const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
   const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(() => new Set());
-  const [promptMapOpen, setPromptMapOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchScope, setSearchScope] = useState<ChatSearchScope>("all");
   const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
-  const expandedRowSignature = useMemo(() => [...expandedRowKeys].sort().join("\u0000"), [expandedRowKeys]);
   const beforeOffset = before ? 1 : 0;
   const virtualCount = rows.length + beforeOffset;
   const liveIndexes = useMemo(
@@ -134,14 +131,6 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
     });
   }, [rows]);
 
-  useLayoutEffect(() => {
-    virtualizer.measure();
-    const frame = window.requestAnimationFrame(() => {
-      virtualizer.measure();
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [expandedRowSignature, virtualizer]);
-
   useEffect(() => {
     setSelectedSearchIndex(0);
   }, [searchScope, searchTerm]);
@@ -161,12 +150,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
-        setPromptMapOpen(false);
         setSearchOpen(true);
-      } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
-        event.preventDefault();
-        setSearchOpen(false);
-        setPromptMapOpen(true);
       } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === "ArrowDown" || event.key === "End")) {
         event.preventDefault();
         jumpToLatestRef.current();
@@ -185,13 +169,13 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
   }, [nearBottom, rows.length, virtualCount, virtualizer]);
 
   useLayoutEffect(() => {
-    if (liveIndexes.length === 0 || rows.length === 0 || searchOpen || promptMapOpen) {
+    if (liveIndexes.length === 0 || rows.length === 0 || searchOpen) {
       return;
     }
     scrollToBottom();
     setNearBottom(true);
     setNewRowsCount(0);
-  }, [latestActivityKey, liveIndexes.length, promptMapOpen, rows.length, searchOpen]);
+  }, [latestActivityKey, liveIndexes.length, rows.length, searchOpen]);
 
   function jumpToLatest() {
     if (rows.length === 0) {
@@ -249,6 +233,30 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
     });
   }
 
+  if (rows.length === 0 && before) {
+    return (
+      <Box
+        ref={parentRef}
+        data-testid="chat-waterfall-scroll"
+        sx={{
+          position: "relative",
+          minHeight: 0,
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          overflow: "auto",
+          p: { xs: 1, sm: 1.5 }
+        }}
+      >
+        <Box sx={{ width: "100%", maxWidth: "min(100%, 1180px)", my: "auto" }}>
+          {before}
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box
       ref={parentRef}
@@ -260,32 +268,6 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
         p: { xs: 1.5, sm: 2.5, lg: 3 }
       }}
     >
-      {floors.length > 1 && (
-        <Box
-          sx={{
-            position: "sticky",
-            top: 12,
-            zIndex: 5,
-            height: 0,
-            display: "flex",
-            justifyContent: "flex-start",
-            pointerEvents: "none"
-          }}
-        >
-          <Box sx={{ pointerEvents: "auto" }}>
-            <ChatPromptMap
-              open={promptMapOpen}
-              floors={floors}
-              onOpen={() => {
-                setSearchOpen(false);
-                setPromptMapOpen(true);
-              }}
-              onClose={() => setPromptMapOpen(false)}
-              onJump={jumpToRow}
-            />
-          </Box>
-        </Box>
-      )}
       {floors.length > 1 && (
         <Box
           sx={{
@@ -324,7 +306,6 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
             selectedIndex={Math.min(selectedSearchIndex, Math.max(0, searchResults.length - 1))}
             results={searchResults}
             onOpen={() => {
-              setPromptMapOpen(false);
               setSearchOpen(true);
             }}
             onClose={() => setSearchOpen(false)}
