@@ -354,6 +354,14 @@ export const initialClientState: ClientState = {
   errors: []
 };
 
+export type SocketConnectionStatus = {
+  phase: "connecting" | "connected" | "disconnected" | "reconnecting";
+  at: number;
+  attempt?: number;
+  delayMs?: number;
+  reason?: string;
+};
+
 export class CodexSocketClient extends EventTarget {
   private socket: WebSocket | null = null;
   private token: string | null = null;
@@ -377,6 +385,7 @@ export class CodexSocketClient extends EventTarget {
     this.token = token;
     this.closedByClient = false;
     if (this.socket?.readyState === WebSocket.OPEN) {
+      this.dispatchConnectionStatus({ phase: "connected" });
       return Promise.resolve();
     }
     if (this.connectPromise) {
@@ -394,6 +403,7 @@ export class CodexSocketClient extends EventTarget {
     this.socket?.close();
     this.socket = null;
     this.connectPromise = null;
+    this.dispatchConnectionStatus({ phase: "disconnected", reason: "Client disconnected" });
     this.dispatch("connected", false);
   }
 
@@ -401,6 +411,7 @@ export class CodexSocketClient extends EventTarget {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`);
     this.socket = socket;
+    this.dispatchConnectionStatus({ phase: "connecting" });
     let opened = false;
     return new Promise<void>((resolve, reject) => {
       let settled = false;
@@ -415,6 +426,7 @@ export class CodexSocketClient extends EventTarget {
         this.socket = null;
         this.connectPromise = null;
         rejectOnce(message);
+        this.dispatchConnectionStatus({ phase: "disconnected", reason: message });
         this.dispatch("connected", false);
         try {
           socket.close();
@@ -442,19 +454,24 @@ export class CodexSocketClient extends EventTarget {
         this.reconnectAttempt = 0;
         this.clearReconnectTimer();
         this.startHeartbeat(socket);
+        this.dispatchConnectionStatus({ phase: "connected" });
         this.dispatch("connected", true);
         resolve();
       });
       socket.addEventListener("error", () => {
         failHandshake("WebSocket connection failed");
       }, { once: true });
-      socket.addEventListener("close", () => {
+      socket.addEventListener("close", (event) => {
         if (this.socket !== socket) return;
         window.clearTimeout(handshakeTimer);
         this.stopHeartbeat(socket);
         this.socket = null;
         this.connectPromise = null;
         if (!opened) rejectOnce("WebSocket closed before connecting");
+        this.dispatchConnectionStatus({
+          phase: "disconnected",
+          reason: event.reason || `WebSocket closed (${event.code})`
+        });
         this.dispatch("connected", false);
         this.rejectPending("WebSocket disconnected");
         if (!this.closedByClient) {
@@ -583,6 +600,12 @@ export class CodexSocketClient extends EventTarget {
     }
     const delay = Math.min(30_000, 750 * 2 ** Math.min(this.reconnectAttempt, 5));
     this.reconnectAttempt += 1;
+    this.dispatchConnectionStatus({
+      phase: "reconnecting",
+      attempt: this.reconnectAttempt,
+      delayMs: delay,
+      reason: "WebSocket disconnected"
+    });
     this.dispatch("reconnecting", { attempt: this.reconnectAttempt, delayMs: delay });
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
@@ -614,6 +637,12 @@ export class CodexSocketClient extends EventTarget {
       }
       const now = Date.now();
       if (now - this.lastServerPongAt > 5_000) {
+        console.warn("[websocket] heartbeat timeout; closing stale socket", {
+          elapsedMs: now - this.lastServerPongAt
+        });
+        this.dispatchConnectionStatus({ phase: "disconnected", reason: "Heartbeat timeout" });
+        this.dispatch("connected", false);
+        this.rejectPending("WebSocket disconnected: heartbeat timeout");
         socket.close(4000, "Heartbeat timeout");
         return;
       }
@@ -624,6 +653,10 @@ export class CodexSocketClient extends EventTarget {
           sentAt: now
         }));
       } catch {
+        console.warn("[websocket] heartbeat send failed; closing socket");
+        this.dispatchConnectionStatus({ phase: "disconnected", reason: "Heartbeat send failed" });
+        this.dispatch("connected", false);
+        this.rejectPending("WebSocket disconnected: heartbeat send failed");
         socket.close(4000, "Heartbeat send failed");
       }
     }, 1_000);
@@ -653,8 +686,16 @@ export class CodexSocketClient extends EventTarget {
         receivedAt: Date.now()
       }));
     } catch {
+      console.warn("[websocket] heartbeat pong failed; closing socket");
+      this.dispatchConnectionStatus({ phase: "disconnected", reason: "Heartbeat pong failed" });
+      this.dispatch("connected", false);
+      this.rejectPending("WebSocket disconnected: heartbeat pong failed");
       socket.close(4000, "Heartbeat pong failed");
     }
+  }
+
+  private dispatchConnectionStatus(status: Omit<SocketConnectionStatus, "at">): void {
+    this.dispatch("connection-status", { ...status, at: Date.now() });
   }
 
   private rejectPending(message: string): void {

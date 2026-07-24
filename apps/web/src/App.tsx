@@ -104,6 +104,7 @@ import {
   type PluginDetailEntry,
   type PluginMarketplace,
   type SkillEntry,
+  type SocketConnectionStatus,
   type TerminalSession
 } from "./state/codexClient";
 import { HistorySidebar, type HistoryThreadUsageSummary } from "./components/HistorySidebar";
@@ -128,7 +129,7 @@ import { OfficialOpenAiLoginDialog } from "./components/OfficialOpenAiLoginDialo
 import { TopBarRelayTreeSelector } from "./components/TopBarRelayTreeSelector";
 import type { CodexPluginSettingsTab } from "./components/CodexPluginSettingsPanel";
 import { ResizeHandle } from "./components/ResizeHandle";
-import { localeOptions, useI18n, type Locale } from "./i18n";
+import { localeOptions, useI18n, type Locale, type TranslateFn } from "./i18n";
 import {
   applyConfigWriteToView,
   buildDynamicConfigValueWrite,
@@ -304,9 +305,16 @@ const AUTH_TOKEN_STORAGE_KEY = "codex-react-ui.authToken";
 
 type AuthStatus = "checking" | "loginRequired" | "authenticated";
 
+const INITIAL_SOCKET_CONNECTION_STATUS: SocketConnectionStatus = {
+  phase: "disconnected",
+  at: 0,
+  reason: "Not connected"
+};
+
 export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustomThemePluginsChange }: AppProps) {
   const [state, dispatch] = useReducer(reducer, initialClientState);
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
+  const [connectionStatus, setConnectionStatus] = useState<SocketConnectionStatus>(INITIAL_SOCKET_CONNECTION_STATUS);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginSubmitting, setLoginSubmitting] = useState(false);
@@ -1072,6 +1080,13 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         void verifySessionAfterDisconnect();
       }
     };
+    const onConnectionStatus = (event: Event) => {
+      const status = (event as CustomEvent<SocketConnectionStatus>).detail;
+      setConnectionStatus(status);
+      if (status.phase !== "connected") {
+        console.info("[connection]", status.phase, status);
+      }
+    };
     const onMessage = (event: Event) => {
       const message = (event as CustomEvent<ServerToClientMessage>).detail;
       if (message.type === "engine.status") {
@@ -1161,9 +1176,11 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
       }
     };
     client.addEventListener("connected", onConnected);
+    client.addEventListener("connection-status", onConnectionStatus);
     client.addEventListener("server-message", onMessage);
     return () => {
       client.removeEventListener("connected", onConnected);
+      client.removeEventListener("connection-status", onConnectionStatus);
       client.removeEventListener("server-message", onMessage);
     };
   }, [activeProviderId, appendTerminalOutput, authSession, authStatus, client, loadTooling, selectedModel, state.providers, verifySessionAfterDisconnect]);
@@ -3026,7 +3043,9 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
               workspaceSelectionPending && !state.activeThreadId
                 ? t("workspace.required")
                 : !state.connected || state.engine.phase !== "ready"
-                  ? t("engine.notReady")
+                  ? connectionStatus.phase !== "connected"
+                    ? connectionNotice
+                    : t("engine.notReady")
                   : undefined
             }
             sessionToken={state.token}
@@ -3039,7 +3058,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
             dangerBypassConfirmed={dangerBypassConfirmed}
             running={Boolean(activeRunningTurn)}
             workingStatus={composerWorkingStatus}
-            statusLabel={conversationStatus}
+            statusKind={conversationStatus}
+            statusLabel={conversationStatusLabel}
             onStop={() => void stopActiveTurn()}
             onMentionConsumed={() => setPendingMention(null)}
             onUserActivity={() => setWelcomeDismissed(true)}
@@ -3256,6 +3276,8 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
   };
   const conversationStatus = getConversationStatus(state.connected, state.engine.phase, Boolean(activeRunningTurn));
   const conversationStatusColor = conversationStatusColorFor(conversationStatus);
+  const conversationStatusLabel = conversationStatusLabelFor(conversationStatus, connectionStatus, t);
+  const connectionNotice = connectionNoticeFor(connectionStatus, t);
   const settingAssistantProvider = state.providers.find((provider) => provider.id === settingAssistantProviderId) ?? null;
   const settingAssistantEffectiveModel = settingAssistantModel || settingAssistantProvider?.defaultModel || settingAssistantProvider?.nativeModels[0] || "";
   const settingAssistantReady = Boolean(settingAssistantProvider && settingAssistantEffectiveModel);
@@ -3486,7 +3508,7 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
           <Chip
             size="small"
             color={conversationStatusColor}
-            label={conversationStatus}
+            label={conversationStatusLabel}
             data-testid="topbar-conversation-status"
             sx={{ display: { xs: "inline-flex", sm: "inline-flex" }, fontWeight: 850 }}
           />
@@ -4083,6 +4105,19 @@ export function App({ themeMode, customThemePlugins, onThemeModeChange, onCustom
         onSaveProvider={saveProvider}
         onActivateProvider={activateProvider}
       />
+      <Snackbar
+        open={authStatus === "authenticated" && connectionStatus.phase !== "connected"}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert
+          severity={connectionStatus.phase === "disconnected" ? "error" : "warning"}
+          variant="filled"
+          data-testid="connection-status-alert"
+          sx={{ maxWidth: 560 }}
+        >
+          {connectionNotice}
+        </Alert>
+      </Snackbar>
       <Snackbar
         open={state.errors.length > 0}
         autoHideDuration={6000}
@@ -4947,6 +4982,44 @@ function getConversationStatus(connected: boolean, enginePhase: string, hasRunni
     return enginePhase === "error" ? "engine-error" : "retrying";
   }
   return hasRunningTurn ? "working" : "idle";
+}
+
+function conversationStatusLabelFor(status: ConversationStatus, connectionStatus: SocketConnectionStatus, t: TranslateFn): string {
+  if (connectionStatus.phase === "connecting") {
+    return t("connection.connecting");
+  }
+  if (connectionStatus.phase === "reconnecting") {
+    return t("connection.reconnecting");
+  }
+  if (status === "disconnect") {
+    return t("connection.disconnected");
+  }
+  switch (status) {
+    case "working":
+      return t("composer.running");
+    case "idle":
+      return t("composer.ready");
+    case "retrying":
+      return t("connection.engineStarting");
+    case "engine-error":
+      return t("connection.engineError");
+  }
+}
+
+function connectionNoticeFor(status: SocketConnectionStatus, t: TranslateFn): string {
+  if (status.phase === "reconnecting") {
+    return t("connection.noticeReconnecting", {
+      seconds: Math.max(1, Math.ceil((status.delayMs ?? 0) / 1000)),
+      reason: status.reason ?? t("connection.disconnected")
+    });
+  }
+  if (status.phase === "connecting") {
+    return t("connection.noticeConnecting");
+  }
+  if (status.reason) {
+    return t("connection.noticeDisconnectedWithReason", { reason: status.reason });
+  }
+  return t("connection.noticeDisconnected");
 }
 
 function conversationStatusColorFor(status: ConversationStatus): "success" | "error" | "warning" | "primary" | "default" {

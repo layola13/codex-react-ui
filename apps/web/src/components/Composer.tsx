@@ -56,6 +56,7 @@ type Props = {
   dangerBypassConfirmed: boolean;
   running?: boolean;
   workingStatus?: ComposerWorkingStatus | null;
+  statusKind?: string;
   statusLabel?: string;
   onMentionConsumed: () => void;
   onUserActivity?: () => void;
@@ -107,6 +108,7 @@ export function Composer({
   dangerBypassConfirmed,
   running = false,
   workingStatus,
+  statusKind,
   statusLabel,
   onMentionConsumed,
   onUserActivity,
@@ -224,9 +226,9 @@ export function Composer({
         <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.5}>
           <Chip
             size="small"
-            color={running ? "primary" : statusLabel === "idle" ? "success" : statusLabel === "disconnect" || statusLabel === "engine-error" ? "error" : statusLabel === "retrying" ? "warning" : "default"}
+            color={running ? "primary" : statusKind === "idle" ? "success" : statusKind === "disconnect" || statusKind === "engine-error" ? "error" : statusKind === "retrying" ? "warning" : "default"}
             variant={running ? "filled" : "outlined"}
-            label={statusLabel ?? (running ? t("composer.running") : t("composer.ready"))}
+            label={statusLabel ?? statusKind ?? (running ? t("composer.running") : t("composer.ready"))}
             data-testid="composer-turn-status"
             sx={{ height: 28, fontWeight: 800 }}
           />

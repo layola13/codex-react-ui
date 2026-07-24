@@ -21,6 +21,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
   const parentRef = useRef<HTMLDivElement | null>(null);
   const previousRowCountRef = useRef(rows.length);
   const jumpToLatestRef = useRef<() => void>(() => undefined);
+  const pendingResizeRowKeyRef = useRef<string | null>(null);
   const [nearBottom, setNearBottom] = useState(true);
   const [newRowsCount, setNewRowsCount] = useState(0);
   const [flashRowKey, setFlashRowKey] = useState<string | null>(null);
@@ -131,6 +132,22 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
     });
   }, [rows]);
 
+  useLayoutEffect(() => {
+    const rowKey = pendingResizeRowKeyRef.current;
+    if (!rowKey) {
+      return;
+    }
+    pendingResizeRowKeyRef.current = null;
+    const rowIndex = rows.findIndex((row) => row.key === rowKey);
+    const rowElement = Array.from(parentRef.current?.querySelectorAll<HTMLElement>("[data-chat-row-key]") ?? []).find(
+      (element) => element.dataset.chatRowKey === rowKey
+    );
+    if (rowIndex < 0 || !rowElement) {
+      return;
+    }
+    virtualizer.resizeItem(rowIndex + beforeOffset, rowElement.getBoundingClientRect().height);
+  });
+
   useEffect(() => {
     setSelectedSearchIndex(0);
   }, [searchScope, searchTerm]);
@@ -206,6 +223,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
   }
 
   function toggleRowExpanded(rowKey: string) {
+    pendingResizeRowKeyRef.current = rowKey;
     setExpandedRowKeys((current) => {
       const next = new Set(current);
       if (next.has(rowKey)) {
@@ -355,6 +373,7 @@ export function ChatWaterfall({ rows, t, before, assistantUsageDisplay = "summar
                 key={row.key}
                 ref={virtualizer.measureElement}
                 data-index={virtualRow.index}
+                data-chat-row-key={row.key}
                 data-testid={`conversation-item-${sanitizeTestId(row.item.id)}`}
                 sx={{
                   position: "absolute",

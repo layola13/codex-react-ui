@@ -182,6 +182,13 @@ setInterval(() => {
   const now = Date.now();
   for (const client of clients) {
     if (now - client.data.lastHeartbeatAt > WEBSOCKET_HEARTBEAT_TIMEOUT_MS) {
+      console.warn("[websocket] closing stale client after heartbeat timeout", {
+        userId: client.data.user?.id,
+        email: client.data.user?.email,
+        remoteAddress: client.remoteAddress,
+        elapsedMs: now - client.data.lastHeartbeatAt,
+        timeoutMs: WEBSOCKET_HEARTBEAT_TIMEOUT_MS
+      });
       removeClient(client);
       try {
         client.close(4000, "Heartbeat timeout");
